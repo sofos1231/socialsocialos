@@ -1,0 +1,9 @@
+{
+  "category": { "name": "Dating Basics", "icon": "heart", "subtitle": "Start here", "difficulty": "mixed" },
+  "missions": [
+    { "order": 1, "title": "Openers 101", "type": "chat", "status": "unlocked", "xp": 25, "time": "2 min", "tags": ["🔥 Trending"], "road": true },
+    { "order": 2, "title": "Banter Basics", "type": "quick", "status": "locked", "xpReward": 15, "estDuration": "1 min" }
+  ]
+}
+
+

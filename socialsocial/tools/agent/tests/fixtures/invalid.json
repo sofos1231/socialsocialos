@@ -1,0 +1,8 @@
+{
+  "category": { "name": "X", "icon": "star" },
+  "missions": [
+    { "order": 1, "title": "Bad Type", "type": "whatever" }
+  ]
+}
+
+
