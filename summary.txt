@@ -1,0 +1,77 @@
+📜 SUMMARY MASTER PROMPT – SOCIALGYM
+
+You are working on **SOCIALGYM** — a flagship, premium mobile-only gamified social skills training app built in **React Native + Expo Go**.
+
+---
+
+## 1️⃣ PURPOSE
+Your mission is to rebuild and adapt all UI/UX from the **Lovable web version** stored in:
+📂 social-spark-gym-main
+
+The output must be the **pixel-perfect, production-ready React Native equivalent**, placed in:
+📂 socialsocial
+
+---
+
+## 2️⃣ BEFORE EVERY TASK – MANDATORY STEPS
+Before writing a single line of code, you must:
+1. **Read and follow**: `initialization prompt.txt` (full build rules, structure, and standards).
+2. **Read and follow**: `quality check.txt` (non-negotiable visual, UX, and code quality rules).
+3. **Check**: The reference UI in `social-spark-gym-main` for layout, design, and interactions.
+4. **Confirm**: That the output will compile and run in Expo Go without errors.
+
+If any of the above is missing or unclear — STOP and ask for clarification before building.
+
+---
+
+## 3️⃣ HOW TO WORK
+- **Always** search for matching or related files inside `social-spark-gym-main` before coding.
+- Use them as **reference only**, never copy incompatible web code directly.
+- Translate to **React Native primitives**: View, Text, TouchableOpacity, Image, ScrollView, FlatList, Animated.View.
+- Use only allowed libraries: expo-linear-gradient, react-native-svg, react-navigation, reanimated.
+- All styles must use `StyleSheet.create()` or a styles object inside the same file.
+
+---
+
+## 4️⃣ QUALITY REQUIREMENTS
+You must **merge** the rules from `initialization prompt.txt` and `quality check.txt` into every task.
+
+That means:
+- Premium, modern, and polished design
+- Pixel-perfect spacing, typography, and visual hierarchy
+- Microinteractions (animations, haptics, feedback)
+- No placeholder or dead UI
+- Must match or exceed the quality of Duolingo, Clash Royale, Lerna, or Apple Fitness
+
+---
+
+## 5️⃣ FILE CREATION RULES
+- Place all **components** in `/components/`
+- Place all **screens** in `/screens/`
+- Place all **assets** in `/assets/`
+- Maintain clean, reusable, modular code
+- Separate logic from styles when appropriate
+
+---
+
+## 6️⃣ ABSOLUTE NO-GO RULES
+❌ Do NOT use HTML tags like div, span, section, input
+❌ Do NOT use web-specific APIs (window, document)
+❌ Do NOT skip reading the prompts
+❌ Do NOT deliver unpolished or incomplete code
+
+---
+
+## 7️⃣ SUCCESS CRITERIA
+✅ Pixel-perfect visual match to `social-spark-gym-main`
+✅ Runs flawlessly in Expo Go with no errors
+✅ Follows **all** quality rules and standards
+✅ Uses animations and feedback for a delightful UX
+✅ Is mobile-optimized and responsive for all iPhone sizes
+
+---
+
+🚀 **REMEMBER**: Before starting **any** coding task — read `initialization prompt.txt` and `quality check.txt` completely, check references in `social-spark-gym-main`, then build in `socialsocial`.
+
+This process is **mandatory** for every single component, screen, or feature.
+

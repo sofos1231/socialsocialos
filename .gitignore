@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Expo / React Native
+.expo/
+.expo-shared/
+.expo/*
+.expo/**/*.json
+*.expo*
+
+# Build outputs
+build/
+dist/
+web-build/
+android/
+ios/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Tests/coverage
+coverage/
+
+# Misc
+*.tmp
+*.swp
+
+# Cache
+.cache/
+.tmp/
+
+# Generated artifacts
+socialsocial/data/practice/
