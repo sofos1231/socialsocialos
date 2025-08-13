@@ -1,0 +1,42 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "dev:api": "npm run start:dev",
+    "dev:dash": "vite",
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:dash\"",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "db:seed": "ts-node prisma/seed.ts",
+    "db:reset": "npm run prisma:generate && prisma migrate reset --force && npm run db:seed"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@fastify/helmet": "^8.1.0",
+    "@fastify/static": "^7.0.4",
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/config": "^3.0.0",
+    "@nestjs/core": "^10.0.0",
+    "@nestjs/platform-fastify": "^10.0.0",
+    "@nestjs/swagger": "^7.0.0",
+    "@prisma/client": "^5.0.0",
+    "prisma": "^5.0.0",
+    "reflect-metadata": "^0.1.14",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.0.0",
+    "@types/node": "^20.0.0",
+    "concurrently": "^9.2.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0",
+    "vite": "^7.1.2"
+  }
+}

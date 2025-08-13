@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cursor Power Dashboard v3</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{ --bg:#0f1220; --panel:#12162a; --text:#eaf0ff; --muted:#a9b1c7; --border:rgba(255,255,255,.09); --brand:#7bb1ff; --acc:#7bda91; --warn:#ff7b8a; --radius:16px; --shadow:0 10px 30px rgba(0,0,0,.35); --font:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif; }
+    [data-theme="light"]{ --bg:#f7f8fc; --panel:#ffffff; --text:#0f1220; --muted:#5b6275; --border:rgba(0,0,0,.08) }
+    *{box-sizing:border-box} html,body{height:100%}
+    body{margin:0;font-family:var(--font);color:var(--text);background:radial-gradient(1200px 700px at 12% -10%,#26305a33,transparent 60%),var(--bg)}
+    header{position:sticky;top:0;background:rgba(0,0,0,.15);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);z-index:10}
+    .wrap{max-width:1240px;margin:0 auto;padding:12px 14px}
+    h1{margin:0;font-size:1.35rem;font-weight:800}
+    .muted{color:var(--muted)} .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap} .grow{flex:1}
+    .btn{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:12px;cursor:pointer;font-weight:600}
+    .btn:hover{border-color:rgba(255,255,255,.18)} .btn.brand{background:linear-gradient(135deg,#5e90f0,#7bda91);color:#08111e;border:none}
+    .btn.warn{background:#201418;border-color:#ffb0b9;color:#ffd7db}
+    input[type="checkbox"].tgl{width:40px;height:22px;appearance:none;background:#0f1426;border:1px solid var(--border);border-radius:999px;position:relative;cursor:pointer}
+    .tgl:checked{background:#2a8855} .tgl:before{content:"";position:absolute;inset:3px 20px 3px 3px;background:#fff;border-radius:999px;transition:all .2s}
+    .tgl:checked:before{inset:3px 3px 3px 20px}
+    main{max-width:1240px;margin:18px auto;display:grid;gap:16px;grid-template-columns:280px 1fr}
+    @media (max-width:980px){ main{grid-template-columns:1fr} }
+    .sidebar{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow);height:max-content}
+    .side-title{font-weight:700;margin:6px} .side-list{display:grid;gap:8px}
+    .side-item{display:flex;align-items:center;gap:8px;padding:8px;border-radius:12px;border:1px solid var(--border);cursor:pointer}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+    .panel-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border)}
+    .panel-body{padding:14px}
+    .grid{display:grid;gap:12px;grid-template-columns:repeat(12,1fr)} .card{grid-column:span 6;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px}
+    .card.small{grid-column:span 4} .card.full{grid-column:1/-1} @media (max-width:1100px){ .card,.card.small{grid-column:1/-1} }
+    .card h3{margin:0 0 6px} .card p{margin:0 0 10px;color:var(--muted)}
+    textarea,input,select{width:100%;background:#0f1426;border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px}
+    [data-theme="light"] textarea,[data-theme="light"] input,[data-theme="light"] select{background:#f3f5fa}
+    textarea{min-height:110px;resize:vertical} label{font-weight:600;font-size:.9rem}
+    .tags{display:flex;gap:8px;flex-wrap:wrap} .tag{padding:6px 8px;border-radius:10px;background:#0f1426;border:1px solid var(--border);font-size:.85rem;cursor:pointer}
+    [data-theme="light"] .tag{background:#f3f5fa}
+    .empty{color:var(--muted);text-align:center;padding:16px;border:1px dashed var(--border);border-radius:12px}
+    .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#172038;color:#d9e5ff;padding:10px 14px;border-radius:12px;border:1px solid var(--border);box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .25s}
+    .toast.show{opacity:1}
+    .dr{cursor:grab;user-select:none}
+  </style>
+</head>
+<body data-theme="dark">
+  <header>
+    <div class="wrap row">
+      <div class="grow">
+        <h1>Cursor Power Dashboard v3</h1>
+        <div class="muted">Profiles • Variables • Agents • Hotkeys • Packs • PWA</div>
+      </div>
+      <div class="row">
+        <label>Light <input id="themeToggle" class="tgl" type="checkbox"> Dark</label>
+        <label>Compact <input id="compactToggle" class="tgl" type="checkbox"></label>
+        <button class="btn" id="installBtn" title="Install as app">Install</button>
+        <button class="btn" id="exportBtn">Export JSON</button>
+        <button class="btn brand" id="importBtn">Import JSON</button>
+        <span id="agentStatus" class="btn" style="pointer-events:none;opacity:.8">Agent: Checking…</span>
+        <button class="btn" onclick="testConnection()" title="Test server connection">Test Connection</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <aside class="sidebar">
+      <div class="side-title">Project Profile</div>
+      <select id="profileSelect"></select>
+      <div class="row" style="margin:8px 0 10px">
+        <button class="btn" id="addProfileBtn">+ Add Profile</button>
+        <button class="btn warn" id="delProfileBtn">Delete</button>
+      </div>
+      <div class="side-title">Quick Links (Ctrl+L)</div>
+      <div id="linkList" class="side-list"></div>
+      <div style="margin-top:8px"><button class="btn" id="addLinkBtn">+ Add Link</button></div>
+    </aside>
+
+    <section class="panel">
+      <header class="panel-head">
+        <div class="grow"><strong>Shortcuts Library</strong><div class="muted">Ctrl+1..9 copy • Ctrl+F search • Tag chips filter</div></div>
+        <div class="row"><input id="search" placeholder="Search prompts..." style="width:260px"><button class="btn" id="addShortcutBtn">+ New</button><button class="btn" id="resetDefaultsBtn">Reset</button></div>
+      </header>
+      <div class="panel-body">
+        <div id="tagBar" class="tags" style="margin-bottom:8px"></div>
+        <div class="grid" id="shortcutGrid"></div>
+        <div id="noShortcuts" class="empty" style="display:none">No shortcuts yet. Create one ↑</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <header class="panel-head"><strong>Prompt Builder (Variables)</strong></header>
+      <div class="panel-body">
+        <div class="row" style="gap:10px;flex-wrap:wrap">
+          <input id="pbObjective" placeholder="Objective (e.g., Build PracticeHub screen)" />
+          <input id="pbContext" placeholder="Context/Constraints (Expo RN, dark, safe-area, etc.)" />
+          <button class="btn" id="addVarBtn">+ Add Variable</button>
+        </div>
+        <div id="vars" class="tags" style="margin:10px 0"></div>
+        <label>Generated Prompt</label>
+        <textarea id="pbOutput" readonly></textarea>
+        <div class="row" style="margin-top:8px"><button class="btn brand" id="copyBuiltBtn">Copy</button><button class="btn" id="clearBuiltBtn">Clear</button></div>
+      </div>
+    </section>
+
+    <!-- Agents Panel -->
+    <section class="panel" style="grid-column:1/-1">
+      <header class="panel-head"><strong>Agents</strong><div class="muted">Create per-agent mini-dashboards. Starting with: Builder Agent</div></header>
+      <div class="panel-body">
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <button class="btn brand" id="newBuilderBtn">+ New Builder Dashboard</button>
+        </div>
+        <div id="agentsArea" class="grid" style="margin-top:10px"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <header class="panel-head"><strong>Project Commands</strong></header>
+      <div class="panel-body"><div id="cmds" class="tags"></div><div style="margin-top:8px"><button class="btn" id="addCmdBtn">+ Add Command</button></div></div>
+    </section>
+
+    <section class="panel" style="grid-column:1/-1">
+      <header class="panel-head"><div class="grow"><strong>Prompt Packs & Backup</strong></div><div class="row"><button class="btn" id="savePackBtn">Save as Pack</button><select id="packSelect" style="min-width:180px"></select><button class="btn" id="loadPackBtn">Load Pack</button><button class="btn" id="autoBackupToggle">Auto-Backup: Off</button></div></header>
+      <div class="panel-body"><div class="muted">Packs per-profile. Import/Export in header.</div></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <template id="shortcutCardTpl"><div class="card small"><h3 class="title"></h3><p class="desc"></p><textarea class="code"></textarea><div class="row" style="margin-top:8px;gap:8px"><button class="btn brand copy">Copy</button><button class="btn save">Save</button><button class="btn del">Delete</button></div><div style="margin-top:6px" class="muted tags tags-line"></div></div></template>
+
+  <!-- Builder Agent Template -->
+  <template id="builderTpl">
+    <div class="card full" data-agent="builder">
+      <h3>Builder Agent — Category & Missions</h3>
+      <p class="muted">Fill, drag to reorder, then generate JSON + Cursor prompt. One click will copy everything.</p>
+      <div class="row" style="gap:10px;flex-wrap:wrap;margin:8px 0">
+        <input class="b-name" placeholder="Category name (e.g., Dating Basics)"/>
+        <input class="b-icon" placeholder="Ionicon (e.g., heart)" style="max-width:220px"/>
+        <select class="b-diff">
+          <option value="normal">Difficulty: Normal</option>
+          <option value="hard">Difficulty: Hard</option>
+          <option value="mixed" selected>Difficulty: Mixed</option>
+        </select>
+        <button class="btn" data-act="add-mission">+ Add Mission</button>
+        <button class="btn" data-act="reset-10">Reset to 10 Slots</button>
+      </div>
+      <div class="muted">Mission types: chat • video • quick • boss</div>
+      <div class="grid" style="grid-template-columns:repeat(12,1fr);gap:8px;margin-top:8px" data-list></div>
+      <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+        <button class="btn" data-act="gen-json">Generate JSON</button>
+        <button class="btn" data-act="copy-prompt">Copy Cursor Prompt</button>
+        <button class="btn" data-act="export-json">Export JSON</button>
+        <button class="btn brand" data-act="deploy">Deploy to Practice Hub</button>
+      </div>
+      <textarea class="b-output" placeholder="Preview will appear here" style="margin-top:8px"></textarea>
+    </div>
+  </template>
+
+  <script>
+    // ==== utilities & polyfills ====
+    if(!(window.crypto && crypto.randomUUID)){ window.crypto = window.crypto || {}; crypto.randomUUID = ()=>'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=> (c==='x'?(Math.random()*16|0):((Math.random()*16|0)&0x3|0x8)).toString(16)) }
+    const $=(q,el=document)=>el.querySelector(q), $$=(q,el=document)=>[...el.querySelectorAll(q)];
+    const toast=(m)=>{const t=$('#toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1300)}
+    const storage={get:(k,f)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):f}catch(e){return f}}, set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}}
+
+    // ==== state ====
+    const LS={profiles:'c_pd_profiles_v1',active:'c_pd_active_v1',packs:'c_pd_packs_v1',theme:'c_pd_theme_v1',compact:'c_pd_compact_v1',autoback:'c_pd_autoback_v1'}
+    const DEFAULT_PROFILE=()=>({id:crypto.randomUUID(),name:'SocialGym',links:[{id:crypto.randomUUID(),label:'Add your first link',url:'https://example.com'}],shortcuts:[{id:crypto.randomUUID(),title:'Ultra-Polish Rule Set',desc:'Strict rules for Cursor',tags:['Global','Quality'],code:`Rules:
+1) Full files.
+2) Expo Go only.
+3) Paths + Windows commands.
+4) Validate spec.
+5) Safe-area proof.
+6) No placeholders.
+7) Pixel-perfect.
+8) QA checklist.`}],commands:[{id:crypto.randomUUID(),label:'Start Expo',cmd:'npx expo start'}],vars:[{k:'screen',v:''},{k:'path',v:''},{k:'lib',v:''}],agents:{builder:[]}})
+    const state={profiles:storage.get(LS.profiles,[DEFAULT_PROFILE(),{...DEFAULT_PROFILE(),id:crypto.randomUUID(),name:'Other'}]),get active(){return storage.get(LS.active,this.profiles[0].id)},set active(id){storage.set(LS.active,id)},get theme(){return storage.get(LS.theme,'dark')},set theme(v){storage.set(LS.theme,v)},get compact(){return !!storage.get(LS.compact,false)},set compact(v){storage.set(LS.compact,!!v)},get autoback(){return !!storage.get(LS.autoback,false)},set autoback(v){storage.set(LS.autoback,!!v)}}
+    const activeProfile=()=> state.profiles.find(p=>p.id===state.active) || state.profiles[0]; const saveProfiles=()=>storage.set(LS.profiles,state.profiles)
+
+    // ==== existing renderers (trimmed where unchanged) ====
+    function renderTheme(){ document.body.setAttribute('data-theme', state.theme); $('#themeToggle').checked=(state.theme==='dark') }
+    function renderCompact(){ $('#compactToggle').checked=state.compact; document.documentElement.classList.toggle('compact',state.compact) }
+    function renderProfiles(){ const sel=$('#profileSelect'); sel.innerHTML=''; state.profiles.forEach(p=>{const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; sel.appendChild(o)}); sel.value=state.active; sel.onchange=()=>{state.active=sel.value; renderAll()} }
+    function renderLinks(){ const list=$('#linkList'); list.innerHTML=''; const prof=activeProfile(); if(!prof.links.length){list.innerHTML='<div class="empty">No links</div>'; return} prof.links.forEach(l=>{const row=document.createElement('div'); row.className='side-item'; row.innerHTML=`<span>🔗</span><div class="grow"><div>${l.label}</div><small class="muted">${l.url}</small></div>`; row.onclick=()=>window.open(l.url,'_blank'); list.appendChild(row)}) }
+
+    // Shortcuts & search
+    function renderTags(){ const bar=$('#tagBar'); bar.innerHTML=''; const prof=activeProfile(); const tags=[...new Set(prof.shortcuts.flatMap(s=>s.tags||[]))]; tags.forEach(name=>{ const el=document.createElement('span'); el.className='tag'; el.textContent=name; el.onclick=()=>{ $('#search').value=`tag:${name}`; filterShortcuts() }; bar.appendChild(el) }) }
+    function shortcutCard(sc,idx){ const tpl=$('#shortcutCardTpl').content.cloneNode(true); const root=tpl.querySelector('.card'); root.querySelector('.title').textContent=`${idx<9?`[Ctrl+${idx+1}] `:''}${sc.title}`; root.querySelector('.desc').textContent=sc.desc||''; root.querySelector('.code').value=sc.code||''; root.querySelector('.tags-line').innerHTML=(sc.tags||[]).map(t=>`<span class="tag">${t}</span>`).join(''); root.querySelector('.copy').onclick=()=>{navigator.clipboard.writeText(root.querySelector('.code').value); toast('Copied — paste in Cursor')}; root.querySelector('.save').onclick=()=>{ const prof=activeProfile(); const i=prof.shortcuts.findIndex(x=>x.id===sc.id); if(i>-1){ prof.shortcuts[i].code=root.querySelector('.code').value; saveProfiles(); triggerBackup(); toast('Saved') } }; root.querySelector('.del').onclick=()=>{ if(confirm('Delete shortcut?')){ const prof=activeProfile(); prof.shortcuts=prof.shortcuts.filter(x=>x.id!==sc.id); saveProfiles(); renderShortcuts(); triggerBackup() } }; return root }
+    function filterShortcuts(returnOnly){ const prof=activeProfile(); const q=($('#search').value||'').toLowerCase().trim(); let list=prof.shortcuts; if(q){ if(q.startsWith('tag:')){ const tag=q.slice(4); list=list.filter(s=>(s.tags||[]).map(x=>x.toLowerCase()).includes(tag)) } else { list=list.filter(s=>`${s.title} ${s.desc} ${s.code}`.toLowerCase().includes(q)) } } if(returnOnly) return list; renderShortcuts() }
+    function renderShortcuts(){ const grid=$('#shortcutGrid'); grid.innerHTML=''; const set=filterShortcuts(true); if(!set.length){$('#noShortcuts').style.display='block'; return} $('#noShortcuts').style.display='none'; set.forEach((sc,i)=>grid.appendChild(shortcutCard(sc,i))) }
+
+    // Prompt builder
+    function renderVars(){ const el=$('#vars'); el.innerHTML=''; const prof=activeProfile(); prof.vars.forEach(v=>{ const chip=document.createElement('span'); chip.className='tag'; chip.textContent=`{{${v.k}}} = ${v.v||'—'}`; chip.onclick=()=>{ const nv=prompt(`Value for {{${v.k}}}:`, v.v||''); if(nv!==null){ v.v=nv; saveProfiles(); buildPrompt(); triggerBackup(); renderVars() } }; el.appendChild(chip) }) }
+    function buildPrompt(){ const prof=activeProfile(); const objective=$('#pbObjective').value.trim(); const context=$('#pbContext').value.trim(); const filled=(s)=> prof.vars.reduce((acc,v)=> acc.replaceAll(`{{${v.k}}}`, v.v||`[${v.k}]`), s); const rules=`House rules (MANDATORY):
+1) Full files (no ellipses).
+2) Expo Go only.
+3) Exact paths + Windows commands.
+4) Validate spec; fill gaps.
+5) Safe-area & notch proof.
+6) No placeholders.
+7) Pixel-perfect.
+8) QA checklist.`; const prompt=`You are working in Cursor.
+
+Objective:
+- ${filled(objective||'[SPECIFY OBJECTIVE]')}
+
+Context:
+- ${filled(context||'Expo React Native app running in Expo Go.')}
+
+Variables: ${prof.vars.map(v=>`{{${v.k}}}`).join(', ')}
+
+${rules}
+
+Deliverables:
+- Full updated files.
+- Exact folder paths and commands.
+- Manual QA checklist.`; $('#pbOutput').value=prompt }
+
+    // Commands
+    function renderCmds(){ const box=$('#cmds'); box.innerHTML=''; const prof=activeProfile(); prof.commands.forEach(c=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=c.label; b.onclick=()=>{ navigator.clipboard.writeText(c.cmd); toast('Command copied') }; box.appendChild(b) }) }
+
+    // ===== Agents: Builder =====
+    function renderAgents(){ const area=$('#agentsArea'); area.innerHTML=''; const prof=activeProfile(); (prof.agents?.builder||[]).forEach(cfg=> area.appendChild(buildBuilderCard(cfg)) ) }
+
+    function buildBuilderCard(cfg){ const node=$('#builderTpl').content.cloneNode(true); const card=node.querySelector('[data-agent="builder"]'); const list=card.querySelector('[data-list]'); card.querySelector('.b-name').value=cfg.name||''; card.querySelector('.b-diff').value=cfg.diff||'mixed'; const iconInp = card.querySelector('.b-icon'); iconInp.value = cfg.icon||'';
+      // missions UI
+      function renderM(){ list.innerHTML=''; cfg.missions.forEach((m,i)=>{ const row=document.createElement('div'); row.style.cssText='grid-column:1/-1; display:grid; grid-template-columns:24px 1fr 130px 70px 70px; gap:8px; align-items:center;';
+        row.innerHTML=`<div class="dr" title="drag">↕</div><input value="${m.title}" placeholder="Mission ${i+1} title"/><select><option ${m.type==='chat'?'selected':''}>chat</option><option ${m.type==='video'?'selected':''}>video</option><option ${m.type==='quick'?'selected':''}>quick</option><option ${m.type==='boss'?'selected':''}>boss</option></select><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" ${m.road?'checked':''}/> road</label><button class="btn warn">Del</button>`;
+        const [drag, inp, sel, roadWrap, del]=row.children; const roadCb=roadWrap.querySelector('input'); del.onclick=()=>{ cfg.missions.splice(i,1); renderM(); saveProfiles(); triggerBackup() }; inp.oninput=()=>{ m.title=inp.value; saveProfiles() }; sel.onchange=()=>{ m.type=sel.value; saveProfiles() }; roadCb.onchange=()=>{ m.road=roadCb.checked; saveProfiles() };
+        // drag
+        row.draggable=true; row.addEventListener('dragstart',e=>{ e.dataTransfer.setData('text/plain', i) }); row.addEventListener('dragover',e=>e.preventDefault()); row.addEventListener('drop',e=>{ e.preventDefault(); const from=+e.dataTransfer.getData('text/plain'); const to=i; const x=cfg.missions.splice(from,1)[0]; cfg.missions.splice(to,0,x); renderM(); saveProfiles(); triggerBackup() });
+        list.appendChild(row);
+      }) }
+      renderM();
+      // actions
+      card.querySelector('[data-act="add-mission"]').onclick=()=>{ cfg.missions.push({title:'',type:'chat'}); renderM(); saveProfiles(); triggerBackup() }
+      card.querySelector('[data-act="reset-10"]').onclick=()=>{ cfg.missions = Array.from({length:10},(_,i)=>({title:'',type:'chat'})); renderM(); saveProfiles(); triggerBackup() }
+      card.querySelector('.b-name').oninput=(e)=>{ cfg.name=e.target.value; saveProfiles() }
+      iconInp.oninput=(e)=>{ cfg.icon=e.target.value; saveProfiles() }
+      card.querySelector('.b-diff').onchange=(e)=>{ cfg.diff=e.target.value; saveProfiles() }
+      function buildPayload(){
+        const missions = cfg.missions.map((m,idx)=>({ id:crypto.randomUUID(), order:idx+1, title:(m.title||`Mission ${idx+1}`).trim(), type:(m.type||'').trim(), road: !!m.road, status:'unlocked', time:'2 min', xp:25 }));
+        const json={ category:{ name:(cfg.name||'').trim(), icon:(cfg.icon||'').trim(), difficulty:cfg.diff, createdAt:new Date().toISOString() }, missions, integrate:{ practiceHub:{ position:'top' }}}; return json;
+      }
+      card.querySelector('[data-act="gen-json"]').onclick=()=>{ const json=buildPayload(); card.querySelector('.b-output').value = JSON.stringify(json,null,2) }
+      async function deploy(){
+        const btn = card.querySelector('[data-act="deploy"]');
+        const payload = buildPayload();
+        
+        // Enhanced validation before sending
+        if(!payload.category.name || !payload.category.icon){ 
+          toast('⚠️ Please set category name and icon'); 
+          return 
+        }
+        
+        // Validate missions
+        const validTypes = ['chat','video','quick','boss'];
+        for(let i=0; i<payload.missions.length; i++){ 
+          const m = payload.missions[i]; 
+          if(!m.title || !m.type || !validTypes.includes(m.type)){ 
+            toast(`⚠️ Mission ${i+1}: Invalid title or type`); 
+            return 
+          } 
+        }
+        
+        try{
+          btn.disabled = true; 
+          btn.textContent = 'Deploying… ⏳';
+          
+          // Try to connect to local server
+          const r = await fetch('http://localhost:7777/generate', { 
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'}, 
+            body: JSON.stringify(payload),
+            // Add timeout
+            signal: AbortSignal.timeout(10000)
+          });
+          
+          if(!r.ok){ 
+            const errorText = await r.text().catch(() => 'Unknown error');
+            throw new Error(`Server error ${r.status}: ${errorText}`); 
+          }
+          
+          const data = await r.json();
+          renderLastDeploy(data);
+          
+          if(data && data.ok){ 
+            toast('✅ Deployed to Practice Hub'); 
+          } else { 
+            toast('❌ Deployment failed: ' + (data?.message || 'Unknown error')); 
+          }
+          
+        } catch(e){ 
+          console.error('Deployment error:', e); 
+          
+          let errorMessage = 'Network error';
+          if(e.name === 'AbortError') {
+            errorMessage = 'Request timeout - server not responding';
+          } else if(e.message.includes('Failed to fetch')) {
+            errorMessage = 'Cannot connect to server - is it running on localhost:7777?';
+          } else {
+            errorMessage = e.message;
+          }
+          
+          renderLastDeploy({ 
+            ok: false, 
+            code: 'NETWORK', 
+            message: errorMessage 
+          }); 
+          
+          toast('❌ ' + errorMessage); 
+        } finally { 
+          btn.disabled = false; 
+          btn.textContent = 'Deploy to Practice Hub' 
+        }
+      }
+      card.querySelector('[data-act="deploy"]').onclick=deploy
+      function renderLastDeploy(resp){ 
+        let panel = card.querySelector('.last-deploy'); 
+        if(!panel){ 
+          panel=document.createElement('div'); 
+          panel.className='card'; 
+          panel.classList.add('last-deploy'); 
+          panel.style.marginTop='10px'; 
+          card.appendChild(panel) 
+        }
+        
+        const ts = new Date().toLocaleTimeString();
+        
+        if(resp && resp.ok){ 
+          const files = Array.isArray(resp.filesWritten)?resp.filesWritten.length:0; 
+          const raw = JSON.stringify(resp,null,2).split('\n').slice(0,20).join('\n'); 
+          panel.innerHTML = `
+            <h3>Last Deploy ✅</h3>
+            <div class="muted">${ts}</div>
+            <div>slug: <code>${resp.slug||''}</code></div>
+            <div>filesWritten: <strong>${files}</strong></div>
+            <pre style="white-space:pre-wrap;max-height:200px;overflow:auto">${raw}</pre>
+          `; 
+        } else { 
+          const raw = JSON.stringify(resp||{},null,2).split('\n').slice(0,20).join('\n'); 
+          
+          let errorHelp = '';
+          if (resp && resp.code === 'NETWORK') {
+            errorHelp = `
+              <div style="margin: 8px 0; padding: 8px; background: #201418; border: 1px solid #ff7b8a; border-radius: 8px;">
+                <strong>🔧 Troubleshooting:</strong><br>
+                • Check if server is running on localhost:7777<br>
+                • Click "Test Connection" button above<br>
+                • Start server: cd socialsocial/tools/agent && node server.js
+              </div>
+            `;
+          }
+          
+          panel.innerHTML = `
+            <h3>Last Deploy ❌</h3>
+            <div class="muted">${ts}</div>
+            <div style="color: #ff7b8a; margin: 4px 0;">
+              <strong>Error:</strong> ${resp?.message || 'Unknown error'}
+            </div>
+            ${errorHelp}
+            <pre style="white-space:pre-wrap;max-height:200px;overflow:auto">${raw}</pre>
+          `; 
+        } 
+      }
+      card.querySelector('[data-act="export-json"]').onclick=()=>{ const text=card.querySelector('.b-output').value||'{}'; const blob=new Blob([text],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='builder-output.json'; a.click(); URL.revokeObjectURL(url) }
+      card.querySelector('[data-act="copy-prompt"]').onclick=()=>{ const payload=card.querySelector('.b-output').value||''; const role=`You are the BUILDER agent. Read the JSON and generate code + files to add a new Practice Hub category with missions. Rules: 1) Full files; 2) Expo RN only; 3) Exact paths + Windows commands; 4) Safe-area; 5) No placeholders; 6) QA checklist.`; const prompt=`${role}
+
+INPUT (JSON):
+${payload||'{ /* click Generate JSON first */ }'}
+
+TASKS:
+- Create the category card and mission road components as needed.
+- Insert missions (types: chat/video/quick/boss) with provided titles and order.
+- Return: full files + where to place them + commands + verification steps.`; navigator.clipboard.writeText(prompt); toast('Builder prompt copied') }
+      return card
+    }
+
+    // ==== Packs / backup / IO / hotkeys (same as v2) ====
+    function renderPacks(){ const sel=$('#packSelect'); sel.innerHTML=''; const packs=storage.get(LS.packs,{}); Object.keys(packs).forEach(id=>{ const o=document.createElement('option'); o.value=id; o.textContent=packs[id].name; sel.appendChild(o) }) }
+    function savePack(){ const name=prompt('Pack name:'); if(!name) return; const packs=storage.get(LS.packs,{}); packs[crypto.randomUUID()]={name,profile:activeProfile()}; storage.set(LS.packs,packs); renderPacks(); toast('Pack saved') }
+    function loadPack(){ const id=$('#packSelect').value; const packs=storage.get(LS.packs,{}); const pack=packs[id]; if(!pack) return; const prof=activeProfile(); Object.assign(prof, JSON.parse(JSON.stringify(pack.profile)), {id:prof.id, name:prof.name}); saveProfiles(); renderAll(); triggerBackup(); toast('Pack loaded') }
+    let backTimer=null; function triggerBackup(){ if(!state.autoback) return; clearTimeout(backTimer); backTimer=setTimeout(()=>{ const data=exportData(); const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='cursor-dashboard-backup.json'; a.click(); URL.revokeObjectURL(url) },600) }
+    function exportData(){ return {profiles:state.profiles,active:state.active,theme:state.theme,compact:state.compact} }
+    function bindIO(){ $('#exportBtn').onclick=()=>{ const blob=new Blob([JSON.stringify(exportData(),null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='cursor-dashboard.json'; a.click(); URL.revokeObjectURL(url) }; $('#importBtn').onclick=()=>{ const i=document.createElement('input'); i.type='file'; i.accept='application/json'; i.onchange=()=>{ const f=i.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const j=JSON.parse(r.result); if(j.profiles) state.profiles=j.profiles; if(j.active) state.active=j.active; if('theme' in j) state.theme=j.theme; if('compact' in j) state.compact=j.compact; saveProfiles(); renderAll(); toast('Imported') }catch(e){ alert('Invalid JSON') }}; r.readAsText(f) }; i.click() }; $('#savePackBtn').onclick=savePack; $('#loadPackBtn').onclick=loadPack; const ab=$('#autoBackupToggle'); ab.textContent=`Auto-Backup: ${state.autoback?'On':'Off'}`; ab.onclick=()=>{ state.autoback=!state.autoback; storage.set(LS.autoback,state.autoback); ab.textContent=`Auto-Backup: ${state.autoback?'On':'Off'}` } }
+
+    // hotkeys
+    document.addEventListener('keydown',(e)=>{ if(e.ctrlKey && !e.shiftKey && !e.altKey){ if(e.key==='f'){ e.preventDefault(); $('#search').focus(); return } if(e.key==='l'){ e.preventDefault(); const first=$('#linkList .side-item'); if(first) first.click(); return } const n=+e.key; if(n>=1&&n<=9){ const list=filterShortcuts(true); const sc=list[n-1]; if(sc){ navigator.clipboard.writeText(sc.code||''); toast(`Copied #${n}`) } } } })
+
+    function bindToggles(){ $('#themeToggle').checked=(state.theme==='dark'); $('#themeToggle').onchange=()=>{ state.theme = $('#themeToggle').checked?'dark':'light'; renderTheme(); saveProfiles() }; $('#compactToggle').checked=state.compact; $('#compactToggle').onchange=()=>{ state.compact = $('#compactToggle').checked; renderCompact(); saveProfiles() } }
+    function enablePWA(){ const manifest={name:'Cursor Power Dashboard',short_name:'CPD',start_url:'.',display:'standalone',background_color:'#0f1220',theme_color:'#0f1220',icons:[{src:'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2218%22 fill=%22%230f1220%22/><text x=%2250%25%22 y=%2258%25%22 font-size=%2270%22 fill=%22%237bb1ff%22 text-anchor=%22middle%22>⇥</text></svg>',sizes:'512x512',type:'image/svg+xml'}]}; const murl=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/json'})); const link=document.createElement('link'); link.rel='manifest'; link.href=murl; document.head.appendChild(link); const sw=`self.addEventListener('install',e=>self.skipWaiting()); self.addEventListener('activate',e=>clients.claim()); self.addEventListener('fetch',()=>{});`; const swurl=URL.createObjectURL(new Blob([sw],{type:'text/javascript'})); if('serviceWorker' in navigator) navigator.serviceWorker.register(swurl).catch(()=>{}); $('#installBtn').onclick=()=> alert('Use your browser menu → Install app / Add to desktop') }
+
+    // adders
+    function bindAdders(){ $('#addProfileBtn').onclick=()=>{ const name=prompt('Profile name:'); if(!name) return; state.profiles.push({...DEFAULT_PROFILE(),id:crypto.randomUUID(),name}); state.active=state.profiles[state.profiles.length-1].id; saveProfiles(); renderAll(); triggerBackup() }; $('#delProfileBtn').onclick=()=>{ if(state.profiles.length<=1){ alert('Keep at least one profile'); return } if(confirm('Delete current profile?')){ const id=state.active; state.profiles=state.profiles.filter(p=>p.id!==id); state.active=state.profiles[0].id; saveProfiles(); renderAll(); triggerBackup() } }; $('#addLinkBtn').onclick=()=>{ const prof=activeProfile(); const label=prompt('Link label:'); if(!label) return; const url=prompt('URL:','https://'); if(!url) return; prof.links.push({id:crypto.randomUUID(),label,url}); saveProfiles(); renderLinks(); triggerBackup() }; $('#addShortcutBtn').onclick=()=>{ const prof=activeProfile(); const title=prompt('Shortcut title:'); if(!title) return; prof.shortcuts.unshift({id:crypto.randomUUID(),title,desc:'',tags:['Custom'],code:''}); saveProfiles(); renderShortcuts(); triggerBackup() }; $('#resetDefaultsBtn').onclick=()=>{ if(confirm('Reset current profile to defaults?')){ const p=activeProfile(); const fresh=DEFAULT_PROFILE(); Object.assign(p,{links:fresh.links,shortcuts:fresh.shortcuts,commands:fresh.commands,vars:fresh.vars}); saveProfiles(); renderAll(); triggerBackup() } }; $('#addVarBtn').onclick=()=>{ const prof=activeProfile(); const k=prompt('Variable name (no spaces):'); if(!k) return; prof.vars.push({k,v:''}); saveProfiles(); renderVars(); buildPrompt(); triggerBackup() }; $('#addCmdBtn').onclick=()=>{ const prof=activeProfile(); const label=prompt('Command label:'); if(!label) return; const cmd=prompt('Command to copy:'); if(!cmd) return; prof.commands.push({id:crypto.randomUUID(),label,cmd}); saveProfiles(); renderCmds(); triggerBackup() }; $('#copyBuiltBtn').onclick=()=>{ navigator.clipboard.writeText($('#pbOutput').value); toast('Prompt copied — paste in Cursor') }; $('#clearBuiltBtn').onclick=()=>{ $('#pbObjective').value=''; $('#pbContext').value=''; buildPrompt() }; $('#search').oninput=()=>filterShortcuts(); $('#newBuilderBtn').onclick=()=>{ const prof=activeProfile(); const cfg={id:crypto.randomUUID(), name:'', diff:'mixed', missions:Array.from({length:10},(_,i)=>({title:'',type:'chat'}))}; prof.agents=prof.agents||{}; prof.agents.builder=prof.agents.builder||[]; prof.agents.builder.unshift(cfg); saveProfiles(); renderAgents(); triggerBackup() } }
+
+    async function pollHealth(){ 
+      const el = document.getElementById('agentStatus'); 
+      if (!el) return;
+      
+      try{ 
+        const r = await fetch('http://localhost:7777/health', {
+          method: 'GET',
+          signal: AbortSignal.timeout(5000)
+        }); 
+        
+        if(r.ok){ 
+          el.textContent = 'Agent: Connected ✅'; 
+          el.style.background = '#17321f'; 
+          el.style.borderColor = '#1f6b3a'; 
+          el.style.color = '#7bda91';
+        } else { 
+          throw new Error('bad status ' + r.status) 
+        } 
+      } catch(e){ 
+        if (e.name === 'AbortError') {
+          el.textContent = 'Agent: Timeout ⏰'; 
+        } else {
+          el.textContent = 'Agent: Offline ❌'; 
+        }
+        el.style.opacity = '.8'; 
+        el.style.background = '#201418'; 
+        el.style.borderColor = '#ff7b8a';
+        el.style.color = '#ffd7db';
+      } 
+    }
+    
+    async function testConnection() {
+      const btn = event.target;
+      const originalText = btn.textContent;
+      
+      try {
+        btn.disabled = true;
+        btn.textContent = 'Testing...';
+        
+        const r = await fetch('http://localhost:7777/health', {
+          method: 'GET',
+          signal: AbortSignal.timeout(5000)
+        });
+        
+        if (r.ok) {
+          toast('✅ Server is running and responding');
+          pollHealth(); // Update status immediately
+        } else {
+          toast(`❌ Server error: ${r.status}`);
+        }
+      } catch (e) {
+        let message = 'Cannot connect to server';
+        if (e.name === 'AbortError') {
+          message = 'Connection timeout - server not responding';
+        } else if (e.message.includes('Failed to fetch')) {
+          message = 'Server not running on localhost:7777';
+        }
+        toast(`❌ ${message}`);
+        
+        // Show helpful instructions
+        if (confirm('Server not found. Would you like to see setup instructions?')) {
+          const instructions = `To fix deployment issues:
+
+1. Start the local server:
+   cd socialsocial/tools/agent
+   node server.js
+
+2. Or check if server is running on port 7777
+
+3. Verify the server has these endpoints:
+   - GET /health
+   - POST /generate
+
+4. Check server logs for errors
+
+The deployment button will work once the server is running.`;
+          
+          alert(instructions);
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    }
+    function startHealthPoll(){ pollHealth(); setInterval(pollHealth, 5000) }
+    function renderAll(){ renderTheme(); renderCompact(); renderProfiles(); renderLinks(); renderTags(); renderShortcuts(); renderVars(); renderCmds(); buildPrompt(); renderPacks(); bindIO(); bindToggles(); renderAgents(); }
+
+    window.addEventListener('DOMContentLoaded', ()=>{ enablePWA(); renderAll(); bindAdders(); startHealthPoll() })
+  </script>
+</body>
+</html>

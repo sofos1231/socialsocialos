@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Control Panel — Dashboard Launcher</title>
+<style>
+  :root{
+    --bg:#0d1117;--panel:#0f1624;--text:#e6edf3;--muted:#9aa7b4;--brand:#79c0ff;--ok:#3fb950;--warn:#d29922;--err:#f85149;--border:rgba(255,255,255,.09);
+    --radius:14px;--shadow:0 12px 30px rgba(0,0,0,.35)
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:radial-gradient(1200px 700px at -10% -8%,#1b2a4a 0%,#0d1117 50%),var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Inter,sans-serif}
+  a{color:var(--brand);text-decoration:none}
+  .app{display:flex;flex-direction:column;min-height:100%}
+  header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.0));backdrop-filter:saturate(130%) blur(6px)}
+  .title{font-weight:800}
+  .badges{display:flex;gap:8px}
+  .btn{padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:linear-gradient(180deg,#13203a,#0f172a);color:var(--text);cursor:pointer}
+  .btn:hover{filter:brightness(1.06)}
+  .btn.secondary{background:#0e1528}
+  .btn.ghost{background:transparent}
+  .layout{display:grid;grid-template-columns:320px 1fr;gap:12px;padding:12px;flex:1}
+  .col{border:1px solid var(--border);border-radius:var(--radius);background:linear-gradient(180deg,#111a2f,#0e1528);box-shadow:var(--shadow);overflow:auto}
+  .col h3{margin:0;padding:10px 12px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,rgba(255,255,255,.03),transparent)}
+  .section{padding:10px 12px;border-bottom:1px dashed var(--border)}
+  .row{display:flex;align-items:center;gap:8px;margin:6px 0}
+  .small{color:var(--muted);font-size:12px}
+  input,select,textarea{width:100%;background:#0b1224;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left}
+  tr:hover{background:#0e1a35}
+  .status{display:inline-flex;align-items:center;gap:6px;padding:0 8px;height:22px;border-radius:999px;border:1px solid var(--border);font-size:12px}
+  .ok{background:rgba(63,185,80,.12);border-color:rgba(63,185,80,.35)}
+  .warn{background:rgba(210,153,34,.12);border-color:rgba(210,153,34,.35)}
+  .err{background:rgba(248,81,73,.12);border-color:rgba(248,81,73,.35)}
+  .pill{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#0d1832}
+  .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:12px;padding:2px 6px;border-radius:6px;border:1px solid var(--border);background:#0a1327}
+  .footer{padding:10px 12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+  /* Modal */
+  .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:20}
+  .modal .card{width:680px;max-width:92%;background:#0f172a;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
+  .card header{position:static;background:transparent;border:0;padding:12px 14px}
+  .card .body{padding:0 14px 14px 14px}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .actions{display:flex;gap:8px;justify-content:flex-end;padding:12px 14px;border-top:1px solid var(--border)}
+  .preview{border-top:1px dashed var(--border);padding-top:10px;margin-top:10px}
+  /* Launcher pane */
+  .launchPane{border-left:1px solid var(--border)}
+  .launchHeader{display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--border)}
+  .iframeWrap{height:520px}
+  iframe{width:100%;height:100%;border:0;border-radius:0 0 14px 14px;background:#0a1224}
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="title">Control Panel — Dashboard Launcher</div>
+      <div class="badges">
+        <span class="status warn" id="healthChip">No dashboards yet</span>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn" id="addBtn">Add New Dashboard</button>
+        <button class="btn secondary" id="exportBtn">Export Registry</button>
+        <button class="btn ghost" id="importBtn">Import</button>
+        <button class="btn ghost" id="resetBtn">Reset</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="col">
+        <h3>Filters</h3>
+        <div class="section">
+          <div class="row"><input id="searchBox" placeholder="Search by name or id…" /></div>
+          <div class="row">
+            <select id="typeFilter">
+              <option value="">All types</option>
+              <option value="FE">Frontend</option>
+              <option value="MW">Middleware</option>
+              <option value="BE">Backend</option>
+              <option value="BUS">Event Bus</option>
+            </select>
+          </div>
+          <div class="row"><button class="btn" id="applyFilters">Apply</button></div>
+          <div class="small">Tip: <span class="kbd">N</span> = New, <span class="kbd">/</span> = focus search</div>
+        </div>
+        <h3>About</h3>
+        <div class="section small">
+          Each dashboard is its own app. Use <b>Launch</b> to open it with the selected context. Providers:
+          <ul>
+            <li><b>Local</b> — demo mode with localStorage</li>
+            <li><b>Fs</b> — Node/FS adapter (future server)</li>
+          </ul>
+        </div>
+      </aside>
+
+      <main class="col">
+        <h3>Dashboards</h3>
+        <div class="section">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:18ch">ID</th>
+                <th>Name</th>
+                <th style="width:11ch">Type</th>
+                <th style="width:14ch">Provider</th>
+                <th style="width:12ch">Branch</th>
+                <th style="width:12ch">Status</th>
+                <th style="width:18ch"></th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <div class="footer small">
+          <div>Items: <span id="count">0</span></div>
+          <div>Registry stored in <b>localStorage</b> (key: <code>cp.registry</code>).</div>
+        </div>
+      </main>
+
+      <section class="col launchPane" id="launchPane">
+        <div class="launchHeader">
+          <div class="small">Embedded preview (for convenience). Launch always opens a new tab as well.</div>
+          <div style="margin-left:auto"></div>
+        </div>
+        <div class="iframeWrap" id="iframeWrap"><div class="small" style="padding:12px">No dashboard launched yet.</div></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Modal: Add/Edit Dashboard -->
+  <div class="modal" id="modal">
+    <div class="card">
+      <header>
+        <div style="display:flex;align-items:center;gap:8px;justify-content:space-between">
+          <div style="font-weight:700" id="modalTitle">Add Dashboard</div>
+          <button class="btn ghost" id="closeModal">Close</button>
+        </div>
+      </header>
+      <div class="body">
+        <div class="section split">
+          <div>
+            <label class="small">Name</label>
+            <input id="fName" placeholder="e.g., Frontend — PracticeHub" />
+          </div>
+          <div>
+            <label class="small">Type</label>
+            <select id="fType">
+              <option value="FE">Frontend</option>
+              <option value="MW">Middleware</option>
+              <option value="BE">Backend</option>
+              <option value="BUS">Event Bus</option>
+            </select>
+          </div>
+        </div>
+        <div class="section split">
+          <div>
+            <label class="small">Workspace (path or label)</label>
+            <input id="fWorkspace" placeholder="/repo or my-project" />
+          </div>
+          <div>
+            <label class="small">Branch</label>
+            <input id="fBranch" placeholder="main" value="main" />
+          </div>
+        </div>
+        <div class="section split">
+          <div>
+            <label class="small">Provider</label>
+            <select id="fProvider">
+              <option value="Local">Local</option>
+              <option value="Fs">Fs</option>
+            </select>
+          </div>
+          <div>
+            <label class="small">Custom URL (optional)</label>
+            <input id="fUrl" placeholder="Custom app URL or leave blank for default" />
+          </div>
+        </div>
+        <div class="section preview small" id="previewBox"></div>
+      </div>
+      <div class="actions">
+        <button class="btn" id="saveDash">Save</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  // --- Storage ---
+  const LS_KEY = 'cp.registry';
+  const defaults = {dashboards:[]};
+  function load(){
+    try{ const raw=localStorage.getItem(LS_KEY); return raw? JSON.parse(raw): structuredClone(defaults);}catch(e){console.warn('load fail',e); return structuredClone(defaults);} }
+  function save(reg){ localStorage.setItem(LS_KEY, JSON.stringify(reg)); }
+  let registry = load();
+
+  // --- DOM helpers ---
+  const $ = s=>document.querySelector(s);
+  const el=(t,a={},c=[])=>{const n=document.createElement(t); for(const[k,v]of Object.entries(a)){ if(k==='class')n.className=v; else if(k==='text')n.textContent=v; else if(k.startsWith('on')) n.addEventListener(k.slice(2),v); else n.setAttribute(k,v);} (Array.isArray(c)?c:[c]).filter(Boolean).forEach(x=> n.appendChild(typeof x==='string'?document.createTextNode(x):x)); return n;};
+
+  // --- Seed examples on first run ---
+  if(!registry.dashboards.length){
+    registry.dashboards.push(
+      {id:'fe-1', type:'FE', name:'Frontend — PracticeHub', workspace:'repo', branch:'main', provider:'Local', status:'OK'},
+      {id:'mw-1', type:'MW', name:'Middleware — Contracts', workspace:'repo', branch:'dev', provider:'Local', status:'Needs Work'},
+      {id:'be-1', type:'BE', name:'Backend — Wiring', workspace:'repo', branch:'main', provider:'Local', status:'Unknown'}
+    );
+    save(registry);
+  }
+
+  // --- State ---
+  let editingIndex = -1; // -1 = new
+  let lastLaunchId = null;
+
+  // --- UI renderers ---
+  function renderList(){
+    const q = ($('#searchBox')||{}).value?.toLowerCase()||'';
+    const type = ($('#typeFilter')||{}).value||'';
+    const rows = $('#rows'); if(!rows) return; rows.innerHTML='';
+    const data = registry.dashboards.filter(d=> (!type||d.type===type) && (!q || (d.name+d.id).toLowerCase().includes(q)) );
+    for(const d of data){
+      const tr = el('tr');
+      tr.appendChild(el('td',{text:d.id}));
+      tr.appendChild(el('td',{text:d.name}));
+      tr.appendChild(el('td',{text:labelType(d.type)}));
+      tr.appendChild(el('td',{text:d.provider}));
+      tr.appendChild(el('td',{text:d.branch||'—'}));
+      const chip = el('span',{class:'status '+statusClass(d.status),text:(d.status||'Unknown')});
+      tr.appendChild(el('td',{},[chip]));
+      const actions = el('td',{},[
+        el('button',{class:'btn',onClick:()=> launch(d)},'Launch'),
+        ' ',
+        el('button',{class:'btn secondary',onClick:()=> editDash(d)},'Edit'),
+        ' ',
+        el('button',{class:'btn ghost',onClick:()=> removeDash(d.id)},'Delete')
+      ]);
+      tr.appendChild(actions);
+      rows.appendChild(tr);
+    }
+    $('#count').textContent = String(data.length);
+    updateHealthChip();
+  }
+
+  function labelType(t){ return t==='FE'?'Frontend': t==='MW'?'Middleware': t==='BE'?'Backend': t==='BUS'?'Event Bus':'?'; }
+  function statusClass(s){ return s==='OK'?'ok': s==='Needs Work'?'warn': s==='Failing'?'err':'warn'; }
+
+  // --- Modal (Add/Edit) ---
+  function openModal(title){ $('#modalTitle').textContent=title; $('#modal').style.display='flex'; $('#fName').focus(); previewContext(); }
+  function closeModal(){ $('#modal').style.display='none'; editingIndex=-1; }
+  function editDash(d){
+    editingIndex = registry.dashboards.findIndex(x=>x.id===d.id);
+    $('#fName').value=d.name; $('#fType').value=d.type; $('#fWorkspace').value=d.workspace||''; $('#fBranch').value=d.branch||'main'; $('#fProvider').value=d.provider||'Local'; $('#fUrl').value=d.url||''; openModal('Edit Dashboard');
+  }
+  function removeDash(id){ if(!confirm('Delete dashboard '+id+'?')) return; registry.dashboards = registry.dashboards.filter(x=>x.id!==id); save(registry); renderList(); }
+
+  function slug(s){ return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
+  function nextId(type){ let i=1; while(registry.dashboards.find(d=>d.id===`${type.toLowerCase()}-${i}`)) i++; return `${type.toLowerCase()}-${i}`; }
+
+  function previewContext(){
+    const ctx = collectForm();
+    const box = $('#previewBox'); if(!box) return;
+    box.textContent = JSON.stringify(ctx,null,2);
+  }
+
+  function collectForm(){
+    const name = $('#fName').value.trim();
+    const type = $('#fType').value;
+    const workspace = $('#fWorkspace').value.trim()||'repo';
+    const branch = $('#fBranch').value.trim()||'main';
+    const provider = $('#fProvider').value;
+    const url = $('#fUrl').value.trim()||'';
+    const id = editingIndex>=0? registry.dashboards[editingIndex].id : nextId(type);
+    const ctx = { id, type, name: name||labelType(type), workspace, branch, provider, status:'Unknown', url };
+    return ctx;
+  }
+
+  function saveForm(){
+    const ctx = collectForm();
+    if(editingIndex>=0){ registry.dashboards[editingIndex] = ctx; }
+    else { registry.dashboards.push(ctx); }
+    save(registry); closeModal(); renderList();
+  }
+
+  // --- Launcher ---
+  function launch(d){
+    lastLaunchId = d.id;
+    // 1) open new tab
+    const payload = {workspace:d.workspace, branch:d.branch, profile:d.provider, bus:'(not wired yet)', dashboard:d};
+    const html = `<!doctype html><meta charset=\"utf-8\"><title>${d.name}</title><style>body{margin:0;background:#0b1224;color:#e6edf3;font:14px system-ui}pre{white-space:pre-wrap;padding:16px}</style><div style=\"padding:10px;border-bottom:1px solid #1f2937;background:#0f172a\"><b>${d.name}</b> — <span style=\"opacity:.8\">${labelType(d.type)}</span></div><pre>${escapeHtml(JSON.stringify(payload,null,2))}</pre><div style=\"padding:16px;opacity:.8\">This is a placeholder page. When the ${labelType(d.type)} dashboard is built, this window will auto‑boot the app with the context above.</div>`;
+    const url = d.url && /^https?:\/\//.test(d.url) ? d.url : 'data:text/html;charset=utf-8,'+encodeURIComponent(html);
+    window.open(url,'_blank');
+    // 2) embed preview
+    const wrap = $('#iframeWrap'); if(wrap){ const iframe = document.createElement('iframe'); iframe.name = 'preview-'+d.id; iframe.src = url; wrap.innerHTML=''; wrap.appendChild(iframe); }
+  }
+
+  function escapeHtml(s){ return s.replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])); }
+
+  // --- Health indicator ---
+  function updateHealthChip(){
+    const chip = $('#healthChip'); if(!chip) return;
+    if(!registry.dashboards.length){ chip.className='status warn'; chip.textContent='No dashboards yet'; return; }
+    const ok = registry.dashboards.filter(d=>d.status==='OK').length;
+    const open = registry.dashboards.length;
+    chip.className='status '+(ok===open?'ok':'warn');
+    chip.textContent = `${ok}/${open} OK`;
+  }
+
+  // --- Bindings ---
+  $('#addBtn').onclick = ()=>{ editingIndex=-1; $('#fName').value=''; $('#fType').value='FE'; $('#fWorkspace').value='repo'; $('#fBranch').value='main'; $('#fProvider').value='Local'; $('#fUrl').value=''; openModal('Add Dashboard'); };
+  $('#closeModal').onclick = closeModal;
+  $('#saveDash').onclick = saveForm;
+  $('#fName').oninput = previewContext; $('#fType').onchange = previewContext; $('#fWorkspace').oninput = previewContext; $('#fBranch').oninput = previewContext; $('#fProvider').onchange = previewContext; $('#fUrl').oninput = previewContext;
+  $('#applyFilters').onclick = renderList;
+  $('#exportBtn').onclick = ()=>{ const blob = new Blob([JSON.stringify(registry,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='registry.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),300); };
+  $('#importBtn').onclick = ()=>{ const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange=()=>{ const f=inp.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const obj=JSON.parse(r.result); if(!obj || !Array.isArray(obj.dashboards)) throw new Error('Invalid registry'); registry=obj; save(registry); renderList(); }catch(e){ alert('Import failed: '+e.message); } }; r.readAsText(f); }; inp.click(); };
+  $('#resetBtn').onclick = ()=>{ if(!confirm('Clear registry and restore defaults?')) return; localStorage.removeItem(LS_KEY); registry=load(); if(!registry.dashboards.length) location.reload(); else renderList(); };
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e)=>{
+    if((e.key==='n' || e.key==='N') && !e.metaKey && !e.ctrlKey){ e.preventDefault(); $('#addBtn').click(); }
+    if(e.key==='/' && !e.metaKey && !e.ctrlKey){ e.preventDefault(); $('#searchBox').focus(); }
+  });
+
+  // Boot
+  renderList();
+})();
+</script>
+</body>
+</html>

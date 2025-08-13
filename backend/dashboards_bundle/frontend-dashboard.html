@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Frontend Dashboard — Visual Editor</title>
+<style>
+  :root{--bg:#0f1220;--panel:#141a33;--sub:#0f1530;--text:#e8ecf7;--muted:#9aa7b4;--brand:#79c0ff;--ok:#3fb950;--warn:#d29922;--err:#f85149;--border:rgba(255,255,255,.1);--grid:8}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:radial-gradient(1200px 700px at -10% -8%,#1b2a4a 0%,#0f1220 50%),var(--bg);color:var(--text);font:14px/1.35 system-ui,Segoe UI,Inter,sans-serif;display:flex}
+  .sidebar{width:260px;border-right:1px solid var(--border);background:linear-gradient(180deg,#12162a,#0f1426);padding:10px;overflow:auto}
+  .main{flex:1;display:grid;grid-template-rows:auto 1fr auto;gap:8px}
+  header{display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid var(--border)}
+  select,input,button{background:#0d1330;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px}
+  button{cursor:pointer}
+  .row{display:flex;gap:8px;align-items:center;margin:6px 0}
+  .list button{width:100%;text-align:left;background:#152047}
+  .list button.locked{background:#3d2a2a;color:#ff9a9a;cursor:not-allowed}
+  .work{display:grid;grid-template-columns:1fr 320px;gap:8px;padding:8px}
+  .canvasWrap{border:1px solid var(--border);border-radius:14px;background:linear-gradient(180deg,#121933,#0b1226);padding:10px;position:relative;overflow:auto}
+  .canvas{position:relative;width:420px;min-height:720px;margin:auto;background:#0e1633;border:1px dashed rgba(255,255,255,.12);border-radius:20px}
+  .comp{position:absolute;border:1px solid var(--border);border-radius:12px;background:linear-gradient(180deg,#1c254d,#131c3d);padding:8px;min-width:64px;min-height:40px;outline:0}
+  .comp.sel{box-shadow:0 0 0 2px var(--brand) inset}
+  .comp .title{font-weight:700;font-size:12px;margin-bottom:4px}
+  .gridBg{background-image: linear-gradient(to right, rgba(255,255,255,.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,.06) 1px, transparent 1px); background-size: calc(var(--grid)*1px) calc(var(--grid)*1px)}
+  .right{border:1px solid var(--border);border-radius:14px;background:linear-gradient(180deg,#121a38,#0f152e);padding:10px}
+  .badge{display:inline-flex;gap:6px;align-items:center;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px}
+  .ok{background:rgba(63,185,80,.15);border-color:rgba(63,185,80,.35)}
+  .warn{background:rgba(210,153,34,.15);border-color:rgba(210,153,34,.35)}
+  .err{background:rgba(248,81,73,.15);border-color:rgba(248,81,73,.35)}
+  .previewCard{border:1px solid var(--border);border-radius:12px;background:#0f152e;padding:10px;margin-top:6px}
+  .muted{color:var(--muted)}
+</style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div>
+      <label class="muted">Page</label>
+      <select id="pageSelect" style="width:100%"></select>
+    </div>
+    <div class="row" style="justify-content:space-between">
+      <span class="muted">Components</span>
+      <span id="lockLegend" class="badge warn">safety scan…</span>
+    </div>
+    <div id="componentList" class="list"></div>
+  </aside>
+
+  <div class="main">
+    <header>
+      <div style="font-weight:800">Frontend Dashboard — Visual Editor</div>
+      <div class="row" style="margin-left:auto">
+        <label class="muted">Grid</label>
+        <input id="gridSize" type="number" min="4" step="2" value="8" style="width:80px"/>
+        <button id="toggleGrid">Toggle Grid</button>
+        <button id="saveBtn">Save</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+    </header>
+
+    <section class="work">
+      <div class="canvasWrap">
+        <div id="canvas" class="canvas gridBg"></div>
+      </div>
+      <div class="right">
+        <div class="row" style="justify-content:space-between"><div>Inspector</div><span id="riskBadge" class="badge warn">No selection</span></div>
+        <div class="previewCard">
+          <div class="muted">Component Preview</div>
+          <div id="compPreview" style="border:1px dashed var(--border);border-radius:10px;padding:10px;min-height:80px;display:grid;place-items:center">—</div>
+        </div>
+        <div style="margin-top:8px">
+          <label class="muted">Text</label>
+          <input id="inpText" placeholder="Title or text" />
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label class="muted">W</label>
+            <input id="inpW" type="number" />
+          </div>
+          <div style="flex:1">
+            <label class="muted">H</label>
+            <input id="inpH" type="number" />
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label class="muted">X</label>
+            <input id="inpX" type="number" />
+          </div>
+          <div style="flex:1">
+            <label class="muted">Y</label>
+            <input id="inpY" type="number" />
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label class="muted">Padding</label>
+            <input id="inpPad" type="number" />
+          </div>
+          <div style="flex:1">
+            <label class="muted">Radius</label>
+            <input id="inpRad" type="number" />
+          </div>
+        </div>
+        <div>
+          <label class="muted">Color</label>
+          <input id="inpColor" type="color" value="#79c0ff" />
+        </div>
+        <div class="row"><button id="applyBtn">Apply</button></div>
+        <div style="margin-top:8px" class="muted">Tips: drag on canvas (snap to grid), or edit numbers.</div>
+      </div>
+    </section>
+
+    <footer class="row" style="padding:8px;border-top:1px solid var(--border)">
+      <div class="muted">Visual preview shows the whole page (left) and selected component (right). Safety scanner disables risky components.</div>
+    </footer>
+  </div>
+
+<script>
+(function(){
+  // Demo model — each page has components with safe-edit flag and basic style
+  const seedPages = {
+    PracticeHub:[
+      {id:'TopBar', safe:true, text:'TopBar', x:16,y:16,w:388,h:48,pad:8,rad:10,color:'#243b8a'},
+      {id:'PracticeCard', safe:true, text:'PracticeCard', x:16,y:80,w:388,h:120,pad:8,rad:12,color:'#1e8a5a'},
+      {id:'Footer', safe:false, text:'Footer (Locked)', x:16,y:640,w:388,h:48,pad:8,rad:10,color:'#8a2424'}
+    ],
+    Stats:[
+      {id:'StatsHeader', safe:true, text:'StatsHeader', x:16,y:16,w:388,h:48,pad:8,rad:10,color:'#243b8a'},
+      {id:'StatsGraph', safe:true, text:'StatsGraph', x:16,y:80,w:388,h:220,pad:8,rad:12,color:'#7a3be8'}
+    ],
+    Shop:[
+      {id:'ShopHeader', safe:true, text:'ShopHeader', x:16,y:16,w:388,h:48,pad:8,rad:10,color:'#243b8a'},
+      {id:'ShopItems', safe:true, text:'ShopItems', x:16,y:80,w:388,h:300,pad:8,rad:12,color:'#284a2a'}
+    ],
+    Login:[ {id:'LoginForm', safe:true, text:'LoginForm', x:16,y:120,w:388,h:260,pad:12,rad:12,color:'#233a6a'} ],
+    Signup:[ {id:'SignupForm', safe:true, text:'SignupForm', x:16,y:120,w:388,h:300,pad:12,rad:12,color:'#233a6a'} ]
+  };
+
+  const LS_KEY='fe.visual.editor.pages';
+  function load(){ try{ const raw=localStorage.getItem(LS_KEY); return raw? JSON.parse(raw): JSON.parse(JSON.stringify(seedPages)); }catch(e){ return JSON.parse(JSON.stringify(seedPages)); } }
+  function save(){ localStorage.setItem(LS_KEY, JSON.stringify(pages)); }
+
+  let pages = load();
+  let currentPage = 'PracticeHub';
+  let selected = null;
+  let snap = parseInt(get('#gridSize').value,10)||8;
+  
+  const canvas = get('#canvas');
+  const pageSelect = get('#pageSelect');
+  const compList = get('#componentList');
+  const riskBadge = get('#riskBadge');
+  const lockLegend = get('#lockLegend');
+  const compPreview = get('#compPreview');
+
+  // Populate page dropdown
+  Object.keys(pages).forEach(p=>{ pageSelect.appendChild(opt(p,p)); });
+  pageSelect.value=currentPage;
+  pageSelect.onchange=()=>{ currentPage=pageSelect.value; selected=null; render(); };
+
+  get('#gridSize').oninput = e=>{ snap = Math.max(2, parseInt(e.target.value,10)||8); render(); };
+  get('#toggleGrid').onclick = ()=>{ canvas.classList.toggle('gridBg'); };
+  get('#saveBtn').onclick = ()=>{ save(); alert('Saved'); };
+  get('#resetBtn').onclick = ()=>{ localStorage.removeItem(LS_KEY); pages = load(); selected=null; render(); };
+  get('#applyBtn').onclick = applyInspector;
+
+  function render(){
+    // List
+    compList.innerHTML='';
+    const list = pages[currentPage];
+    let safeCount=0; let total=list.length;
+    list.forEach(c=>{
+      const b = document.createElement('button');
+      b.textContent = c.safe? c.id : `${c.id} (Locked)`;
+      if(!c.safe) b.classList.add('locked');
+      b.onclick = ()=>{ if(!c.safe) return; selected=c; fillInspector(c); focusComp(c.id); };
+      compList.appendChild(b);
+      if(c.safe) safeCount++;
+    });
+    lockLegend.className = 'badge '+(safeCount===total? 'ok' : (safeCount? 'warn':'err'));
+    lockLegend.textContent = safeCount+'/'+total+' editable';
+
+    // Canvas
+    canvas.innerHTML='';
+    pages[currentPage].forEach(c=> canvas.appendChild(drawComp(c)) );
+
+    // Inspector
+    if(selected){ fillInspector(selected); } else { riskBadge.className='badge warn'; riskBadge.textContent='No selection'; compPreview.innerHTML='—'; }
+  }
+
+  function drawComp(c){
+    const d = div('div','comp'); d.id='C_'+c.id; d.style.left=c.x+'px'; d.style.top=c.y+'px'; d.style.width=c.w+'px'; d.style.height=c.h+'px'; d.style.padding=c.pad+'px'; d.style.borderRadius=c.rad+'px'; d.style.background=gradient(c.color);
+    d.tabIndex=0; // focusable
+    if(selected && selected.id===c.id) d.classList.add('sel');
+    d.appendChild(div('div','title',c.id));
+    const inner = div('div','',c.text); inner.style.opacity='.9'; d.appendChild(inner);
+    if(c.safe) enableDrag(d,c);
+    else d.title='Locked by safety scanner';
+    d.onclick=()=>{ if(!c.safe) return; selected=c; fillInspector(c); setSel(c.id); };
+    return d;
+  }
+
+  function enableDrag(node,c){
+    let sx,sy,ox,oy; node.onmousedown = (e)=>{ if(e.button!==0) return; sx=e.clientX; sy=e.clientY; ox=c.x; oy=c.y; document.onmousemove = (ev)=>{ const dx=ev.clientX-sx; const dy=ev.clientY-sy; c.x = snapTo(ox+dx); c.y = snapTo(oy+dy); updateNode(node,c); fillInspector(c,false); }; document.onmouseup = ()=>{ document.onmousemove=null; document.onmouseup=null; save(); } };
+  }
+
+  function updateNode(node,c){ node.style.left=c.x+'px'; node.style.top=c.y+'px'; node.style.width=c.w+'px'; node.style.height=c.h+'px'; node.style.padding=c.pad+'px'; node.style.borderRadius=c.rad+'px'; node.style.background=gradient(c.color); node.querySelector('.title').textContent=c.id; node.lastChild.textContent=c.text; setSel(c.id,false); }
+
+  function setSel(id,scroll=true){ document.querySelectorAll('.comp').forEach(n=> n.classList.toggle('sel', n.id==='C_'+id)); if(scroll){ const el=document.getElementById('C_'+id); el?.scrollIntoView({block:'center'}); } }
+
+  // Inspector
+  function fillInspector(c,updatePreview=true){ riskBadge.className='badge '+(c.safe?'ok':'err'); riskBadge.textContent = c.safe? 'Editable' : 'Locked'; set('#inpText', c.text); set('#inpW', c.w); set('#inpH', c.h); set('#inpX', c.x); set('#inpY', c.y); set('#inpPad', c.pad); set('#inpRad', c.rad); set('#inpColor', c.color); if(updatePreview) compPreview.innerHTML = renderPreviewHTML(c); }
+  function applyInspector(){ if(!selected) return; const c=selected; c.text = val('#inpText',c.text); c.w = num('#inpW',c.w); c.h = num('#inpH',c.h); c.x = snapTo(num('#inpX',c.x)); c.y = snapTo(num('#inpY',c.y)); c.pad = num('#inpPad',c.pad); c.rad = num('#inpRad',c.rad); c.color = get('#inpColor').value||c.color; const node=document.getElementById('C_'+c.id); if(node) updateNode(node,c); compPreview.innerHTML = renderPreviewHTML(c); save(); }
+
+  function renderPreviewHTML(c){ return `<div style="width:${c.w}px;height:${c.h}px;background:${gradient(c.color)};border-radius:${c.rad}px;padding:${c.pad}px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.12)"><div style="font-weight:700">${c.id}</div><div style="opacity:.85">${escapeHtml(c.text)}</div></div>`; }
+
+  // Utils
+  function get(sel){return document.querySelector(sel)}
+  function set(sel,val){ const n=get(sel); if(n) n.value = val }
+  function val(sel,fallback){ const n=get(sel); return n && n.value!==''? n.value : fallback }
+  function num(sel,fallback){ const n=get(sel); const v=parseInt(n.value,10); return isFinite(v)? v : fallback }
+  function div(tag,cls,txt){ const n=document.createElement(tag); if(cls) n.className=cls; if(txt!=null) n.textContent=txt; return n }
+  function opt(v,t){ const o=document.createElement('option'); o.value=v;o.textContent=t; return o }
+  function snapTo(v){ return Math.max(0, Math.round(v/ snap)*snap) }
+  function gradient(base){ return `linear-gradient(180deg, ${shade(base,10)}, ${shade(base,-10)})`; }
+  function shade(hex, amt){ let c=hex.replace('#',''); if(c.length===3) c=c.split('').map(h=>h+h).join(''); const num=parseInt(c,16); let r=(num>>16)+amt, g=((num>>8)&0xff)+amt, b=(num&0xff)+amt; r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b)); return `#${(r<<16|g<<8|b).toString(16).padStart(6,'0')}` }
+  function escapeHtml(s){ return String(s).replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])) }
+
+  // Initial render
+  render();
+})();
+</script>
+</body>
+</html>

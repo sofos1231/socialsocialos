@@ -1,0 +1,77 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile   UserProfile?
+  stats     UserStats?
+  missions  Mission[]
+  sessions  PracticeSession[]
+}
+
+model UserProfile {
+  id       String @id @default(cuid())
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id])
+  level    Int    @default(1)
+  xp       Int    @default(0)
+  streak   Int    @default(0)
+}
+
+model UserStats {
+  id           String @id @default(cuid())
+  userId       String @unique
+  user         User   @relation(fields: [userId], references: [id])
+  totalSessions Int   @default(0)
+  totalMissions Int   @default(0)
+  totalXp      Int    @default(0)
+}
+
+model Mission {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  category    String
+  difficulty  String   @default("beginner")
+  xpReward    Int      @default(10)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  completed   Boolean  @default(false)
+  completedAt DateTime?
+}
+
+model PracticeSession {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  category  String
+  duration  Int      // in minutes
+  score     Int?
+  createdAt DateTime @default(now())
+}
+
+model ShopItem {
+  id          String @id @default(cuid())
+  name        String
+  description String?
+  price       Int
+  type        String // badge, powerup, etc.
+  available   Boolean @default(true)
+}

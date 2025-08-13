@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, max-age=0" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<meta http-equiv="Last-Modified" content="0" />
+<title>Backend — API Management Dashboard</title>
+<style>
+  :root{--bg:#0f1220;--panel:#141a33;--text:#e8ecf7;--muted:#9aa7b4;--border:rgba(255,255,255,.1);--ok:#3fb950;--warn:#d29922;--err:#f85149}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:#0f1220;color:var(--text);font:14px/1.35 system-ui,Segoe UI,Inter,sans-serif;display:flex}
+  header{display:flex;gap:8px;align-items:center;padding:10px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5;background:#141a33}
+  .tabs{display:flex;gap:6px;margin-left:16px}
+  .tab{padding:6px 10px;border:1px solid var(--border);border-radius:10px;background:#0e1530;cursor:pointer}
+  .tab.active{outline:2px solid #2b5cff}
+  .layout{display:grid;grid-template-columns:320px 1fr 420px;gap:10px;padding:10px;flex:1}
+  .col{border:1px solid var(--border);border-radius:14px;background:#141a33;overflow:auto}
+  .col h3{margin:0;padding:10px 12px;border-bottom:1px solid var(--border)}
+  .section{padding:10px 12px;border-bottom:1px dashed var(--border)}
+  .row{display:flex;gap:8px;align-items:center;margin:6px 0}
+  input,select,textarea,button{background:#0d1330;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px}
+  textarea{width:100%;min-height:160px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  button{cursor:pointer}
+  ul{list-style:none;margin:0;padding:0}
+  li{padding:6px 8px;border:1px solid var(--border);border-radius:8px;margin:6px;background:#0e1530;cursor:pointer}
+  .muted{color:var(--muted);font-size:12px}
+  .status{display:inline-flex;gap:6px;align-items:center;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px}
+  .ok{background:rgba(63,185,80,.15);border-color:rgba(63,185,80,.35)}
+  .warn{background:rgba(210,153,34,.15);border-color:rgba(210,153,34,.35)}
+  .err{background:rgba(248,81,73,.15);border-color:rgba(248,81,73,.35)}
+  .diff{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0a1227;border:1px solid var(--border);border-radius:10px;padding:8px;max-height:220px;overflow:auto}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<script>
+  // Force cache refresh and prevent caching
+  if (window.performance && window.performance.navigation.type === window.performance.navigation.TYPE_BACK_FORWARD) {
+    window.location.reload(true);
+  }
+  
+  // Add timestamp to prevent caching
+  const timestamp = new Date().getTime();
+  document.title = document.title + ' - v' + timestamp;
+  
+  // Force reload if this is an old cached version
+  if (localStorage.getItem('backend_dashboard_version') !== timestamp.toString()) {
+    localStorage.setItem('backend_dashboard_version', timestamp.toString());
+    if (performance.navigation.type !== performance.navigation.TYPE_RELOAD) {
+      window.location.reload(true);
+    }
+  }
+</script>
+  <div style="display:flex;flex-direction:column;width:100%">
+    <header>
+      <div style="font-weight:800">Backend — API Management Dashboard</div>
+      <div class="tabs">
+        <div id="tabLogs" class="tab active">Logs</div>
+        <div id="tabContracts" class="tab">Contracts</div>
+        <div id="tabWiring" class="tab">Wiring</div>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <span id="health" class="status warn">Connecting...</span>
+        <button id="refresh">Refresh</button>
+      </div>
+    </header>
+
+    <div class="layout" id="paneLogs">
+      <aside class="col">
+        <h3>Logs</h3>
+        <div class="section muted">Real-time API logs via SSE</div>
+        <div class="section">
+          <div class="row">
+            <button id="startTail">Start Tail</button>
+            <button id="stopTail">Stop Tail</button>
+          </div>
+        </div>
+        <div class="section">
+          <div class="muted">Filters</div>
+          <div class="row">
+            <input id="fText" placeholder="Search text..." />
+          </div>
+          <div class="row">
+            <select id="fLevel">
+              <option value="">All levels</option>
+              <option value="info">Info</option>
+              <option value="warn">Warning</option>
+              <option value="error">Error</option>
+            </select>
+          </div>
+        </div>
+      </aside>
+
+      <main class="col">
+        <h3>Log Entries</h3>
+        <div class="section">
+          <div id="logsList"></div>
+        </div>
+      </main>
+
+      <aside class="col">
+        <h3>Log Detail</h3>
+        <div class="section">
+          <pre id="logDetail" class="diff">(select a log entry)</pre>
+        </div>
+      </aside>
+    </div>
+
+    <div class="layout hidden" id="paneContracts">
+      <aside class="col">
+        <h3>OpenAPI Spec</h3>
+        <div class="section muted">Current API specification</div>
+        <div class="section">
+          <button id="loadContract">Load Current</button>
+          <button id="saveContract">Save Contract</button>
+        </div>
+      </aside>
+
+      <main class="col">
+        <h3>Contract Editor</h3>
+        <div class="section">
+          <textarea id="contractEditor" placeholder="OpenAPI specification will appear here"></textarea>
+        </div>
+      </main>
+
+      <aside class="col">
+        <h3>Validation</h3>
+        <div class="section">
+          <div id="contractStatus" class="status warn">Not loaded</div>
+        </div>
+        <div class="section">
+          <pre id="contractValidation" class="diff">(validation results)</pre>
+        </div>
+      </aside>
+    </div>
+
+    <div class="layout hidden" id="paneWiring">
+      <aside class="col">
+        <h3>Wiring Matrix</h3>
+        <div class="section muted">Component to endpoint mappings</div>
+        <div class="section">
+          <button id="loadWiring">Load Current</button>
+          <button id="saveWiring">Save Wiring</button>
+        </div>
+      </aside>
+
+      <main class="col">
+        <h3>Wiring Editor</h3>
+        <div class="section">
+          <textarea id="wiringEditor" placeholder="Wiring matrix will appear here"></textarea>
+        </div>
+      </main>
+
+      <aside class="col">
+        <h3>Wiring Status</h3>
+        <div class="section">
+          <div id="wiringStatus" class="status warn">Not loaded</div>
+        </div>
+        <div class="section">
+          <pre id="wiringValidation" class="diff">(wiring validation)</pre>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+<script>
+(function(){
+  function $(s){ return document.querySelector(s); }
+  
+  // SSE Configuration
+  const API_BASE = 'http://localhost:3000';
+  let eventSource = null;
+  let logs = [];
+  
+  function startSSE(){
+    if (eventSource) eventSource.close();
+    eventSource = new EventSource(`${API_BASE}/api/logs/stream`);
+    eventSource.onmessage = (ev)=>{
+      try{
+        const d = JSON.parse(ev.data);
+        if (d.type === 'connected') {
+          setHealth('ok', 'Connected to SSE');
+          return;
+        }
+        
+        const logEntry = {
+          ts: d.ts || new Date().toISOString(),
+          level: d.level || 'info',
+          opid: d.opid || '',
+          status: d.status || '',
+          ms: d.ms || '',
+          req: d.req || {},
+          res: d.res || {}
+        };
+        
+        logs.push(logEntry);
+        if (logs.length > 500) logs = logs.slice(-500);
+        renderLogs();
+      }catch(e){ 
+        console.error('SSE parse error:', e);
+      }
+    };
+    
+    eventSource.onerror = (e) => {
+      setHealth('err', 'SSE connection failed');
+      console.error('SSE error:', e);
+    };
+  }
+  
+  function setHealth(kind, msg){
+    const h = $('#health');
+    h.className = 'status ' + (kind || 'warn');
+    h.textContent = msg;
+  }
+  
+  function renderLogs(){
+    const list = $('#logsList');
+    list.innerHTML = '';
+    
+    logs.slice(-100).reverse().forEach((row, index) => {
+      const btn = document.createElement('div');
+      btn.className = 'row';
+      btn.onclick = () => {
+        $('#logDetail').textContent = JSON.stringify(row, null, 2);
+      };
+      
+      const time = new Date(row.ts).toLocaleTimeString();
+      const status = row.status || '';
+      const method = row.req.method || '';
+      const path = row.req.path || '';
+      const opid = row.opid || '';
+      
+      btn.textContent = `${time} | ${row.level} | ${opid} | ${status} | ${row.ms}ms | ${method} ${path}`;
+      list.appendChild(btn);
+    });
+  }
+  
+  // Tab switching
+  function showTab(tabName) {
+    document.querySelectorAll('.layout').forEach(pane => pane.classList.add('hidden'));
+    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+    
+    $(`#pane${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`).classList.remove('hidden');
+    $(`#tab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`).classList.add('active');
+  }
+  
+  $('#tabLogs').onclick = () => showTab('logs');
+  $('#tabContracts').onclick = () => showTab('contracts');
+  $('#tabWiring').onclick = () => showTab('wiring');
+  
+  // Contract management
+  $('#loadContract').onclick = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/contracts/openapi.json`);
+      const data = await response.json();
+      $('#contractEditor').value = JSON.stringify(data, null, 2);
+      $('#contractStatus').textContent = 'Loaded';
+      $('#contractStatus').className = 'status ok';
+    } catch (e) {
+      $('#contractStatus').textContent = 'Failed to load';
+      $('#contractStatus').className = 'status err';
+    }
+  };
+  
+  $('#saveContract').onclick = async () => {
+    try {
+      const spec = JSON.parse($('#contractEditor').value);
+      const response = await fetch(`${API_BASE}/api/contracts/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ openapi: spec })
+      });
+      
+      if (response.ok) {
+        $('#contractStatus').textContent = 'Saved';
+        $('#contractStatus').className = 'status ok';
+      } else {
+        throw new Error('Save failed');
+      }
+    } catch (e) {
+      $('#contractStatus').textContent = 'Save failed';
+      $('#contractStatus').className = 'status err';
+    }
+  };
+  
+  // Wiring management
+  $('#loadWiring').onclick = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/wiring`);
+      const data = await response.json();
+      $('#wiringEditor').value = JSON.stringify(data, null, 2);
+      $('#wiringStatus').textContent = 'Loaded';
+      $('#wiringStatus').className = 'status ok';
+    } catch (e) {
+      $('#wiringStatus').textContent = 'Failed to load';
+      $('#wiringStatus').className = 'status err';
+    }
+  };
+  
+  $('#saveWiring').onclick = async () => {
+    try {
+      const wiring = JSON.parse($('#wiringEditor').value);
+      const response = await fetch(`${API_BASE}/api/wiring`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wiring })
+      });
+      
+      if (response.ok) {
+        $('#wiringStatus').textContent = 'Saved';
+        $('#wiringStatus').className = 'status ok';
+      } else {
+        throw new Error('Save failed');
+      }
+    } catch (e) {
+      $('#wiringStatus').textContent = 'Save failed';
+      $('#wiringStatus').className = 'status err';
+    }
+  };
+  
+  // Refresh button
+  $('#refresh').onclick = () => {
+    renderLogs();
+    setHealth('ok', 'Refreshed');
+  };
+  
+  // Initialize
+  setHealth('warn', 'Starting...');
+  startSSE();
+  showTab('logs');
+  
+  // Auto-refresh logs every 5 seconds
+  setInterval(renderLogs, 5000);
+})();
+</script>
+</body>
+</html>

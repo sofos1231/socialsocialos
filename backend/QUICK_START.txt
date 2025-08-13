@@ -1,0 +1,31 @@
+# 🚀 QUICK START REFERENCE
+
+## TO START THE SYSTEM
+Just say: "read startup" or "read STARTUP_PROMPT.txt"
+
+## WHAT HAPPENS
+I will automatically:
+1. Navigate to backend directory
+2. Install dependencies
+3. Generate Prisma client
+4. Run database migrations
+5. Seed the database
+6. Launch both backend and dashboard servers
+7. Verify everything is working
+
+## RESULT
+- Backend API: http://localhost:3000
+- Dashboard Server: http://localhost:5173
+- All 4 dashboards accessible and functional
+
+## DASHBOARDS
+1. Control Panel: http://localhost:5173/control-panel.html
+2. Frontend: 
+   - If you see old dashboard versions, use Ctrl+Shift+R (hard refresh)
+   - Or add ?v=1 to any dashboard URL to force fresh load
+   - Use the "🔄 Force Refresh" button in Control Panel
+3. Middleware: http://localhost:5173/middleware-dashboard.html
+4. Backend: http://localhost:5173/backend-dashboard.html
+
+---
+Just say "read startup" to launch everything! 🚀

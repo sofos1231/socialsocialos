@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Backend — Scaffold, Database & Logs Dashboard</title>
+<style>
+  :root{--bg:#0f1220;--panel:#141a33;--text:#e8ecf7;--muted:#9aa7b4;--border:rgba(255,255,255,.1);--ok:#3fb950;--warn:#d29922;--err:#f85149}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:#0f1220;color:var(--text);font:14px/1.35 system-ui,Segoe UI,Inter,sans-serif;display:flex}
+  header{display:flex;gap:8px;align-items:center;padding:10px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5;background:#141a33}
+  .tabs{display:flex;gap:6px;margin-left:16px}
+  .tab{padding:6px 10px;border:1px solid var(--border);border-radius:10px;background:#0e1530;cursor:pointer}
+  .tab.active{outline:2px solid #2b5cff}
+  .layout{display:grid;grid-template-columns:320px 1fr 420px;gap:10px;padding:10px;flex:1}
+  .col{border:1px solid var(--border);border-radius:14px;background:#141a33;overflow:auto}
+  .col h3{margin:0;padding:10px 12px;border-bottom:1px solid var(--border)}
+  .section{padding:10px 12px;border-bottom:1px dashed var(--border)}
+  .row{display:flex;gap:8px;align-items:center;margin:6px 0}
+  input,select,textarea,button{background:#0d1330;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px}
+  textarea{width:100%;min-height:160px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  button{cursor:pointer}
+  ul{list-style:none;margin:0;padding:0}
+  li{padding:6px 8px;border:1px solid var(--border);border-radius:8px;margin:6px;background:#0e1530;cursor:pointer}
+  .muted{color:var(--muted);font-size:12px}
+  .status{display:inline-flex;gap:6px;align-items:center;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px}
+  .ok{background:rgba(63,185,80,.15);border-color:rgba(63,185,80,.35)}
+  .warn{background:rgba(210,153,34,.15);border-color:rgba(210,153,34,.35)}
+  .err{background:rgba(248,81,73,.15);border-color:rgba(248,81,73,.35)}
+  .diff{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0a1227;border:1px solid var(--border);border-radius:10px;padding:8px;max-height:220px;overflow:auto}
+  .hidden{display:none}
+  svg{background:#0b1430;border:1px solid var(--border);border-radius:10px;width:100%;height:420px}
+  .node{fill:#0e1538;stroke:#2a3b7a;stroke-width:1}
+  .edge{stroke:#2f87ff;stroke-width:1.2;marker-end:url(#arrow)}
+  .node text{fill:#dbe7ff;font-size:12px}
+  table{width:100%;border-collapse:collapse}
+  th,td{border:1px solid var(--border);padding:6px;text-align:left}
+</style>
+</head>
+<body>
+  <div style="display:flex;flex-direction:column;width:100%">
+    <header>
+      <div style="font-weight:800">Backend — Scaffold, Database & Logs (Nest + Fastify + Prisma)</div>
+      <div class="tabs">
+        <div id="tabFiles" class="tab active">Files</div>
+        <div id="tabDB" class="tab">Database</div>
+        <div id="tabLogs" class="tab">Logs</div>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <input id="fileInput" type="file" accept="application/json" style="display:none" />
+        <button id="importBundleBtn">Import Bundle</button>
+        <button id="loadLocal">Load Local</button>
+        <button id="validate">Validate</button>
+        <button id="exportFS" disabled>Export Files</button>
+        <button id="saveLocal" disabled>Save Local</button>
+      </div>
+    </header>
+
+    <div class="layout" id="paneFiles">
+      <aside class="col">
+        <h3>Files</h3>
+        <div class="section muted">Virtual filesystem generated from bundle or local storage.</div>
+        <div class="section" id="filesPanel"></div>
+      </aside>
+
+      <main class="col">
+        <h3>Preview</h3>
+        <div class="section">
+          <div class="row"><div id="currentPath" class="muted">(none)</div></div>
+          <textarea id="editor" placeholder="Select a file to preview/edit"></textarea>
+          <div class="row"><button id="saveFile" disabled>Save File Changes</button></div>
+        </div>
+        <div class="section">
+          <div class="muted">Contract & Wiring</div>
+          <pre id="contractView" class="diff">(empty)</pre>
+        </div>
+      </main>
+
+      <aside class="col">
+        <h3>Checks</h3>
+        <div class="section"><span id="health" class="status warn">Idle</span></div>
+        <div class="section">
+          <div class="muted">Results</div>
+          <pre id="results" class="diff">(empty)</pre>
+        </div>
+        <div class="section">
+          <div class="muted">Log</div>
+          <pre id="log" class="diff">(empty)</pre>
+        </div>
+      </aside>
+    </div>
+
+    <div class="layout hidden" id="paneDB">
+      <aside class="col">
+        <h3>Models</h3>
+        <div class="section muted">Parsed from Prisma schema.</div>
+        <div class="section" id="modelsTable"></div>
+      </aside>
+      <main class="col">
+        <h3>ERD</h3>
+        <div class="section"><svg id="erd"></svg></div>
+        <div class="section"><button id="refreshDB">Refresh</button></div>
+      </main>
+      <aside class="col">
+        <h3>Schema Source</h3>
+        <div class="section"><textarea id="schemaSrc" readonly></textarea></div>
+      </aside>
+    </div>
+
+    <div class="layout hidden" id="paneLogs">
+      <aside class="col">
+        <h3>Filters</h3>
+        <div class="section">
+          <div class="row"><input id="fText" placeholder="text contains" /></div>
+          <div class="row"><select id="fLevel"><option value="">any level</option><option>info</option><option>warn</option><option>error</option></select><select id="fStatus"><option value="">any status</option><option>2xx</option><option>4xx</option><option>5xx</option></select></div>
+          <div class="row"><input id="fOpid" placeholder="operationId" /></div>
+          <div class="row"><button id="startTail">Start Tail</button><button id="stopTail">Stop</button><button id="inject">Inject Test Logs</button><button id="exportLogs">Export</button></div>
+        </div>
+      </aside>
+      <main class="col">
+        <h3>Live</h3>
+        <div class="section" id="logsList" style="max-height:500px;overflow:auto"></div>
+      </main>
+      <aside class="col">
+        <h3>Selected</h3>
+        <div class="section"><pre id="logDetail" class="diff">(select a row)</pre></div>
+      </aside>
+    </div>
+  </div>
+
+<script>
+(function(){
+  function $(s){return document.querySelector(s)}
+  function el(t,a,c){const n=document.createElement(t);a=a||{};c=c||[];for(const k in a){const v=a[k];if(k==='class')n.className=v;else if(k==='text')n.textContent=v;else if(k.startsWith('on'))n.addEventListener(k.slice(2),v);else n.setAttribute(k,v)}(Array.isArray(c)?c:[c]).forEach(x=>x&&n.appendChild(typeof x==='string'?document.createTextNode(x):x));return n}
+
+  const KEYS={ MW:'mw.spec', FE:'fe.contracts', BE:'be.scaffold', LOGS:'mw.logs' };
+  function loadJSON(k,f){try{const r=localStorage.getItem(k);return r?JSON.parse(r):f}catch(e){return f}}
+  function saveJSON(k,v){localStorage.setItem(k,JSON.stringify(v))}
+
+  let MW=loadJSON(KEYS.MW,{openapi:{paths:{}},mocks:{}})
+  let FE=loadJSON(KEYS.FE,{wiring:[],components:[]})
+  let FS=loadJSON(KEYS.BE,{files:{}})
+
+  const fileInput=$('#fileInput')
+  const filesPanel=$('#filesPanel')
+  const editor=$('#editor')
+  const currentPath=$('#currentPath')
+  const results=$('#results')
+  const health=$('#health')
+  const logEl=$('#log')
+  const modelsTable=$('#modelsTable')
+  const erd=$('#erd')
+  const schemaSrc=$('#schemaSrc')
+
+  function log(m){logEl.textContent+=(typeof m==='string'?m:JSON.stringify(m))+"\n"}
+  function setHealth(kind,msg){health.className='status '+kind;health.textContent=msg}
+
+  function activateTab(id){['paneFiles','paneDB','paneLogs'].forEach(pid=>$("#"+pid).classList.add('hidden'));$("#"+id).classList.remove('hidden');['tabFiles','tabDB','tabLogs'].forEach(t=>$("#"+t).classList.remove('active')); if(id==='paneFiles') $('#tabFiles').classList.add('active'); if(id==='paneDB') $('#tabDB').classList.add('active'); if(id==='paneLogs') $('#tabLogs').classList.add('active')}
+  $('#tabFiles').onclick=()=>activateTab('paneFiles'); $('#tabDB').onclick=()=>{renderDB();activateTab('paneDB')}; $('#tabLogs').onclick=()=>{renderLogs();activateTab('paneLogs')}
+
+  function renderFiles(){
+    filesPanel.innerHTML=''
+    const list=el('ul')
+    Object.keys(FS.files).sort().forEach(p=>{ list.appendChild(el('li',{onclick:()=>openFile(p)},[p])) })
+    filesPanel.appendChild(list)
+    $('#exportFS').disabled=Object.keys(FS.files).length===0
+    $('#saveLocal').disabled=Object.keys(FS.files).length===0
+  }
+
+  function openFile(p){ currentPath.textContent=p; editor.value=FS.files[p]||''; $('#saveFile').disabled=false }
+  $('#saveFile').onclick=()=>{ const p=currentPath.textContent; if(!p||!FS.files[p])return; FS.files[p]=editor.value; log('saved '+p) }
+
+  $('#importBundleBtn').onclick=()=>fileInput.click()
+  fileInput.addEventListener('change',async()=>{
+    const f=fileInput.files[0]; if(!f) return
+    const txt=await f.text(); let bundle
+    try{bundle=JSON.parse(txt)}catch(e){setHealth('err','Invalid JSON');return}
+    if(bundle.contracts) MW={openapi:bundle.contracts,mocks:bundle.mocks||{}}
+    if(bundle.wiring) FE.wiring=bundle.wiring
+    if(bundle.backend) FS=bundle.backend
+    renderFiles(); results.textContent=JSON.stringify({files:Object.keys(FS.files).length,wiring:FE.wiring.length},null,2); setHealth('ok','Bundle imported'); $('#contractView').textContent=JSON.stringify({openapi:MW.openapi,wiring:FE.wiring.slice(0,20)},null,2); renderDB(); renderLogs()
+  })
+
+  $('#loadLocal').onclick=()=>{ MW=loadJSON(KEYS.MW,MW); FE=loadJSON(KEYS.FE,FE); FS=loadJSON(KEYS.BE,FS); renderFiles(); results.textContent=JSON.stringify({files:Object.keys(FS.files).length,wiring:FE.wiring.length},null,2); setHealth('ok','Loaded local'); $('#contractView').textContent=JSON.stringify({openapi:MW.openapi,wiring:FE.wiring.slice(0,20)},null,2); renderDB(); renderLogs() }
+  $('#saveLocal').onclick=()=>{ saveJSON(KEYS.BE,FS); setHealth('ok','Saved local') }
+  $('#exportFS').onclick=()=>{ const blob=new Blob([JSON.stringify(FS,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='backend-structure.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),300) }
+
+  $('#validate').onclick=()=>{
+    const r={}
+    r.filesCount=Object.keys(FS.files).length
+    r.hasAppModule=!!Object.keys(FS.files).find(p=>p.endsWith('src/app.module.ts'))
+    const modules=Object.keys(FS.files).filter(p=>/src\/modules\/.+\.module\.ts$/.test(p))
+    const controllers=Object.keys(FS.files).filter(p=>/src\/modules\/.+\.controller\.ts$/.test(p))
+    const services=Object.keys(FS.files).filter(p=>/src\/modules\/.+\.service\.ts$/.test(p))
+    r.modules=modules.length
+    r.controllers=controllers.length
+    r.services=services.length
+    const missingWiring=(FE.wiring||[]).filter(w=>!w.endpointId||!w.componentId)
+    r.wiringMissing=missingWiring.length
+    const paths=MW.openapi?.paths||{}
+    const ops=[]
+    Object.keys(paths).forEach(p=>{const m=paths[p];Object.keys(m).forEach(k=>ops.push(m[k].operationId))})
+    const wiredOps=new Set((FE.wiring||[]).map(w=>w.endpointId))
+    r.unwiredOps=ops.filter(id=>!wiredOps.has(id))
+    results.textContent=JSON.stringify(r,null,2)
+    const ok=r.filesCount>0 && r.wiringMissing===0 && r.controllers===r.services
+    setHealth(ok?'ok':(r.wiringMissing?'err':'warn'), ok?'Ready':(r.wiringMissing?'Fix wiring':'Check files'))
+  }
+
+  function prismaText(){
+    const schemaPath='apps/api/prisma/schema.prisma'
+    if(FS.files[schemaPath]) return FS.files[schemaPath]
+    const parts=Object.keys(FS.files).filter(p=>p.startsWith('apps/api/prisma/')&&p.endsWith('.prisma')).map(p=>FS.files[p])
+    return parts.join('\n')
+  }
+
+  function parsePrismaModels(txt){
+    const models=[]; const map={}
+    const re=/model\s+(\w+)\s+\{([\s\S]*?)\}/g
+    let m
+    while((m=re.exec(txt))){
+      const name=m[1]; const body=m[2]
+      const fields=[]
+      body.split('\n').map(s=>s.trim()).filter(Boolean).forEach(line=>{
+        if(line.startsWith('//')) return
+        const parts=line.split(/\s+/)
+        if(parts.length>=2){
+          const fname=parts[0]; const ftype=parts[1]
+          fields.push({name:fname,type:ftype})
+        }
+      })
+      const model={name,fields}; models.push(model); map[name]=model
+    }
+    const rels=[]
+    models.forEach(md=>{
+      md.fields.forEach(f=>{
+        const t=f.type.replace(/\[|\]|\?/g,'')
+        if(map[t] && t!==md.name) rels.push({from:md.name,to:t,many:/\[\]/.test(f.type)})
+      })
+    })
+    return {models,rels}
+  }
+
+  function renderDB(){
+    const txt=prismaText(); schemaSrc.value=txt||''; modelsTable.innerHTML=''
+    const {models,rels}=parsePrismaModels(txt)
+    const table=el('table');
+    const thead=el('thead',{},[el('tr',{},[el('th',{text:'Model'}),el('th',{text:'Fields'})])])
+    table.appendChild(thead)
+    const tb=el('tbody')
+    models.forEach(md=>{ tb.appendChild(el('tr',{},[el('td',{text:md.name}),el('td',{text:md.fields.map(f=>f.name+':'+f.type).join(', ')})])) })
+    table.appendChild(tb); modelsTable.appendChild(table)
+    drawERD(models,rels)
+  }
+
+  function drawERD(models,rels){
+    while(erd.firstChild) erd.removeChild(erd.firstChild)
+    const defs=document.createElementNS('http://www.w3.org/2000/svg','defs')
+    const marker=document.createElementNS('http://www.w3.org/2000/svg','marker'); marker.setAttribute('id','arrow'); marker.setAttribute('viewBox','0 0 10 10'); marker.setAttribute('refX','8'); marker.setAttribute('refY','5'); marker.setAttribute('markerWidth','6'); marker.setAttribute('markerHeight','6'); marker.setAttribute('orient','auto-start-reverse');
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path'); path.setAttribute('d','M 0 0 L 10 5 L 0 10 z'); path.setAttribute('fill','#2f87ff'); marker.appendChild(path); defs.appendChild(marker); erd.appendChild(defs)
+    const w=erd.clientWidth||800
+    const cols=Math.max(1,Math.ceil(Math.sqrt(models.length)))
+    const cellW=w/cols, cellH=150
+    const positions={}
+    models.forEach((md,i)=>{
+      const c=i%cols, r=Math.floor(i/cols)
+      const x=c*cellW+20, y=r*cellH+20
+      positions[md.name]={x,y}
+      const g=document.createElementNS('http://www.w3.org/2000/svg','g')
+      const rect=document.createElementNS('http://www.w3.org/2000/svg','rect'); rect.setAttribute('x',x); rect.setAttribute('y',y); rect.setAttribute('width',cellW-40); rect.setAttribute('height',cellH-40); rect.setAttribute('rx','10'); rect.setAttribute('class','node');
+      const label=document.createElementNS('http://www.w3.org/2000/svg','text'); label.setAttribute('x',x+10); label.setAttribute('y',y+20); label.textContent=md.name
+      g.appendChild(rect); g.appendChild(label); erd.appendChild(g)
+    })
+    rels.forEach(e=>{
+      const a=positions[e.from], b=positions[e.to]; if(!a||!b) return
+      const line=document.createElementNS('http://www.w3.org/2000/svg','line'); line.setAttribute('x1',a.x+100); line.setAttribute('y1',a.y+35); line.setAttribute('x2',b.x+100); line.setAttribute('y2',b.y+35); line.setAttribute('class','edge'); erd.appendChild(line)
+    })
+  }
+
+  let tailTimer=null
+  function renderLogs(){
+    const list=$('#logsList'); list.innerHTML=''
+    const logs=loadJSON(KEYS.LOGS,[])
+    logs.slice(-500).reverse().forEach((row)=>{ const btn=el('div',{class:'row',onclick:()=>$('#logDetail').textContent=JSON.stringify(row,null,2)},[JSON.stringify({ts:row.ts, level:row.level, opid:row.opid, status:row.status, ms:row.ms})]); list.appendChild(btn) })
+  }
+
+  function applyFilters(rows){
+    const t=$('#fText').value.toLowerCase(), lvl=$('#fLevel').value, st=$('#fStatus').value, op=$('#fOpid').value
+    return rows.filter(r=>{
+      if(lvl && r.level!==lvl) return false
+      if(st){ const s=String(r.status||''); if(st==='2xx'&&!/^2/.test(s)) return false; if(st==='4xx'&&!/^4/.test(s)) return false; if(st==='5xx'&&!/^5/.test(s)) return false }
+      if(op && r.opid!==op) return false
+      if(t){ const hay=JSON.stringify(r).toLowerCase(); if(!hay.includes(t)) return false }
+      return true
+    })
+  }
+
+  $('#startTail').onclick=()=>{
+    if(tailTimer) return
+    tailTimer=setInterval(()=>{
+      const data=applyFilters(loadJSON(KEYS.LOGS,[]))
+      const list=$('#logsList'); list.innerHTML=''
+      data.slice(-500).reverse().forEach(row=>{ const btn=el('div',{class:'row',onclick:()=>$('#logDetail').textContent=JSON.stringify(row,null,2)},[JSON.stringify({ts:row.ts, level:row.level, opid:row.opid, status:row.status, ms:row.ms})]); list.appendChild(btn) })
+    }, 1000)
+  }
+  $('#stopTail').onclick=()=>{ if(tailTimer){ clearInterval(tailTimer); tailTimer=null } }
+
+  $('#inject').onclick=()=>{
+    const arr=loadJSON(KEYS.LOGS,[])
+    for(let i=0;i<20;i++){
+      arr.push({ts:Date.now(), level:['info','warn','error'][Math.floor(Math.random()*3)], opid:'GET_/missions', status:[200,201,400,404,500][Math.floor(Math.random()*5)], ms:Math.floor(Math.random()*200), req:{method:'GET', path:'/missions'}, res:{items:[{id:'1'}]}})
+    }
+    saveJSON(KEYS.LOGS,arr)
+    renderLogs()
+  }
+
+  $('#exportLogs').onclick=()=>{ const rows=loadJSON(KEYS.LOGS,[]); const nd=rows.map(r=>JSON.stringify(r)).join('\n'); const blob=new Blob([nd],{type:'application/x-ndjson'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='logs.ndjson'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),300) }
+
+  renderFiles()
+  setHealth('warn','Idle')
+  $('#contractView').textContent=JSON.stringify({openapi:MW.openapi,wiring:FE.wiring.slice(0,20)},null,2)
+  log('backend dashboard ready')
+})()
+</script>
+</body>
+</html>

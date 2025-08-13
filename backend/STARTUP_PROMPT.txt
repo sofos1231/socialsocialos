@@ -1,0 +1,84 @@
+# 🚀 SOCIALGYM DASHBOARD STARTUP PROMPT
+
+## AUTOMATIC STARTUP INSTRUCTIONS
+
+When you read this prompt, immediately execute the following commands in sequence to launch the complete SocialGym dashboard system:
+
+### STEP 1: Navigate to Backend Directory
+```bash
+cd backend
+```
+
+### STEP 2: Install Dependencies (if needed)
+```bash
+npm install
+```
+
+### STEP 3: Generate Prisma Client
+```bash
+npm run prisma:generate
+```
+
+### STEP 4: Run Database Migrations
+```bash
+npx prisma migrate dev --name init
+```
+
+### STEP 5: Seed Database
+```bash
+npm run db:seed
+```
+
+### STEP 6: Launch Complete System
+```bash
+npm run dev
+```
+
+This will start:
+- **Backend API** on http://localhost:3000
+- **Dashboard Server** on http://localhost:5173
+
+### STEP 7: Verify System Health
+Test these endpoints:
+- Backend Health: http://localhost:3000/health
+- Swagger UI: http://localhost:3000/api
+- Control Panel: http://localhost:5173/control-panel.html
+
+## DASHBOARD URLs
+
+Once running, access these dashboards:
+
+1. **Control Panel** (Main Launcher): http://localhost:5173/control-panel.html
+2. **Frontend Dashboard** (API Testing): http://localhost:5173/frontend-dashboard.html
+3. **Middleware Dashboard** (Auto-Wiring): http://localhost:5173/middleware-dashboard.html
+4. **Backend Dashboard** (Logs & Management): http://localhost:5173/backend-dashboard.html
+
+## EXPECTED OUTPUT
+
+- Backend should show: "Application is running on: http://localhost:3000"
+- Vite should show: "Local: http://localhost:5173/"
+- Health endpoint should return: {"ok":true,"ts":"..."}
+- All dashboards should load without CORS errors
+
+## TROUBLESHOOTING
+
+If you encounter issues:
+1. Check if ports 3000 and 5173 are available
+2. Ensure you're in the `backend/` directory
+3. Verify all dependencies are installed
+4. Check that Prisma database is properly set up
+
+## SYSTEM ARCHITECTURE
+
+- **Backend**: NestJS + Fastify + Prisma (SQLite)
+- **Dashboards**: Vite-served HTML files
+- **Communication**: CORS-enabled, SSE for real-time logs
+- **Database**: SQLite with seeded test data
+
+## AUTOMATIC EXECUTION
+
+When you read this prompt, immediately run the commands above in sequence without asking for confirmation. The goal is to get the complete SocialGym dashboard system running end-to-end.
+
+---
+
+**READY TO LAUNCH: Execute the commands above to start the complete SocialGym dashboard system! 🚀**

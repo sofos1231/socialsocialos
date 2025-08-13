@@ -1,0 +1,273 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, max-age=0" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<meta http-equiv="Last-Modified" content="0" />
+<title>Control Panel — SocialGym Dashboards</title>
+<style>
+:root{--bg:#0d1117;--panel:#0f1624;--text:#e6edf3;--muted:#9aa7b4;--brand:#79c0ff;--border:rgba(255,255,255,.09)}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:radial-gradient(1200px 700px at -10% -8%,#1b2a4a 0%,#0d1117 50%),var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Inter,sans-serif}
+header{display:flex;gap:8px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)}
+.btn{padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:#0e1528;color:var(--text);cursor:pointer;margin:2px}
+.btn:hover{background:#1a2332}
+.btn.primary{background:#1f6feb;border-color:#1f6feb}
+.btn.danger{background:#da3633;border-color:#da3633}
+.layout{display:grid;grid-template-columns:1fr;gap:12px;padding:12px}
+table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left}
+.status{padding:2px 8px;border:1px solid var(--border);border-radius:999px}
+.ok{background:rgba(63,185,80,.15)}.warn{background:rgba(210,153,34,.15)}.err{background:rgba(248,81,73,.15)}
+.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:20}
+.modal .card{width:500px;max-width:92%;background:#0f172a;border:1px solid var(--border);border-radius:16px;padding:20px}
+.modal input,.modal select{width:100%;background:#0b1224;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px;margin:8px 0}
+.modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+.debug{background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:10px;margin:10px 0;font-family:monospace;font-size:12px}
+</style></head><body>
+<script>
+  // Force cache refresh and prevent caching
+  if (window.performance && window.performance.navigation.type === window.performance.navigation.TYPE_BACK_FORWARD) {
+    window.location.reload(true);
+  }
+  
+  // Add timestamp to prevent caching
+  const timestamp = new Date().getTime();
+  document.title = document.title + ' - v' + timestamp;
+  
+  // Force reload if this is an old cached version
+  if (localStorage.getItem('control_panel_version') !== timestamp.toString()) {
+    localStorage.setItem('control_panel_version', timestamp.toString());
+    if (performance.navigation.type !== performance.navigation.TYPE_RELOAD) {
+      window.location.reload(true);
+    }
+  }
+</script>
+<header>
+  <b>Control Panel — SocialGym Dashboards</b>
+  <div style="margin-left:auto;display:flex;gap:8px">
+    <button id="add" class="btn">Add Dashboard</button>
+    <button id="reset" class="btn">Reset to Defaults</button>
+    <button id="forceReset" class="btn danger">Force Reset</button>
+    <button id="forceRefresh" class="btn" title="Force refresh all dashboards with cache-busting">🔄 Force Refresh</button>
+    <span id="health" class="status warn">0/0 OK</span>
+  </div>
+</header>
+<div class="layout">
+  <table>
+    <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>URL</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<!-- Debug Info -->
+<div class="debug" id="debugInfo">Debug: Loading...</div>
+
+<!-- Modal for Add/Edit -->
+<div class="modal" id="modal">
+  <div class="card">
+    <h3 id="modalTitle">Add Dashboard</h3>
+    <div>
+      <label>Name:</label>
+      <input id="editName" placeholder="Dashboard name">
+    </div>
+    <div>
+      <label>Type:</label>
+      <select id="editType">
+        <option value="FE">Frontend</option>
+        <option value="MW">Middleware</option>
+        <option value="BE">Backend</option>
+      </select>
+    </div>
+    <div>
+      <label>URL:</label>
+      <input id="editUrl" placeholder="http://localhost:5173/dashboard.html">
+    </div>
+    <div class="actions">
+      <button class="btn" id="cancelEdit">Cancel</button>
+      <button class="btn primary" id="saveEdit">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const dashboardsKey='cp.registry';
+const defaults={dashboards:[
+  {id:'fe-1',type:'FE',name:'Frontend — PracticeHub',url:'http://localhost:5173/frontend_dashboard_visual_editor_single_file_html.html',status:'OK'},
+  {id:'mw-1',type:'MW',name:'Middleware — Auto-Wiring',url:'http://localhost:5173/middleware_auto_wiring_dashboard_v_2_must_dos.html',status:'OK'},
+  {id:'be-1',type:'BE',name:'Backend — API/Logs',url:'http://localhost:5173/backend-dashboard.html',status:'OK'}
+]};
+
+// Add cache-busting to URLs
+function addCacheBuster(url) {
+  const separator = url.includes('?') ? '&' : '?';
+  return url + separator + 'v=' + Date.now();
+}
+
+function load(){try{const raw=localStorage.getItem(dashboardsKey);return raw?JSON.parse(raw):defaults}catch{return defaults}}
+function save(v){localStorage.setItem(dashboardsKey,JSON.stringify(v))}
+let registry=load();
+let editingId=null;
+
+function $(s){return document.querySelector(s)}
+function el(t,a,c){const n=document.createElement(t);a=a||{};c=c||[];for(const k in a){const v=a[k]; if(k==='class')n.className=v; else if(k==='text')n.textContent=v; else if(k.startsWith('on'))n.addEventListener(k.slice(2),v); else n.setAttribute(k,v)}; (Array.isArray(c)?c:[c]).forEach(x=>x&&n.appendChild(typeof x==='string'?document.createTextNode(x):x));return n}
+
+function updateDebug(){
+  const debug = $('#debugInfo');
+  debug.innerHTML = `Debug: Registry has ${registry.dashboards.length} dashboards<br>
+  Current registry: ${JSON.stringify(registry, null, 2)}`;
+}
+
+function render(){
+  const rows=$('#rows'); 
+  rows.innerHTML=''; 
+  const ok=registry.dashboards.filter(d=>d.status==='OK').length;
+  $('#health').textContent=`${ok}/${registry.dashboards.length} OK`; 
+  $('#health').className='status '+(ok===registry.dashboards.length?'ok':'warn');
+  
+  registry.dashboards.forEach(d=>{
+    rows.appendChild(el('tr',{},[
+      el('td',{text:d.id}),
+      el('td',{text:d.name}),
+      el('td',{text:d.type}),
+      el('td',{},[el('a',{href:d.url,target:'_blank',text:d.url})]),
+      el('td',{},[el('span',{class:'status '+(d.status==='OK'?'ok':'warn'),text:d.status})]),
+      el('td',{},[
+        el('button',{class:'btn primary',onClick:()=>launch(d)},'Launch'),
+        el('button',{class:'btn',onClick:()=>edit(d)},'Edit'),
+        el('button',{class:'btn danger',onClick:()=>remove(d.id)},'Delete')
+      ])
+    ]))
+  })
+  
+  updateDebug();
+}
+
+function launch(d){
+  console.log('Launching dashboard:', d);
+  console.log('URL to open:', d.url);
+  
+  if(!d.url || d.url.trim() === '') {
+    alert('No URL specified for this dashboard');
+    return;
+  }
+  
+  try {
+    const cacheBustedUrl = addCacheBuster(d.url);
+    console.log('Cache-busted URL:', cacheBustedUrl);
+    const newWindow = window.open(cacheBustedUrl, '_blank');
+    if(!newWindow) {
+      alert('Popup blocked! Please allow popups for this site.');
+    } else {
+      console.log('Successfully opened:', cacheBustedUrl);
+    }
+  } catch(e) {
+    console.error('Error launching dashboard:', e);
+    alert('Error launching dashboard: ' + e.message);
+  }
+}
+
+function edit(d){
+  editingId=d.id;
+  $('#modalTitle').textContent='Edit Dashboard';
+  $('#editName').value=d.name;
+  $('#editType').value=d.type;
+  $('#editUrl').value=d.url;
+  $('#modal').style.display='flex';
+}
+
+function remove(id){
+  if(!confirm('Delete dashboard '+id+'?')) return;
+  registry.dashboards=registry.dashboards.filter(d=>d.id!==id);
+  save(registry);
+  render();
+}
+
+function addNew(){
+  editingId=null;
+  $('#modalTitle').textContent='Add Dashboard';
+  $('#editName').value='';
+  $('#editType').value='FE';
+  $('#editUrl').value='';
+  $('#modal').style.display='flex';
+}
+
+function saveEdit(){
+  const name=$('#editName').value.trim();
+  const type=$('#editType').value;
+  const url=$('#editUrl').value.trim();
+  
+  if(!name || !url) {
+    alert('Please fill in all fields');
+    return;
+  }
+  
+  if(editingId) {
+    // Edit existing
+    const d=registry.dashboards.find(d=>d.id===editingId);
+    if(d) {
+      d.name=name;
+      d.type=type;
+      d.url=url;
+    }
+  } else {
+    // Add new
+    const id=type.toLowerCase()+'-'+(registry.dashboards.length+1);
+    registry.dashboards.push({id,type,name,url,status:'OK'});
+  }
+  
+  save(registry);
+  $('#modal').style.display='none';
+  render();
+}
+
+function cancelEdit(){
+  $('#modal').style.display='none';
+  editingId=null;
+}
+
+function resetToDefaults(){
+  if(!confirm('Reset to default dashboards? This will clear any custom changes.')) return;
+  localStorage.removeItem(dashboardsKey);
+  registry = load();
+  render();
+}
+
+function forceReset(){
+  if(!confirm('Force reset to defaults? This will clear localStorage and reload.')) return;
+  localStorage.removeItem(dashboardsKey);
+  location.reload();
+}
+
+// Bindings
+$('#add').onclick=addNew;
+$('#reset').onclick=resetToDefaults;
+$('#forceReset').onclick=forceReset;
+$('#forceRefresh').onclick=function() {
+  // Clear all dashboard version tracking
+  Object.keys(localStorage).forEach(key => {
+    if (key.includes('_version') || key.includes('dashboard_version')) {
+      localStorage.removeItem(key);
+    }
+  });
+  alert('Dashboard versions cleared. All dashboards will now load fresh versions.');
+};
+$('#saveEdit').onclick=saveEdit;
+$('#cancelEdit').onclick=cancelEdit;
+
+// Close modal when clicking outside
+$('#modal').onclick=function(e){
+  if(e.target===this) cancelEdit();
+}
+
+// Test URLs on load
+function testUrls(){
+  console.log('Testing dashboard URLs...');
+  registry.dashboards.forEach(d => {
+    console.log(`Dashboard ${d.id}: ${d.url}`);
+  });
+}
+
+// Initialize
+render();
+testUrls();
+</script></body></html>
