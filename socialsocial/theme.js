@@ -17,8 +17,13 @@ export const theme = {
     
     // Status colors
     success: '#22c55e', // Green
+    successGlow: '#16a34a', // Darker green for glow
     warning: '#f59e0b', // Orange
     error: '#ef4444', // Red
+    
+    // Additional colors for components
+    foreground: '#ffffff',
+    primaryGlow: '#8b5cf6', // Lighter purple for glow
     
     // Gradient colors
     gradientPrimary: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',

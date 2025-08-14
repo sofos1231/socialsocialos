@@ -21,7 +21,7 @@ import registry from '../data/practiceRegistry.json';
 
 const { width, height } = Dimensions.get('window');
 
-const PracticeHub = () => {
+const PracticeHub = ({ onShowPracticeRoad }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const headerScaleAnim = useRef(new Animated.Value(0.8)).current;
   // Subtle animated shift between two deep blues for premium feel
@@ -64,6 +64,13 @@ const PracticeHub = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     console.log(`Session pressed: ${categoryId} - ${sessionId}`);
     // Placeholder for navigation logic
+  };
+
+  const handleShowPracticeRoad = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (onShowPracticeRoad) {
+      onShowPracticeRoad();
+    }
   };
 
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -167,6 +174,30 @@ const PracticeHub = () => {
         <View style={{ marginTop: 6 }}>
           <Text style={{ color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 12 }}>Your Journey</Text>
           <JourneyFlashcards />
+        </View>
+
+        {/* Road Mission Button */}
+        <View style={{ marginTop: 20, marginBottom: 10 }}>
+          <TouchableOpacity
+            onPress={handleShowPracticeRoad}
+            style={{
+              backgroundColor: 'rgba(99, 102, 241, 0.15)',
+              borderWidth: 1,
+              borderColor: 'rgba(99, 102, 241, 0.3)',
+              borderRadius: 16,
+              paddingVertical: 16,
+              paddingHorizontal: 20,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="map-outline" size={24} color="#6366f1" style={{ marginRight: 12 }} />
+            <Text style={{ color: '#6366f1', fontSize: 18, fontWeight: '700' }}>
+              View Road Mission Map
+            </Text>
+            <Ionicons name="chevron-forward" size={20} color="#6366f1" style={{ marginLeft: 8 }} />
+          </TouchableOpacity>
         </View>
 
         {/* Motivational Footer */}

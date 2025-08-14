@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import BottomNavigationBar from './components/BottomNavigationBar';
 import PracticeHub from './components/PracticeHub';
+import PracticeRoad from './screens/PracticeRoad';
 import StatsScreen from './components/StatsScreen';
 import MissionScreen from './components/MissionScreen';
 import ShopScreen from './components/ShopScreen';
@@ -17,6 +18,7 @@ const tabFromIndex = (i) => TABS[Math.max(0, Math.min(TABS.length - 1, i))];
 export default function App() {
   const [currentTab, setCurrentTab] = useState('practice');
   const [showMission, setShowMission] = useState(false);
+  const [showPracticeRoad, setShowPracticeRoad] = useState(false);
   const [pagerProgress, setPagerProgress] = useState(0); // 0..(tabs-1)
   const pagerRef = useRef(null);
 
@@ -32,10 +34,23 @@ export default function App() {
     goBack: () => setShowMission(false)
   };
 
+  // Mock navigation object for PracticeRoad
+  const mockRoadNavigation = {
+    goBack: () => setShowPracticeRoad(false)
+  };
+
   if (showMission) {
     return (
       <SafeAreaProvider>
         <MissionScreen navigation={mockNavigation} />
+      </SafeAreaProvider>
+    );
+  }
+
+  if (showPracticeRoad) {
+    return (
+      <SafeAreaProvider>
+        <PracticeRoad navigation={mockRoadNavigation} />
       </SafeAreaProvider>
     );
   }
@@ -55,7 +70,7 @@ export default function App() {
               onProgress={(f) => setPagerProgress(f)}
             >
               <View style={styles.practiceContainer}>
-                <PracticeHub />
+                <PracticeHub onShowPracticeRoad={() => setShowPracticeRoad(true)} />
               </View>
               <StatsScreen />
               <ShopScreen />

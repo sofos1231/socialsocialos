@@ -267,9 +267,9 @@ const Subscription = () => {
     <View style={styles.cardSection}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <LinearGradient colors={['#F59E0B', '#FACC15']} style={styles.crownBadge}>
-            <Ionicons name="crown" size={22} color="#0f0f0f" />
-          </LinearGradient>
+                          <LinearGradient colors={['#F59E0B', '#FACC15']} style={styles.crownBadge}>
+                  <Ionicons name="star" size={22} color="#0f0f0f" />
+                </LinearGradient>
           <View style={{ marginLeft: 10 }}>
             <Text style={styles.cardTitle}>Subscription</Text>
             <Text style={styles.caption}>Plan: <Text style={styles.subtitleBold}>Free</Text></Text>
