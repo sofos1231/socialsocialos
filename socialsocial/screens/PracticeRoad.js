@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import WavyRoadmapPath from '../components/WavyRoadmapPath';
 import EnhancedMissionBubble from '../components/EnhancedMissionBubble';
+import AnimatedConnectorTrail from '../components/AnimatedConnectorTrail';
+import BackgroundParticles from '../components/BackgroundParticles';
+import BackgroundChapterArt from '../components/BackgroundChapterArt';
 import ProgressTopBar from '../components/ProgressTopBar';
 import MissionPopup from '../components/MissionPopup';
 import RewardPopup from '../components/RewardPopup';
@@ -30,6 +32,7 @@ const PracticeRoad = ({ navigation }) => {
   const [rewardData, setRewardData] = useState(null);
   const [showCelebration, setShowCelebration] = useState(false);
   const [celebrationType, setCelebrationType] = useState('mission');
+  const [showCoach, setShowCoach] = useState(true);
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -253,7 +256,7 @@ const PracticeRoad = ({ navigation }) => {
     const centerX = width * 0.5; // Center of screen
     const amplitude = width * 0.12; // Wave amplitude
     const frequency = 0.7; // Wave frequency
-    const stepY = 140; // Vertical spacing
+    const stepY = 120; // Reduced spacing for continuous path
     
     return missions.map((_, index) => {
       const y = index * stepY + 100;
@@ -264,7 +267,7 @@ const PracticeRoad = ({ navigation }) => {
   };
 
   const positions = generateWavyPositions();
-  const totalHeight = positions[positions.length - 1]?.y + 200 || 600;
+  const totalHeight = positions[positions.length - 1]?.y + 220 || 640;
 
   const handleMissionTap = (mission) => {
     setSelectedMission(mission);
@@ -288,10 +291,33 @@ const PracticeRoad = ({ navigation }) => {
     setShowRewardPopup(true);
   };
 
+  // Determine next mission to suggest/open
+  const getNextMission = () => {
+    const current = missions.find(m => m.status === 'current');
+    if (current) return current;
+    const available = missions.find(m => m.status === 'available');
+    if (available) return available;
+    const firstLocked = missions.find(m => m.status === 'locked');
+    return firstLocked || missions[0];
+  };
+
+  const handleCoachTap = () => {
+    const next = getNextMission();
+    if (next) {
+      setSelectedMission(next);
+      setShowMissionPopup(true);
+      // Optionally keep the coach visible; for now, keep it
+    }
+  };
+
   const getCoachMessage = () => {
     if (progressPercentage === 100) return "Amazing! Chapter complete!";
     if (progressPercentage > 50) return "You're crushing it!";
-    return "Ready for your next mission?";
+    const next = getNextMission();
+    if (!next) return "Ready for your next mission?";
+    if (next.title.toLowerCase().includes('teasing')) return "💬 Unlock Teasing & Banter?";
+    if (next.title.toLowerCase().includes('deep')) return "💖 Ready to build a deeper bond?";
+    return `Ready for ${next.title}?`;
   };
 
   const getCoachMood = () => {
@@ -303,6 +329,9 @@ const PracticeRoad = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      {/* Subtle background chapter art and particles */}
+      <BackgroundChapterArt category={category} />
+      <BackgroundParticles />
       
       <Animated.View 
         style={[
@@ -330,12 +359,7 @@ const PracticeRoad = ({ navigation }) => {
           contentContainerStyle={[styles.scrollContent, { height: totalHeight }]}
           showsVerticalScrollIndicator={false}
         >
-          {/* Wavy Roadmap Path */}
-          <WavyRoadmapPath 
-            missions={missions}
-            pathPoints={positions}
-            style={styles.roadmapPath}
-          />
+          {/* Connector path disabled per request */}
 
           {/* Mission Bubbles */}
           {missions.map((mission, index) => {
@@ -388,12 +412,17 @@ const PracticeRoad = ({ navigation }) => {
           )}
         </ScrollView>
 
-        {/* Coach Character */}
-        <CoachCharacter
-          message={getCoachMessage()}
-          mood={getCoachMood()}
-          position="corner"
-        />
+        {/* Coach Character pinned to bottom with close button */}
+        {showCoach && (
+          <CoachCharacter
+            message={getCoachMessage()}
+            mood={getCoachMood()}
+            position="center"
+            showClose
+            onClose={() => setShowCoach(false)}
+            onTap={handleCoachTap}
+          />
+        )}
       </Animated.View>
 
       {/* Mission Popup */}

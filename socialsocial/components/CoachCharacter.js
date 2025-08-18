@@ -14,6 +14,8 @@ const CoachCharacter = ({
   mood = 'encouraging',
   position = 'corner',
   onTap,
+  showClose = true,
+  onClose,
 }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
@@ -83,7 +85,7 @@ const CoachCharacter = ({
       case 'center':
         return {
           position: 'absolute',
-          bottom: 100,
+          bottom: 18,
           alignSelf: 'center',
         };
       case 'corner':
@@ -136,6 +138,15 @@ const CoachCharacter = ({
               colors={['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.9)']}
               style={styles.messageBubble}
             >
+              {showClose && (
+                <TouchableOpacity
+                  onPress={onClose}
+                  style={styles.closeButton}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={16} color="#111827" />
+                </TouchableOpacity>
+              )}
               <Text style={styles.messageText} numberOfLines={2}>
                 {message}
               </Text>
@@ -167,10 +178,10 @@ const styles = {
     paddingVertical: 12,
     borderRadius: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
   },
   iconContainer: {
     width: 40,
@@ -188,16 +199,27 @@ const styles = {
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 16,
-    maxWidth: 200,
+    maxWidth: 260,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.06)'
   },
   messageText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#1f2937',
     lineHeight: 18,
   },
@@ -219,12 +241,12 @@ const styles = {
   },
   glowEffect: {
     position: 'absolute',
-    top: -4,
-    left: -4,
-    right: -4,
-    bottom: -4,
+    top: -6,
+    left: -6,
+    right: -6,
+    bottom: -6,
     borderRadius: 28,
-    opacity: 0.3,
+    opacity: 0.18,
     zIndex: -1,
   },
 };

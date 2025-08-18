@@ -20,6 +20,7 @@ const ProgressTopBar = ({
   totalXP,
   icon,
   onBack,
+  onPressStats,
 }) => {
   const progressPercentage = (completedMissions / totalMissions) * 100;
 
@@ -27,7 +28,7 @@ const ProgressTopBar = ({
     <View style={styles.container}>
       {/* Background Gradient */}
       <LinearGradient
-        colors={['rgba(0, 0, 0, 0.8)', 'rgba(0, 0, 0, 0.6)', 'transparent']}
+        colors={['rgba(0, 0, 0, 0.85)', 'rgba(0, 0, 0, 0.65)', 'transparent']}
         style={styles.backgroundGradient}
       />
       
@@ -43,7 +44,8 @@ const ProgressTopBar = ({
             colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']}
             style={styles.backButtonGradient}
           >
-            <Ionicons name="chevron-back" size={24} color="#ffffff" />
+            <Ionicons name="chevron-back" size={20} color="#ffffff" />
+            <Text style={styles.backLabel}>Back</Text>
           </LinearGradient>
         </TouchableOpacity>
 
@@ -70,8 +72,17 @@ const ProgressTopBar = ({
           </View>
         </View>
 
-        {/* Progress Stats */}
+        {/* Progress Stats + Stats Button */}
         <View style={styles.statsContainer}>
+          {/* Stats pill */}
+          <TouchableOpacity
+            style={styles.statsButton}
+            activeOpacity={0.8}
+            onPress={onPressStats}
+          >
+            <Ionicons name="stats-chart" size={14} color="#ffffff" />
+            <Text style={styles.statsButtonText}>Stats</Text>
+          </TouchableOpacity>
           {/* XP Display */}
           <View style={styles.xpContainer}>
             <LinearGradient
@@ -134,7 +145,7 @@ const styles = {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    height: 80,
+    height: 88,
   },
   backButton: {
     width: 44,
@@ -148,11 +159,18 @@ const styles = {
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+    flexDirection: 'row',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 4,
+  },
+  backLabel: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
   },
   centerContent: {
     flex: 1,
@@ -191,6 +209,29 @@ const styles = {
   statsContainer: {
     alignItems: 'flex-end',
   },
+  statsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  statsButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 6,
+  },
   xpContainer: {
     marginBottom: 8,
   },
@@ -219,20 +260,20 @@ const styles = {
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.8)',
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   progressBarContainer: {
-    width: 60,
+    width: 44,
   },
   progressBarBackground: {
-    height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    height: 3,
+    backgroundColor: 'rgba(124, 58, 237, 0.25)',
     borderRadius: 2,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: theme.colors.primary,
+    backgroundColor: '#7c3aed',
     borderRadius: 2,
   },
   bottomBorder: {

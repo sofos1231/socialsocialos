@@ -70,72 +70,39 @@ const WavyRoadmapPath = ({ missions, pathPoints, style }) => {
         preserveAspectRatio="none"
       >
         <Defs>
-          {/* Base Path Gradient */}
+          {/* Base Path Gradient (soft gray) */}
           <LinearGradient id="basePath" x1="0%" y1="0%" x2="0%" y2="100%">
-            <Stop offset="0%" stopColor={theme.colors.muted} />
-            <Stop offset="100%" stopColor={`${theme.colors.muted}80`} />
+            <Stop offset="0%" stopColor="#9ca3af66" />
+            <Stop offset="100%" stopColor="#9ca3af22" />
           </LinearGradient>
-          
-          {/* Completed Path Gradient */}
+
+          {/* Completed Path Gradient (violet) */}
           <LinearGradient id="completedPath" x1="0%" y1="0%" x2="0%" y2="100%">
-            <Stop offset="0%" stopColor={theme.colors.success} />
-            <Stop offset="50%" stopColor={theme.colors.successGlow || theme.colors.success} />
-            <Stop offset="100%" stopColor={`${theme.colors.success}CC`} />
+            <Stop offset="0%" stopColor="#7c3aed" />
+            <Stop offset="50%" stopColor="#8b5cf6" />
+            <Stop offset="100%" stopColor="#a78bfa" />
           </LinearGradient>
-          
-          {/* Progress Path Gradient */}
+
+          {/* Progress Path Gradient (stronger violet glow) */}
           <LinearGradient id="progressPath" x1="0%" y1="0%" x2="0%" y2="100%">
-            <Stop offset="0%" stopColor={theme.colors.primary} />
-            <Stop offset="50%" stopColor={theme.colors.primaryGlow || theme.colors.primary} />
-            <Stop offset="100%" stopColor={`${theme.colors.primary}99`} />
+            <Stop offset="0%" stopColor="#7c3aed" />
+            <Stop offset="60%" stopColor="#8b5cf6" />
+            <Stop offset="100%" stopColor="#a78bfa" />
           </LinearGradient>
-          
+
           {/* Glow Filter */}
           <Filter id="pathGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <FeGaussianBlur stdDeviation="4" result="coloredBlur"/>
-            <FeMerge> 
+            <FeGaussianBlur stdDeviation="6" result="coloredBlur"/>
+            <FeMerge>
               <FeMergeNode in="coloredBlur"/>
               <FeMergeNode in="SourceGraphic"/>
             </FeMerge>
           </Filter>
         </Defs>
         
-        {/* Base Path (incomplete) */}
-        {fullPath && (
-          <Path
-            d={fullPath}
-            stroke="url(#basePath)"
-            strokeWidth="4"
-            fill="none"
-            strokeLinecap="round"
-            opacity={0.3}
-          />
-        )}
+        {/* Base path intentionally hidden per design request */}
         
-        {/* Completed Path */}
-        {completedPath && (
-          <Path
-            d={completedPath}
-            stroke="url(#completedPath)"
-            strokeWidth="6"
-            fill="none"
-            strokeLinecap="round"
-            filter="url(#pathGlow)"
-          />
-        )}
-        
-        {/* Progress Path (current mission) */}
-        {missions.some(m => m.status === 'current') && completedPath && (
-          <Path
-            d={completedPath}
-            stroke="url(#progressPath)"
-            strokeWidth="8"
-            fill="none"
-            strokeLinecap="round"
-            filter="url(#pathGlow)"
-            opacity={0.8}
-          />
-        )}
+        {/* Completed/Progress paths are drawn by AnimatedConnectorTrail */}
       </Svg>
     </View>
   );

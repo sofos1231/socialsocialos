@@ -7,8 +7,12 @@ import {
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 import theme from '../theme.js';
+import MissionBadge from './MissionBadge';
+
+// Global sizing for mission nodes
+const BUBBLE_SIZE = 92; // 15% larger than previous 80
+const BADGE_SIZE = 84; // scaled with bubble
 
 const { width } = Dimensions.get('window');
 
@@ -47,7 +51,7 @@ const EnhancedMissionBubble = ({
     
     setIsPressed(true);
     Animated.spring(scaleAnim, {
-      toValue: 0.95,
+      toValue: 0.92,
       tension: 100,
       friction: 8,
       useNativeDriver: true,
@@ -71,66 +75,21 @@ const EnhancedMissionBubble = ({
     onTap(mission);
   };
 
-  // Show golden coin for completed missions
-  if (mission.status === 'completed') {
-    return (
-      <Animated.View
-        style={[
-          styles.container,
-          {
-            left: position.x - 40, // Center the bubble
-            top: position.y - 40,
-            transform: [{ scale: scaleAnim }],
-          },
-        ]}
-      >
-        <TouchableOpacity
-          style={styles.completedBubble}
-          onPress={handlePress}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={['#fbbf24', '#f59e0b', '#d97706']}
-            style={styles.completedGradient}
-          >
-            <View style={styles.completedIconContainer}>
-              <Ionicons name="checkmark-circle" size={32} color="#ffffff" />
-            </View>
-            
-            {/* Sparkles effect */}
-            {showCelebration && (
-              <Animated.View
-                style={[
-                  styles.sparklesContainer,
-                  {
-                    opacity: glowAnim,
-                  },
-                ]}
-              >
-                <Ionicons name="sparkles" size={16} color="#ffffff" style={styles.sparkle1} />
-                <Ionicons name="sparkles" size={12} color="#ffffff" style={styles.sparkle2} />
-                <Ionicons name="sparkles" size={14} color="#ffffff" style={styles.sparkle3} />
-              </Animated.View>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
-        
-        {/* Mission Title */}
-        <View style={styles.titleContainer}>
-          <Text style={styles.completedTitle} numberOfLines={2}>
-            {mission.title}
-          </Text>
-        </View>
-      </Animated.View>
-    );
-  }
+  // Map mission state to badge type
+  const getBadgeType = () => {
+    if (mission.status === 'completed') return 'completed';
+    if (mission.status === 'current') return 'inProgress';
+    if (mission.type === 'premium') return 'premium';
+    if (mission.status === 'locked') return 'locked';
+    return 'available';
+  };
 
   const getBubbleColors = () => {
     switch (mission.status) {
       case 'current':
-        return [theme.colors.primary, theme.colors.primaryGlow];
+        return ['#f59e0b', '#d97706', '#b45309'];
+      case 'completed':
+        return ['#fbbf24', '#f59e0b', '#d97706'];
       case 'available':
         return ['#64748b', '#475569', '#334155'];
       case 'locked':
@@ -139,37 +98,21 @@ const EnhancedMissionBubble = ({
     }
   };
 
-  const getIconName = () => {
-    if (mission.status === 'locked') return 'lock-closed';
-    if (mission.type === 'boss') return 'flame';
-    if (mission.type === 'premium') return 'diamond';
-    if (mission.type === 'video') return 'play';
-    return 'star';
-  };
-
-  const getIconSize = () => {
-    if (mission.status === 'current') return 36;
-    if (mission.status === 'available') return 32;
-    return 28;
-  };
-
-  const getIconColor = () => {
-    if (mission.status === 'current') return '#ffffff';
-    if (mission.status === 'available') return '#ffffff';
-    return '#9ca3af';
-  };
+  // No longer using icon font; MissionBadge handles the glyphs
 
   return (
     <Animated.View
       style={[
         styles.container,
         {
-          left: position.x - 40,
-          top: position.y - 40,
+          left: position.x - BUBBLE_SIZE / 2,
+          top: position.y - BUBBLE_SIZE / 2,
           transform: [{ scale: scaleAnim }],
         },
       ]}
     >
+      {/* Current mission pulsing ring */}
+      {/* Current halo disabled per request (no purple thin line) */}
       {/* Unlock Animation */}
       {isUnlocking && (
         <View style={styles.unlockAnimation}>
@@ -184,48 +127,26 @@ const EnhancedMissionBubble = ({
         </View>
       )}
       
-      {/* Type Enhancement Ring */}
-      {(mission.type === 'boss' || mission.type === 'premium') && (
-        <View style={[
-          styles.typeRing,
-          mission.type === 'boss' ? styles.bossRing : styles.premiumRing
-        ]} />
-      )}
+      {/* Type Enhancement Ring (disabled to avoid heavy background shades) */}
       
-      {/* Main Mission Bubble */}
+      {/* Main Mission Badge (no background gradient to avoid extra rings) */}
       <TouchableOpacity
-        style={[
-          styles.bubble,
-          mission.status === 'locked' && styles.lockedBubble,
-        ]}
+        style={[styles.bubble, mission.status === 'locked' && styles.lockedBubble]}
         onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         activeOpacity={mission.status === 'locked' ? 1 : 0.8}
         disabled={mission.status === 'locked'}
       >
-        <LinearGradient
-          colors={getBubbleColors()}
-          style={styles.bubbleGradient}
-        >
-          {/* Inner Gradient Overlay */}
-          <View style={styles.innerOverlay} />
-          
-          {/* Mission Icon */}
-          <Ionicons
-            name={getIconName()}
-            size={getIconSize()}
-            color={getIconColor()}
-            style={styles.icon}
-          />
-          
-          {/* Lock Overlay */}
+        <View style={styles.badgeContainer}>
+          <MissionBadge type={getBadgeType()} size={BADGE_SIZE} />
+          {/* Locked teaser icon (subtle) */}
           {mission.status === 'locked' && (
-            <View style={styles.lockOverlay}>
-              <View style={styles.lockPlaceholder} />
+            <View style={{ position: 'absolute', opacity: 0.18 }}>
+              <View style={{ width: BADGE_SIZE * 0.6, height: BADGE_SIZE * 0.6, borderRadius: (BADGE_SIZE * 0.6)/2, backgroundColor: 'rgba(255,255,255,0.05)' }} />
             </View>
           )}
-        </LinearGradient>
+        </View>
         
         {/* NEW Tag */}
         {showNewTag && mission.status === 'available' && (
@@ -238,16 +159,7 @@ const EnhancedMissionBubble = ({
             </LinearGradient>
           </View>
         )}
-        
-        {/* Streak Bonus Ring */}
-        {streakBonus && (
-          <View style={styles.streakRing}>
-            <LinearGradient
-              colors={['#fbbf24', '#f59e0b', '#fbbf24']}
-              style={styles.streakGradient}
-            />
-          </View>
-        )}
+        {/* Streak ring disabled for cleaner look */}
       </TouchableOpacity>
 
       {/* Mission Title */}
@@ -265,8 +177,7 @@ const EnhancedMissionBubble = ({
         </Text>
       </View>
       
-      {/* Base Shadow */}
-      <View style={styles.shadow} />
+      {/* Remove base shadow bar for cleaner look */}
     </Animated.View>
   );
 };
@@ -277,14 +188,20 @@ const styles = {
     alignItems: 'center',
   },
   bubble: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: BUBBLE_SIZE,
+    height: BUBBLE_SIZE,
+    borderRadius: BUBBLE_SIZE / 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  badgeContainer: {
+    width: BUBBLE_SIZE,
+    height: BUBBLE_SIZE,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   bubbleGradient: {
     width: '100%',
@@ -342,6 +259,32 @@ const styles = {
     borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // Halo behind bubble to mimic Lovable glow
+  halo: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    top: -20,
+    left: -20,
+    opacity: 0.35,
+  },
+  haloGold: {
+    backgroundColor: 'rgba(251, 191, 36, 0.28)',
+    shadowColor: '#fbbf24',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 22,
+    elevation: 12,
+  },
+  haloAmber: {
+    backgroundColor: 'rgba(168, 85, 247, 0.28)',
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 22,
+    elevation: 12,
   },
   completedIconContainer: {
     justifyContent: 'center',
@@ -449,7 +392,7 @@ const styles = {
     lineHeight: 16,
   },
   currentTitle: {
-    color: theme.colors.primary,
+    color: '#22c55e',
   },
   availableTitle: {
     color: theme.colors.foreground,
