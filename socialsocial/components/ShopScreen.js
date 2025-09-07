@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import LimitedOffer from './LimitedOffer';
+import ProfileTopBar from '../src/components/ProfileTopBar';
+import { usePlayerProgress } from '../src/state/playerProgress';
 import ImprovedBadge from './ImprovedBadge';
 import LockedEffectCard from './LockedEffectCard';
 import PurchaseAnimation from './PurchaseAnimation';
@@ -11,6 +13,7 @@ const H_GAP = 12;
 const SIDE = Math.floor((width - 24 - H_GAP) / 2);
 
 export default function ShopScreen() {
+  const progress = usePlayerProgress();
   const [currency, setCurrency] = useState({ coins: 1250, diamonds: 8 });
   const [purchase, setPurchase] = useState({ visible: false, currency: 'coins', amount: 0 });
 
@@ -61,7 +64,21 @@ export default function ShopScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 28 }}>
+    <>
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+      <ProfileTopBar
+        userName={'Username'}
+        coins={progress.coins}
+        gems={progress.diamonds}
+        streak={progress.streakDays}
+        inStreak={progress.streakDays > 0}
+        onPressMembership={() => {}}
+        onPressCoins={() => {}}
+        onPressGems={() => {}}
+        onPressStreak={() => {}}
+      />
+    </View>
+    <ScrollView contentContainerStyle={{ padding: 12, paddingTop: 64, paddingBottom: 28 }}>
       {/* Header */}
       <View style={{ alignItems: 'center', marginTop: 12, marginBottom: 14 }}>
         <Text style={{ color: '#fff', fontSize: 30, fontWeight: '900' }}>Power Shop</Text>
@@ -217,6 +234,7 @@ export default function ShopScreen() {
         amount={purchase.amount}
       />
     </ScrollView>
+    </>
   );
 }
 

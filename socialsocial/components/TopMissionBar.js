@@ -14,10 +14,11 @@ import TopMissionBarStyles from './TopMissionBarStyles';
 const TopMissionBar = ({ 
   character, 
   timeRemaining, 
-  messagesLeft, 
+  messagesLeft,
   streak, 
   streakAnim, 
-  onBack 
+  onBack,
+  streakImage,
 }) => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(-50)).current;
@@ -184,7 +185,11 @@ const TopMissionBar = ({
                 colors={['rgba(251, 191, 36, 0.3)', 'rgba(245, 158, 11, 0.2)']}
                 style={TopMissionBarStyles.streakGradient}
               >
-                <Text style={TopMissionBarStyles.streakIcon}>🔥</Text>
+                {streakImage ? (
+                  <Image source={streakImage} style={{ width: 15.87, height: 15.87, marginRight: 2 }} resizeMode="contain" />
+                ) : (
+                  <Text style={TopMissionBarStyles.streakIcon}>🔥</Text>
+                )}
                 <Text style={TopMissionBarStyles.streakText}>
                   x{streak}
                 </Text>

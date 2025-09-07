@@ -43,7 +43,7 @@ const AnimatedConnectorTrail = ({ missions = [], pathPoints = [], style }) => {
         useNativeDriver: true,
       })
     ).start();
-  }, [dashOffset]);
+  }, [dashOffset]);                                                                                                             
 
   const hasCurrent = missions.some(m => m.status === 'current');
 

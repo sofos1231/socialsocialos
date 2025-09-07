@@ -4,6 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import styles, { CARD_BORDER, CARD_BG, GLASS_BG, GLASS_BORDER } from './ProfileStyles';
+import ProfileTopBar from '../src/components/ProfileTopBar';
+import { usePlayerProgress } from '../src/state/playerProgress';
 import theme from '../theme';
 
 const LevelPill = ({ level = 3 }) => (
@@ -328,12 +330,27 @@ const JourneyPanel = () => (
 
 const ProfileScreen = () => {
   const insets = useSafeAreaInsets();
+  const progress = usePlayerProgress();
 
   return (
+    <>
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+      <ProfileTopBar
+        userName={'Username'}
+        coins={progress.coins}
+        gems={progress.diamonds}
+        streak={progress.streakDays}
+        inStreak={progress.streakDays > 0}
+        onPressMembership={() => {}}
+        onPressCoins={() => {}}
+        onPressGems={() => {}}
+        onPressStreak={() => {}}
+      />
+    </View>
     <ScrollView
       showsVerticalScrollIndicator={false}
       contentContainerStyle={{
-        paddingTop: Math.max(16, insets.top + 8),
+        paddingTop: Math.max(64, insets.top + 8),
         paddingBottom: Math.max(24, insets.bottom + 18),
         paddingHorizontal: 16,
       }}
@@ -350,6 +367,7 @@ const ProfileScreen = () => {
       <Subscription />
       <JourneyPanel />
     </ScrollView>
+    </>
   );
 };
 

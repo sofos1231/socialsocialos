@@ -12,24 +12,31 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import PracticeCategoryCarousel from './PracticeCategoryCarousel';
-import WeeklyStreakCard from './WeeklyStreakCard';
 import JourneyFlashcards from './JourneyFlashcards';
 import styles from './PracticeHubStyles';
 import theme from '../theme.js';
-import TransparentTopBar from './TransparentTopBar';
+import ProfileTopBar from '../src/components/ProfileTopBar';
+import { usePlayerProgress } from '../src/state/playerProgress';
 import registry from '../data/practiceRegistry.json';
+import { usePracticeStore } from '../src/state/practiceStore';
 
 const { width, height } = Dimensions.get('window');
 
-const PracticeHub = ({ onShowPracticeRoad }) => {
+const PracticeHub = ({ onShowPracticeRoad, onShowEnhancedRoadmap, onShowStreak, onOpenMission }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const headerScaleAnim = useRef(new Animated.Value(0.8)).current;
   // Subtle animated shift between two deep blues for premium feel
   const blueShift = useRef(new Animated.Value(0)).current;
   const { bottom: safeBottomInset, top: safeTopInset } = useSafeAreaInsets();
+  const progress = usePlayerProgress();
 
   // Categories now loaded from JSON registry at ../data/practiceRegistry.json
   const practiceCategories = (registry.categories || []);
+
+  const store = usePracticeStore();
+  useEffect(() => {
+    store.fetchHub().catch(() => {});
+  }, []);
 
   // Enhanced entrance animation
   useEffect(() => {
@@ -73,12 +80,38 @@ const PracticeHub = ({ onShowPracticeRoad }) => {
     }
   };
 
+  const handleShowStreak = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (onShowStreak) onShowStreak();
+  };
+
+  const handleShowEnhancedRoadmap = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (onShowEnhancedRoadmap) {
+      onShowEnhancedRoadmap();
+    }
+  };
+
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  const topBarPadding = safeTopInset + 56; // single source of truth for top spacing under floating bar
+  const topBarPadding = safeTopInset + 56; // spacing below TopBar
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
+      {/* Global TopBar */}
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+        <ProfileTopBar
+          userName={'Username'}
+          coins={progress.coins}
+          gems={progress.diamonds}
+          streak={progress.streakDays}
+          inStreak={progress.streakDays > 0}
+          onPressMembership={() => {}}
+          onPressCoins={() => {}}
+          onPressGems={() => {}}
+          onPressStreak={handleShowStreak}
+        />
+      </View>
       {/* Background Layers */}
       {/* Base: true black to deep navy vertical gradient */}
       <LinearGradient
@@ -140,8 +173,28 @@ const PracticeHub = ({ onShowPracticeRoad }) => {
         )}
         scrollEventThrottle={16}
       >
-        {/* Weekly Streak Card */}
-        <WeeklyStreakCard />
+        {/* Weekly Streak Card removed; now shown on StreakScreen */}
+        {/* Minimal logic-only debug: show hub balances if available */}
+        {store.hub && (
+          <View style={{ padding: 12 }}>
+            <Text style={{ color: '#9ca3af' }}>Level: {store.hub.user.level} XP: {store.hub.user.xp}</Text>
+            <Text style={{ color: '#9ca3af' }}>Streak: {store.hub.user.streak.current}</Text>
+            {store.hub.activeSession && (
+              <Text style={{ color: '#9ca3af' }}>Active Session: {store.hub.activeSession.id}</Text>
+            )}
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await store.startQuickDrill();
+                  if (onOpenMission) onOpenMission();
+                } catch {}
+              }}
+              style={{ marginTop: 8, padding: 10, backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 8 }}
+            >
+              <Text style={{ color: '#c7d2fe', fontWeight: '700', textAlign: 'center' }}>Start Quick Drill</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Category Carousels */}
         <View style={styles.categoriesContainer}>
@@ -169,6 +222,23 @@ const PracticeHub = ({ onShowPracticeRoad }) => {
             </Animated.View>
           ))}
         </View>
+
+        {/* Minimal counts from hub */}
+        {store.hub && (
+          <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+            {store.hub.categories.map((c) => (
+              <Text key={c.key} style={{ color: '#6b7280' }}>{c.title}: {c.completed}/{c.total}</Text>
+            ))}
+            {store.hub.activeSession && (
+              <TouchableOpacity
+                onPress={() => onOpenMission && onOpenMission()}
+                style={{ marginTop: 8, padding: 10, backgroundColor: 'rgba(16,185,129,0.15)', borderRadius: 8 }}
+              >
+                <Text style={{ color: '#a7f3d0', fontWeight: '700', textAlign: 'center' }}>Continue Session</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Your Journey */}
         <View style={{ marginTop: 6 }}>
@@ -200,6 +270,30 @@ const PracticeHub = ({ onShowPracticeRoad }) => {
           </TouchableOpacity>
         </View>
 
+        {/* Enhanced Roadmap Button */}
+        <View style={{ marginTop: 10, marginBottom: 20 }}>
+          <TouchableOpacity
+            onPress={handleShowEnhancedRoadmap}
+            style={{
+              backgroundColor: 'rgba(236, 72, 153, 0.15)',
+              borderWidth: 1,
+              borderColor: 'rgba(236, 72, 153, 0.35)',
+              borderRadius: 16,
+              paddingVertical: 16,
+              paddingHorizontal: 20,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="trail-sign" size={22} color="#ec4899" style={{ marginRight: 12 }} />
+            <Text style={{ color: '#ec4899', fontSize: 18, fontWeight: '700' }}>
+              View Enhanced Roadmap
+            </Text>
+            <Ionicons name="chevron-forward" size={20} color="#ec4899" style={{ marginLeft: 8 }} />
+          </TouchableOpacity>
+        </View>
+
         {/* Motivational Footer */}
         <View style={{ marginTop: 14 }}>
           <LinearGradient
@@ -222,28 +316,9 @@ const PracticeHub = ({ onShowPracticeRoad }) => {
       </ScrollView>
 
       {/* Transparent floating top bar */}
-      <TransparentTopBar
-        level={5}
-        currentXP={1250}
-        nextLevelXP={2000}
-        coins={1250}
-        gems={8}
-        avatar={null}
-        scrollY={scrollY}
-        onPressGems={() => {
-          // Placeholder for navigation to Shop
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          console.log('Navigate to Shop');
-        }}
-        onPressCoins={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          console.log('Coins pressed');
-        }}
-        onPressAvatar={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          console.log('Profile pressed');
-        }}
-      />
+      {null}
+
+      {null}
     </SafeAreaView>
   );
 };

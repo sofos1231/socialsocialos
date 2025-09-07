@@ -10,9 +10,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import theme from '../theme.js';
 import MissionBadge from './MissionBadge';
 
-// Global sizing for mission nodes
-const BUBBLE_SIZE = 92; // 15% larger than previous 80
-const BADGE_SIZE = 84; // scaled with bubble
+// Global sizing for mission nodes (smaller per request)
+const BUBBLE_SIZE = 84;
+const BADGE_SIZE = 72;
 
 const { width } = Dimensions.get('window');
 
@@ -79,8 +79,9 @@ const EnhancedMissionBubble = ({
   const getBadgeType = () => {
     if (mission.status === 'completed') return 'completed';
     if (mission.status === 'current') return 'inProgress';
-    if (mission.type === 'premium') return 'premium';
     if (mission.status === 'locked') return 'locked';
+    if (mission.type === 'video') return 'video';
+    if (mission.type === 'premium') return 'premium';
     return 'available';
   };
 
@@ -139,7 +140,21 @@ const EnhancedMissionBubble = ({
         disabled={mission.status === 'locked'}
       >
         <View style={styles.badgeContainer}>
-          <MissionBadge type={getBadgeType()} size={BADGE_SIZE} />
+          {(() => {
+            const displayMission = {
+              ...mission,
+              // Treat current/available non-video as the next mission for UI (green play coin)
+              isNext: mission?.isNext === true || ((mission.status === 'current' || mission.status === 'available') && mission?.type !== 'video')
+            };
+            return (
+              <MissionBadge
+                mission={displayMission}
+                type={getBadgeType()}
+                size={BADGE_SIZE}
+                onNextPress={() => onTap(mission)}
+              />
+            );
+          })()}
           {/* Locked teaser icon (subtle) */}
           {mission.status === 'locked' && (
             <View style={{ position: 'absolute', opacity: 0.18 }}>
@@ -381,7 +396,7 @@ const styles = {
     fontWeight: 'bold',
   },
   titleContainer: {
-    marginTop: 16,
+    marginTop: 12,
     maxWidth: 120,
     alignItems: 'center',
   },

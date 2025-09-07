@@ -24,6 +24,8 @@ const TransparentTopBar = ({
   onPressGems,
   onPressAvatar,
   scrollY, // Animated.Value or number (0..)
+  coinImage, // optional custom coin image
+  diamondImage, // optional custom diamond image
 }) => {
   const insets = useSafeAreaInsets();
 
@@ -88,6 +90,8 @@ const TransparentTopBar = ({
   };
 
   const hitSlop = { top: 10, bottom: 10, left: 10, right: 10 };
+  const coinIconSource = coinImage || require('../assets/icons/gold-coin.png');
+  const diamondIconSource = diamondImage || require('../assets/icons/diamond.png');
 
   return (
     <Animated.View
@@ -165,7 +169,7 @@ const TransparentTopBar = ({
             activeOpacity={0.85}
           >
             <View style={[styles.currencyBadge, styles.coinBadgeBg]}>
-              <Ionicons name="cash-outline" size={13} color="#fff" />
+              <Image source={coinIconSource} style={{ width: 17.1925, height: 17.1925 }} resizeMode="contain" />
             </View>
             <Text style={styles.currencyText}>{coins.toLocaleString()}</Text>
           </TouchableOpacity>
@@ -179,7 +183,7 @@ const TransparentTopBar = ({
             activeOpacity={0.85}
           >
             <View style={[styles.currencyBadge, styles.gemBadgeBg]}>
-              <Ionicons name="diamond" size={13} color="#fff" />
+              <Image source={diamondIconSource} style={{ width: 17.1925, height: 17.1925 }} resizeMode="contain" />
             </View>
             <Text style={styles.currencyText}>{gems}</Text>
           </TouchableOpacity>

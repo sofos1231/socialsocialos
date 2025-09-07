@@ -1,13 +1,246 @@
 import React from 'react';
 import Svg, { Defs, LinearGradient, RadialGradient, Stop, G, Circle, Path, Rect, Polygon, Polyline } from 'react-native-svg';
-import { Image, View } from 'react-native';
+import { Image, View, Pressable, Animated } from 'react-native';
 import { lockedBadgeSource, currentBadgeSource, completedBadgeSource, premiumBadgeSource, availableBadgeSource, bossBadgeSource, videoBadgeSource } from '../config/badges';
+import { resolveMissionIcon, getNextIcon, getVideoNextIcon, isNextDisabled } from '../src/mission/iconSelectors';
+import { ICON_MISSION_LOCKED_GRAY, ICON_VIDEO_LOCKED } from '../src/mission/assets';
+import * as Haptics from 'expo-haptics';
 
 // Badge types: completed (gold check), inProgress (gold with purple rim star),
 // locked (silver lock), premium (diamond), available (neutral star)
-const MissionBadge = ({ type = 'available', size = 64 }) => {
+const MissionBadge = ({ type = 'available', size = 64, mission = null, onNextPress = null }) => {
   const s = size;
   const center = s / 2;
+
+  // NEXT MISSION (video/non-video) and COMPLETED badges
+  if (mission) {
+    // Locked handling first
+    if (mission.locked === true) {
+      // Video locked: non-interactive image
+      if (mission.type === 'video') {
+        return (
+          <View pointerEvents="none" style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+            {ICON_VIDEO_LOCKED ? (
+              <View style={{ width: size, height: size, borderRadius: size/2, overflow: 'hidden' }}>
+                <Image source={ICON_VIDEO_LOCKED} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              </View>
+            ) : (
+              <Svg width={80} height={80} viewBox="0 0 80 80">
+                <Rect x={16} y={26} width={36} height={28} rx={6} fill="#6A6A6A" />
+                <Circle cx={34} cy={40} r={8} fill="#4b4b4b" />
+                <Polygon points="52,30 66,40 52,50" fill="#6A6A6A" />
+              </Svg>
+            )}
+          </View>
+        );
+      }
+
+      // Non-video locked: pressable with shake + warning haptic
+      const pressScale = React.useRef(new Animated.Value(1)).current;
+      const shake = React.useRef(new Animated.Value(0)).current;
+      const onPressIn = () => Animated.spring(pressScale, { toValue: 0.96, useNativeDriver: true }).start();
+      const onPressOut = () => Animated.spring(pressScale, { toValue: 1, useNativeDriver: true }).start();
+      const handleLockedPress = async () => {
+        try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); } catch {}
+        shake.setValue(0);
+        Animated.sequence([
+          Animated.timing(shake, { toValue: 1, duration: 120, useNativeDriver: true }),
+          Animated.timing(shake, { toValue: 0, duration: 1, useNativeDriver: true }),
+        ]).start();
+        // optional modal handler at parent
+        if (typeof onNextPress === 'function') {
+          // reuse handler to avoid new prop; parent can branch on mission.locked
+          onNextPress(mission);
+        }
+      };
+      const tx = shake.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [0, -4, 4, -2, 0] });
+      return (
+        <Animated.View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center', transform: [{ scale: pressScale }, { translateX: tx }] }}>
+          <Pressable onPressIn={onPressIn} onPressOut={onPressOut} onPress={handleLockedPress} accessibilityLabel="Locked mission" accessibilityRole="button" style={{ justifyContent: 'center', alignItems: 'center' }}>
+            {ICON_MISSION_LOCKED_GRAY ? (
+              <View style={{ width: size, height: size, borderRadius: size/2, overflow: 'hidden' }}>
+                <Image source={ICON_MISSION_LOCKED_GRAY} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              </View>
+            ) : (
+              <Svg width={80} height={80} viewBox="0 0 80 80">
+                <Rect x={28} y={44} width={44} height={28} rx={6} fill="#6A6A6A" />
+                <Path d={`M 36 44 v -10 a 16 16 0 0 1 32 0 v 10`} stroke="#6A6A6A" strokeWidth={8} fill="none" />
+                <Path d={`M 50 58 v 10`} stroke="#4b4b4b" strokeWidth={6} strokeLinecap="round" />
+              </Svg>
+            )}
+          </Pressable>
+        </Animated.View>
+      );
+    }
+    const resolved = resolveMissionIcon(mission);
+    const isCompletedState = mission?.status === 'completed';
+    const qualifiesVideoNext = mission?.isNext === true && mission?.status !== 'completed' && mission?.type === 'video' && mission?.locked !== true;
+    const qualifiesNextNonVideo = mission?.isNext === true && mission?.status !== 'completed' && mission?.type !== 'video' && mission?.locked !== true;
+
+    // Interactive NEXT (video/non-video)
+    if (qualifiesVideoNext || qualifiesNextNonVideo) {
+      const pressScale = React.useRef(new Animated.Value(1)).current;
+      React.useEffect(() => {
+        const pulse = Animated.sequence([
+          Animated.timing(pressScale, { toValue: 1.08, duration: 300, useNativeDriver: true }),
+          Animated.timing(pressScale, { toValue: 1.0, duration: 500, useNativeDriver: true }),
+        ]);
+        Animated.sequence([pulse, pulse]).start();
+      }, []);
+
+      const handlePressIn = () => {
+        Animated.spring(pressScale, { toValue: 0.96, useNativeDriver: true, tension: 120, friction: 8 }).start();
+      };
+      const handlePressOut = () => {
+        Animated.spring(pressScale, { toValue: 1, useNativeDriver: true, tension: 120, friction: 8 }).start();
+      };
+      const handlePress = async () => {
+        try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+        try { console.log(qualifiesVideoNext ? 'video_next_pressed' : 'next_mission_pressed', mission?.id); } catch {}
+        if (typeof onNextPress === 'function') {
+          onNextPress(mission);
+        }
+      };
+
+      // Disabled handling only applies to non-video next (video-locked is handled elsewhere)
+      if (qualifiesNextNonVideo && isNextDisabled(mission)) {
+        return (
+          <View pointerEvents="none" style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center', opacity: 0.6 }}>
+            {getNextIcon(mission) ? (
+              <View style={{ width: size, height: size, borderRadius: size/2, overflow: 'hidden' }}>
+                <Image source={getNextIcon(mission)} style={{ width: '100%', height: '100%' }} resizeMode="cover" accessible accessibilityLabel="Next mission" />
+              </View>
+            ) : (
+              <Svg width={80} height={80} viewBox="0 0 80 80" accessibilityLabel="Next mission">
+                <Polygon points="24,18 64,40 24,62" fill="#ffffff" />
+              </Svg>
+            )}
+          </View>
+        );
+      }
+
+      return (
+        <Animated.View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center', transform: [{ scale: pressScale }] }}>
+          <Pressable
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            onPress={handlePress}
+            accessibilityLabel={qualifiesVideoNext ? 'Start video mission' : 'Next mission'}
+            accessibilityRole="button"
+            style={{ justifyContent: 'center', alignItems: 'center' }}
+          >
+            {qualifiesVideoNext ? (
+              getVideoNextIcon(mission) ? (
+                <View style={{ width: size, height: size, borderRadius: size/2, overflow: 'hidden' }}>
+                  <Image source={getVideoNextIcon(mission)} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                </View>
+              ) : (
+                <Svg width={80} height={80} viewBox="0 0 80 80">
+                  <Rect x={16} y={26} width={36} height={28} rx={6} fill="#ffffff" />
+                  <Circle cx={34} cy={40} r={8} fill="#1f2937" />
+                  <Polygon points="52,30 66,40 52,50" fill="#ffffff" />
+                </Svg>
+              )
+            ) : qualifiesNextNonVideo ? (
+              getNextIcon(mission) ? (
+                <View style={{ width: size, height: size, borderRadius: size/2, overflow: 'hidden' }}>
+                  <Image source={getNextIcon(mission)} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                </View>
+              ) : (
+                <Svg width={80} height={80} viewBox="0 0 80 80">
+                  <Polygon points="24,18 64,40 24,62" fill="#ffffff" />
+                </Svg>
+              )
+            ) : resolved ? (
+              <View style={{ width: size, height: size, borderRadius: size/2, overflow: 'hidden' }}>
+                <Image source={resolved} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              </View>
+            ) : (
+              <Svg width={80} height={80} viewBox="0 0 80 80">
+                <Polygon points="24,18 64,40 24,62" fill="#ffffff" />
+              </Svg>
+            )}
+          </Pressable>
+        </Animated.View>
+      );
+    }
+
+    // Non-interactive COMPLETED badges (gold/video/completed green)
+    if (resolved || isCompletedState) {
+      const isCompleted = true;
+      return (
+        <View pointerEvents="none" style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          {resolved ? (
+            <View style={{ width: size, height: size, borderRadius: size/2, overflow: 'hidden' }}>
+              <Image source={resolved} style={{ width: '100%', height: '100%' }} resizeMode="cover" accessible accessibilityLabel="Completed mission" />
+            </View>
+          ) : mission?.type === 'video' ? (
+            <Svg width={80} height={80} viewBox="0 0 80 80">
+              <Rect x={16} y={26} width={36} height={28} rx={6} fill="#ffffff" />
+              <Circle cx={34} cy={40} r={8} fill="#1f2937" />
+              <Polygon points="52,30 66,40 52,50" fill="#ffffff" />
+            </Svg>
+          ) : (
+            <Svg width={80} height={80} viewBox="0 0 80 80">
+              <Path d="M 20 42 l 10 10 l 30 -30" stroke="#f59e0b" strokeWidth={8} strokeLinecap="round" fill="none" />
+            </Svg>
+          )}
+        </View>
+      );
+    }
+    const qualifiesNext =
+      mission?.isNext === true &&
+      mission?.status !== 'completed' &&
+      mission?.type !== 'video' &&
+      mission?.locked !== true;
+
+    // old next handling removed; now handled above via resolver + get*NextIcon
+  }
+
+  // Resolver-based PNG override (video-completed > completed > next); non-interactive
+  if (mission) {
+    const resolved = resolveMissionIcon(mission);
+    if (resolved) {
+      const isCompleted = mission.status === 'completed';
+      return (
+        <View pointerEvents="none" style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+          <Image
+            source={resolved}
+            style={{ width: 96, height: 96 }}
+            resizeMode="contain"
+            accessible
+            accessibilityLabel={isCompleted ? 'Completed mission' : 'Mission icon'}
+          />
+        </View>
+      );
+    }
+    // Fallbacks: video camera for completed video; checkmark for completed non-video
+    if (mission.status === 'completed' && mission._isGoldMilestone !== true) {
+      if (mission.type === 'video') {
+        return (
+          <View pointerEvents="none" style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+            <Svg width={80} height={80} viewBox="0 0 80 80">
+              {/* Camera body */}
+              <Rect x={16} y={26} width={36} height={28} rx={6} fill="#ffffff" />
+              {/* Lens */}
+              <Circle cx={34} cy={40} r={8} fill="#1f2937" />
+              {/* Right-facing triangle to suggest video */}
+              <Polygon points="52,30 66,40 52,50" fill="#ffffff" />
+            </Svg>
+          </View>
+        );
+      }
+      if (mission.type !== 'video') {
+        return (
+          <View pointerEvents="none" style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+            <Svg width={80} height={80} viewBox="0 0 80 80">
+              <Path d="M 20 42 l 10 10 l 30 -30" stroke="#ffffff" strokeWidth={8} strokeLinecap="round" fill="none" />
+            </Svg>
+          </View>
+        );
+      }
+    }
+  }
 
   // Image overrides first (if provided)
   const wrapImage = (src) => (

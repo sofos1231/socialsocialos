@@ -5,11 +5,15 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import BottomNavigationBar from './components/BottomNavigationBar';
 import PracticeHub from './components/PracticeHub';
 import PracticeRoad from './screens/PracticeRoad';
+import EnhancedRoadmapScreen from './screens/EnhancedRoadmapScreen';
 import StatsScreen from './components/StatsScreen';
 import MissionScreen from './components/MissionScreen';
+import MissionSessionScreen from './screens/MissionSessionScreen';
 import ShopScreen from './components/ShopScreen';
 import ProfileScreen from './components/ProfileScreen';
 import SwipePager from './components/SwipePager';
+import StreakScreen from './screens/StreakScreen';
+import { PlayerProgressProvider } from './src/state/playerProgress';
 
     const TABS = ['practice', 'stats', 'shop', 'profile'];
 const indexFromTab = (tab) => Math.max(0, TABS.indexOf(tab));
@@ -20,6 +24,8 @@ export default function App() {
   const [showMission, setShowMission] = useState(false);
   const [showPracticeRoad, setShowPracticeRoad] = useState(false);
   const [pagerProgress, setPagerProgress] = useState(0); // 0..(tabs-1)
+  const [showStreakScreen, setShowStreakScreen] = useState(false);
+  const [showEnhancedRoadmap, setShowEnhancedRoadmap] = useState(false);
   const pagerRef = useRef(null);
 
   const handleTabPress = (tabName) => {
@@ -42,7 +48,7 @@ export default function App() {
   if (showMission) {
     return (
       <SafeAreaProvider>
-        <MissionScreen navigation={mockNavigation} />
+        <MissionSessionScreen navigation={mockNavigation} />
       </SafeAreaProvider>
     );
   }
@@ -55,7 +61,24 @@ export default function App() {
     );
   }
 
+  if (showEnhancedRoadmap) {
+    return (
+      <SafeAreaProvider>
+        <EnhancedRoadmapScreen onShowStreak={() => setShowStreakScreen(true)} />
+      </SafeAreaProvider>
+    );
+  }
+
+  if (showStreakScreen) {
+    return (
+      <SafeAreaProvider>
+        <StreakScreen onClose={() => setShowStreakScreen(false)} />
+      </SafeAreaProvider>
+    );
+  }
+
   return (
+    <PlayerProgressProvider>
     <SafeAreaProvider>
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
@@ -70,7 +93,12 @@ export default function App() {
               onProgress={(f) => setPagerProgress(f)}
             >
               <View style={styles.practiceContainer}>
-                <PracticeHub onShowPracticeRoad={() => setShowPracticeRoad(true)} />
+                <PracticeHub 
+                  onShowPracticeRoad={() => setShowPracticeRoad(true)}
+                  onShowEnhancedRoadmap={() => setShowEnhancedRoadmap(true)}
+                  onShowStreak={() => setShowStreakScreen(true)}
+                  onOpenMission={() => setShowMission(true)}
+                />
               </View>
               <StatsScreen />
               <ShopScreen />
@@ -85,6 +113,7 @@ export default function App() {
         </LinearGradient>
       </View>
     </SafeAreaProvider>
+    </PlayerProgressProvider>
   );
 }
 

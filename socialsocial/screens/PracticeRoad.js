@@ -14,12 +14,15 @@ import EnhancedMissionBubble from '../components/EnhancedMissionBubble';
 import AnimatedConnectorTrail from '../components/AnimatedConnectorTrail';
 import BackgroundParticles from '../components/BackgroundParticles';
 import BackgroundChapterArt from '../components/BackgroundChapterArt';
-import ProgressTopBar from '../components/ProgressTopBar';
+// Removed legacy ProgressTopBar in favor of global TopBar
 import MissionPopup from '../components/MissionPopup';
 import RewardPopup from '../components/RewardPopup';
 import CelebrationOverlay from '../components/CelebrationOverlay';
 import CoachCharacter from '../components/CoachCharacter';
 import theme from '../theme.js';
+import { tagGoldMilestones } from '../src/mission/milestones';
+import ProfileTopBar from '../src/components/ProfileTopBar';
+import { usePlayerProgress } from '../src/state/playerProgress';
 
 const { width, height } = Dimensions.get('window');
 
@@ -101,7 +104,7 @@ const PracticeRoad = ({ navigation }) => {
               type: 'chat',
               duration: '6 min',
               xpReward: 125,
-              status: 'current',
+              status: 'completed',
               difficulty: 'medium'
             },
             {
@@ -111,7 +114,7 @@ const PracticeRoad = ({ navigation }) => {
               type: 'chat',
               duration: '4 min',
               xpReward: 100,
-              status: 'available',
+              status: 'completed',
               difficulty: 'medium'
             },
             {
@@ -121,7 +124,7 @@ const PracticeRoad = ({ navigation }) => {
               type: 'chat',
               duration: '5 min',
               xpReward: 150,
-              status: 'locked',
+              status: 'completed',
               difficulty: 'hard'
             },
             {
@@ -131,7 +134,7 @@ const PracticeRoad = ({ navigation }) => {
               type: 'premium',
               duration: '7 min',
               xpReward: 200,
-              status: 'locked',
+              status: 'current',
               difficulty: 'hard'
             },
             {
@@ -246,6 +249,7 @@ const PracticeRoad = ({ navigation }) => {
   };
 
   const { title, chapterNumber, icon: categoryIcon, color, missions } = getMissionData();
+  tagGoldMilestones(missions);
 
   const completedMissions = missions.filter(m => m.status === 'completed').length;
   const totalMissions = missions.length;
@@ -254,12 +258,12 @@ const PracticeRoad = ({ navigation }) => {
 
   const generateWavyPositions = () => {
     const centerX = width * 0.5; // Center of screen
-    const amplitude = width * 0.12; // Wave amplitude
+    const amplitude = width * 0.18; // Increase wave amplitude for wider separation
     const frequency = 0.7; // Wave frequency
-    const stepY = 120; // Reduced spacing for continuous path
+    const stepY = 150; // Increase vertical spacing between missions
     
     return missions.map((_, index) => {
-      const y = index * stepY + 100;
+      const y = index * stepY + 120;
       const waveOffset = Math.sin(index * frequency) * amplitude;
       const x = centerX + waveOffset;
       return { x, y };
@@ -267,7 +271,7 @@ const PracticeRoad = ({ navigation }) => {
   };
 
   const positions = generateWavyPositions();
-  const totalHeight = positions[positions.length - 1]?.y + 220 || 640;
+  const totalHeight = positions[positions.length - 1]?.y + 280 || 800;
 
   const handleMissionTap = (mission) => {
     setSelectedMission(mission);
@@ -326,8 +330,22 @@ const PracticeRoad = ({ navigation }) => {
     return "encouraging";
   };
 
+  const progress = usePlayerProgress();
   return (
     <View style={styles.container}>
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+        <ProfileTopBar
+          userName={'Username'}
+          coins={progress.coins}
+          gems={progress.diamonds}
+          streak={progress.streakDays}
+          inStreak={progress.streakDays > 0}
+          onPressMembership={() => {}}
+          onPressCoins={() => {}}
+          onPressGems={() => {}}
+          onPressStreak={() => {}}
+        />
+      </View>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
       {/* Subtle background chapter art and particles */}
       <BackgroundChapterArt category={category} />
@@ -342,16 +360,7 @@ const PracticeRoad = ({ navigation }) => {
           }
         ]}
       >
-        {/* Progress Top Bar */}
-        <ProgressTopBar
-          title={title}
-          chapterNumber={chapterNumber}
-          completedMissions={completedMissions}
-          totalMissions={totalMissions}
-          totalXP={totalXP}
-          icon={categoryIcon}
-          onBack={() => navigation.goBack()}
-        />
+        {/* Progress header removed; TopBar used globally */}
 
         {/* Scrollable Mission Road */}
         <ScrollView 
