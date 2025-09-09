@@ -1,5 +1,129 @@
 {
-  "categories": []
+  "categories": [
+    {
+      "id": "dating",
+      "title": "Dating & Romance",
+      "subtitle": "Warm openers and playful banter",
+      "icon": "heart",
+      "sessions": [
+        {
+          "id": "dating_intro",
+          "title": "Friendly Opener",
+          "subtitle": "Say hi with confidence",
+          "status": "unlocked",
+          "time": "30s",
+          "xp": 12,
+          "coverImage": "💬",
+          "tags": ["Trending", "⏱ 30s"],
+          "progress": 0
+        },
+        {
+          "id": "dating_followup",
+          "title": "Keep It Flowing",
+          "subtitle": "Follow-up questions",
+          "status": "in-progress",
+          "time": "2m",
+          "xp": 20,
+          "coverImage": "✨",
+          "tags": ["⭐ Skill", "⏱ 2m"],
+          "progress": 35
+        },
+        {
+          "id": "dating_premium",
+          "title": "Premium Tease",
+          "subtitle": "Playful push-pull",
+          "status": "locked",
+          "time": "1m",
+          "xp": 30,
+          "coverImage": "👑",
+          "tags": ["Premium", "⏱ 1m"],
+          "progress": 0
+        }
+      ]
+    },
+    {
+      "id": "interview",
+      "title": "Interview & Career",
+      "subtitle": "Crisp stories and metrics",
+      "icon": "briefcase",
+      "sessions": [
+        {
+          "id": "interview_pitch",
+          "title": "30s Pitch",
+          "subtitle": "Tell me about yourself",
+          "status": "unlocked",
+          "time": "30s",
+          "xp": 15,
+          "coverImage": "🧠",
+          "tags": ["⏱ 30s"],
+          "progress": 0
+        },
+        {
+          "id": "interview_star",
+          "title": "STAR Story",
+          "subtitle": "Impact under pressure",
+          "status": "completed",
+          "time": "3m",
+          "xp": 25,
+          "coverImage": "🌟",
+          "tags": ["⭐ Skill", "⏱ 3m"],
+          "progress": 100
+        },
+        {
+          "id": "interview_cooldown",
+          "title": "Mock Panel",
+          "subtitle": "Timed Q&A",
+          "status": "locked",
+          "time": "5m",
+          "xp": 40,
+          "coverImage": "⏳",
+          "tags": ["Cooldown", "⏱ 5m"],
+          "progress": 0
+        }
+      ]
+    },
+    {
+      "id": "social",
+      "title": "Social Confidence",
+      "subtitle": "Small talk to real talk",
+      "icon": "people",
+      "sessions": [
+        {
+          "id": "social_smalltalk",
+          "title": "Small Talk Sprint",
+          "subtitle": "Keep it flowing",
+          "status": "unlocked",
+          "time": "1m",
+          "xp": 10,
+          "coverImage": "💬",
+          "tags": ["⏱ 1m"],
+          "progress": 0
+        },
+        {
+          "id": "social_listening",
+          "title": "Active Listening",
+          "subtitle": "Mirror and label",
+          "status": "unlocked",
+          "time": "2m",
+          "xp": 18,
+          "coverImage": "👂",
+          "tags": ["⭐ Skill", "⏱ 2m"],
+          "progress": 0
+        },
+        {
+          "id": "social_boundaries",
+          "title": "Kind Boundaries",
+          "subtitle": "Say no gracefully",
+          "status": "locked",
+          "time": "2m",
+          "xp": 22,
+          "coverImage": "🛡️",
+          "tags": ["Level", "⏱ 2m"],
+          "progress": 0
+        }
+      ]
+    }
+  ]
 }
 
 

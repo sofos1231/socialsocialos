@@ -47,33 +47,41 @@ export default function App() {
 
   if (showMission) {
     return (
-      <SafeAreaProvider>
-        <MissionSessionScreen navigation={mockNavigation} />
-      </SafeAreaProvider>
+      <PlayerProgressProvider>
+        <SafeAreaProvider>
+          <MissionSessionScreen navigation={mockNavigation} />
+        </SafeAreaProvider>
+      </PlayerProgressProvider>
     );
   }
 
   if (showPracticeRoad) {
     return (
-      <SafeAreaProvider>
-        <PracticeRoad navigation={mockRoadNavigation} />
-      </SafeAreaProvider>
+      <PlayerProgressProvider>
+        <SafeAreaProvider>
+          <PracticeRoad navigation={mockRoadNavigation} />
+        </SafeAreaProvider>
+      </PlayerProgressProvider>
     );
   }
 
   if (showEnhancedRoadmap) {
     return (
-      <SafeAreaProvider>
-        <EnhancedRoadmapScreen onShowStreak={() => setShowStreakScreen(true)} />
-      </SafeAreaProvider>
+      <PlayerProgressProvider>
+        <SafeAreaProvider>
+          <EnhancedRoadmapScreen onShowStreak={() => setShowStreakScreen(true)} />
+        </SafeAreaProvider>
+      </PlayerProgressProvider>
     );
   }
 
   if (showStreakScreen) {
     return (
-      <SafeAreaProvider>
-        <StreakScreen onClose={() => setShowStreakScreen(false)} />
-      </SafeAreaProvider>
+      <PlayerProgressProvider>
+        <SafeAreaProvider>
+          <StreakScreen onClose={() => setShowStreakScreen(false)} />
+        </SafeAreaProvider>
+      </PlayerProgressProvider>
     );
   }
 
