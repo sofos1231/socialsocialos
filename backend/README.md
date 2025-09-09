@@ -56,6 +56,15 @@ npm run db:seed
 npm run dev
 ```
 
+### Environment
+
+- If `.env.example` is not present, create `.env` using the template in `../docs/ENV.md`. For local SQLite:
+
+```ini
+DATABASE_URL="file:./dev.db"
+JWT_SECRET="change-me"
+```
+
 ## 🎉 Ready to Launch!
 
 Just say **"read startup"** and the complete SocialGym dashboard system will be launched automatically! 🚀

@@ -14,7 +14,7 @@ async function main() {
         create: {
           level: 1,
           xp: 0,
-          streak: 0,
+          streakCurrent: 0,
         },
       },
       stats: {
@@ -24,30 +24,61 @@ async function main() {
           totalXp: 0,
         },
       },
+      // ensure progress exists
     },
   });
 
-  // Create some sample missions
-  const missions = await Promise.all([
-    prisma.mission.create({
-      data: {
-        title: 'First Steps',
-        description: 'Complete your first practice session',
-        category: 'beginner',
-        difficulty: 'beginner',
-        xpReward: 10,
+  // Ensure user progress exists
+  await prisma.userProgress.upsert({ where: { userId: user.id }, update: {}, create: { userId: user.id } });
+
+  // Categories
+  const categories = [
+    { key: 'dating', title: 'Dating & Romance', unlockedAtLevel: 1, premium: false },
+    { key: 'interview', title: 'Interview & Career', unlockedAtLevel: 1, premium: false },
+    { key: 'social', title: 'Social Confidence', unlockedAtLevel: 2, premium: false },
+  ];
+  for (const c of categories) {
+    await prisma.category.upsert({ where: { key: c.key }, update: c as any, create: c as any });
+  }
+
+  // Create sample missions
+  const missions = [
+    { key: 'dating_intro', title: 'Dating Opener', description: 'Practice friendly openers', category: 'dating', type: 'chat', difficulty: 'beginner', rewards: JSON.stringify({ xp: 12 }), requirements: JSON.stringify({ minLevel: 1 }) },
+    { key: 'interview_intro', title: 'Tell Me About Yourself', description: '30s pitch', category: 'interview', type: 'chat', difficulty: 'beginner', rewards: JSON.stringify({ xp: 15 }), requirements: JSON.stringify({ minLevel: 1 }), cooldownSec: 3600 },
+    { key: 'social_smalltalk', title: 'Small Talk Sprint', description: 'Keep it flowing', category: 'social', type: 'chat', difficulty: 'beginner', rewards: JSON.stringify({ xp: 10 }), requirements: JSON.stringify({ minLevel: 2 }) },
+    { key: 'premium_mastery', title: 'Premium Mastery', description: 'Exclusive premium mission', category: 'dating', type: 'chat', difficulty: 'intermediate', rewards: JSON.stringify({ xp: 20 }), requirements: JSON.stringify({ minLevel: 1 }), premium: true },
+  ];
+  for (const m of missions) {
+    await prisma.mission.upsert({ where: { key: m.key }, update: m as any, create: m as any });
+  }
+
+  // Add a prereq-locked mission that depends on dating_intro
+  const datingIntro = await prisma.mission.findUnique({ where: { key: 'dating_intro' } });
+  if (datingIntro) {
+    const prereqReq = { prerequisiteMissionIds: [datingIntro.id], minLevel: 1 } as any;
+    await prisma.mission.upsert({
+      where: { key: 'dating_followup' },
+      update: { title: 'Dating Follow-up', category: 'dating', type: 'chat', difficulty: 'beginner', rewards: JSON.stringify({ xp: 14 }), requirements: JSON.stringify(prereqReq) } as any,
+      create: { key: 'dating_followup', title: 'Dating Follow-up', description: 'Second step after opener', category: 'dating', type: 'chat', difficulty: 'beginner', rewards: JSON.stringify({ xp: 14 }), requirements: JSON.stringify(prereqReq) } as any,
+    });
+  }
+
+  // Ensure cooldown lock coverage: set last completion for the cooldown mission to now
+  const cooldownMission = await prisma.mission.findUnique({ where: { key: 'interview_intro' } });
+  if (cooldownMission) {
+    await prisma.userProgress.upsert({
+      where: { userId: user.id },
+      update: {
+        lastCompletionByMission: JSON.stringify({ [cooldownMission.id]: new Date().toISOString() }),
+        completedMissions: JSON.stringify([]),
       },
-    }),
-    prisma.mission.create({
-      data: {
-        title: 'Streak Master',
-        description: 'Maintain a 7-day streak',
-        category: 'achievement',
-        difficulty: 'intermediate',
-        xpReward: 50,
+      create: {
+        userId: user.id,
+        lastCompletionByMission: JSON.stringify({ [cooldownMission.id]: new Date().toISOString() }),
+        completedMissions: JSON.stringify([]),
       },
-    }),
-  ]);
+    });
+  }
 
   // Create some shop items
   const shopItems = await Promise.all([
@@ -69,7 +100,7 @@ async function main() {
     }),
   ]);
 
-  console.log({ user, missions, shopItems });
+  console.log({ user, categories, missionsCount: missions.length, shopItems });
 }
 
 main()

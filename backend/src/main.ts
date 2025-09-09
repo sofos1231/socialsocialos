@@ -1,7 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import cors from '@fastify/cors';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -11,8 +10,8 @@ async function bootstrap() {
   );
 
   // Enable CORS
-  await app.register(cors, {
-    origin: ['http://localhost:5173'],
+  app.enableCors({
+    origin: true,
     credentials: true,
   });
 

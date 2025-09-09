@@ -12,7 +12,10 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "ts-node prisma/seed.ts",
-    "db:reset": "npm run prisma:generate && prisma migrate reset --force && npm run db:seed"
+    "db:reset": "npm run prisma:generate && prisma migrate reset --force && npm run db:seed",
+    "verify:a13": "node scripts/verify-a13.js",
+    "verify:hardening": "node scripts/verify-hardening.js",
+    "verify:practice-v1-closeout": "node scripts/verify-practice-v1-closeout.js"
   },
   "keywords": [],
   "author": "",

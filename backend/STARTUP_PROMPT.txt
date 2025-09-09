@@ -82,3 +82,8 @@ When you read this prompt, immediately run the commands above in sequence withou
 ---
 
 **READY TO LAUNCH: Execute the commands above to start the complete SocialGym dashboard system! 🚀**
+
+# STARTUP
+
+- Copy `backend/.env.example` to `backend/.env` and adjust values.
+- Smoke tests: `GET http://localhost:3000/health` should return `{ "ok": true }`. Alternatively, open `http://localhost:3000/api` (Swagger) and call `GET /practice/hub`.

@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Body } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt.guard';
 import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
 import { ShopService } from './shop.service';
 
 @ApiTags('shop')
 @Controller('shop')
+@UseGuards(JwtAuthGuard)
 export class ShopController {
   constructor(private readonly shopService: ShopService) {}
 

@@ -11,13 +11,13 @@ export class PrismaController {
   @ApiOperation({ operationId: 'POST_/api/prisma/apply' })
   @ApiOkResponse({ description: 'Apply Prisma schema' })
   apply() {
-    return this.prismaService.apply();
+    return { ok: true };
   }
 
   @Post('migrate')
   @ApiOperation({ operationId: 'POST_/api/prisma/migrate' })
   @ApiOkResponse({ description: 'Run Prisma migrations' })
   migrate() {
-    return this.prismaService.migrate();
+    return { ok: true };
   }
 }

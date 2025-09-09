@@ -17,58 +17,104 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  profile   UserProfile?
-  stats     UserStats?
-  missions  Mission[]
-  sessions  PracticeSession[]
+  profile       UserProfile?
+  stats         UserStats?
+  missions      Mission[]
+  sessions      PracticeSession[]
+  progress      UserProgress?
+  activeSession UserActiveSession?
 }
 
 model UserProfile {
-  id       String @id @default(cuid())
-  userId   String @unique
-  user     User   @relation(fields: [userId], references: [id])
-  level    Int    @default(1)
-  xp       Int    @default(0)
-  streak   Int    @default(0)
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id])
+  level         Int       @default(1)
+  xp            Int       @default(0)
+  coins         Int       @default(0)
+  diamonds      Int       @default(0)
+  levelXp       Int       @default(100)
+  premium       Boolean   @default(false)
+  // Streak info
+  streakCurrent Int       @default(0)
+  lastActiveAt  DateTime?
 }
 
 model UserStats {
-  id           String @id @default(cuid())
-  userId       String @unique
-  user         User   @relation(fields: [userId], references: [id])
-  totalSessions Int   @default(0)
-  totalMissions Int   @default(0)
-  totalXp      Int    @default(0)
+  id            String @id @default(cuid())
+  userId        String @unique
+  user          User   @relation(fields: [userId], references: [id])
+  totalSessions Int    @default(0)
+  totalMissions Int    @default(0)
+  totalXp       Int    @default(0)
 }
 
 model Mission {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  category    String
-  difficulty  String   @default("beginner")
-  xpReward    Int      @default(10)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  key          String   @unique
+  title        String
+  description  String?
+  category     String
+  difficulty   String   @default("beginner")
+  type         String   @default("chat")
+  // Requirements and rewards are modeled as JSON for flexibility
+  requirements String?
+  rewards      String?
+  cooldownSec  Int      @default(0)
+  premium      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id])
-  completed   Boolean  @default(false)
-  completedAt DateTime?
+  userId   String?
+  user     User?             @relation(fields: [userId], references: [id])
+  sessions PracticeSession[]
 }
 
 model PracticeSession {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  category  String
-  duration  Int      // in minutes
-  score     Int?
-  createdAt DateTime @default(now())
+  id                String             @id @default(cuid())
+  userId            String
+  user              User               @relation(fields: [userId], references: [id])
+  missionId         String?
+  mission           Mission?           @relation(fields: [missionId], references: [id])
+  category          String
+  mode              String             @default("standard") // standard | quick | shadow
+  state             String             @default("active") // active | paused | aborted | completed
+  metrics           String?
+  rewardApplied     Boolean            @default(false)
+  duration          Int                @default(0)
+  score             Int?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  completedAt       DateTime?
+  UserActiveSession UserActiveSession?
+}
+
+model UserActiveSession {
+  userId    String          @id
+  user      User            @relation(fields: [userId], references: [id])
+  sessionId String          @unique
+  session   PracticeSession @relation(fields: [sessionId], references: [id])
+  createdAt DateTime        @default(now())
+}
+
+model Category {
+  key             String  @id
+  title           String
+  unlockedAtLevel Int     @default(1)
+  premium         Boolean @default(false)
+}
+
+model UserProgress {
+  id                      String @id @default(cuid())
+  userId                  String @unique
+  user                    User   @relation(fields: [userId], references: [id])
+  // Map missionId -> timestamp of last completion and flags
+  lastCompletionByMission String @default("{}")
+  completedMissions       String @default("[]")
 }
 
 model ShopItem {
-  id          String @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
   description String?
   price       Int

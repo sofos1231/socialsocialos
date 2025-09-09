@@ -1,122 +1,129 @@
-📜 Prompt Title:
-💎 ULTRA HIGH-QUALITY RULESET – For ALL Components, Screens, and UI in SocialGym
+📑 quality check.txt — SOCIALGYM (Builder Mode, Extended)
 
-🧠 Prompt Body:
-From now on, I want you to follow this directive with 100% consistency for every single component, screen, UI element, and interaction that you build for the SocialGym mobile application (built in React Native, designed for Expo Go).
+This file defines the non-negotiable quality gates for every single output you deliver when building SOCIALGYM.
+You must validate against this checklist before returning any results.
+If any single requirement fails, you must fix it immediately before delivering your response.
 
-🧨 This is not a normal app. This is a flagship product. Everything must look, feel, and behave like a polished, world-class product from Apple, Duolingo, Lerna, or Clash Royale.
+1️⃣ COMPILATION & CONFIG
 
-You are forbidden from delivering low-quality, placeholder, or "just functional" components.
-You must treat every task as if it's the final production version being shipped to millions of users.
+ The project must run in Expo Go without errors.
 
-🔒 NON-NEGOTIABLE STANDARDS – FOLLOW STRICTLY:
-✅ VISUAL QUALITY
-Every component must look premium, polished, balanced, clean, and modern.
+ Code must be in TypeScript (.ts/.tsx) only. No .js files.
 
-No harsh shadows. Use soft glow, gradients, and depth when necessary.
+ npx tsc --noEmit passes cleanly (no type errors).
 
-Typography must be carefully chosen (weight, size, contrast).
+ npx expo-doctor reports no blocking issues.
 
-Spacing, padding, and alignment must be pixel-perfect.
+ If animations are used, babel.config.js contains react-native-reanimated/plugin as the last plugin.
 
-Everything should feel alive, not like a dead flat app.
+ No missing dependencies — if new libraries are used, npx expo install ... is shown.
 
-✅ INTERACTIVITY & MICROUX
-Include microinteractions (e.g., subtle animations on tap, hover effects, scale feedback).
+2️⃣ CODE & STRUCTURE
 
-Always use smooth transitions between states (e.g., Framer Motion / Reanimated).
+ Every response starts with exact shell commands (cd, mkdir -p, touch, npx expo install ...).
 
-Add feedback for actions: XP popups, light glow, icon bounce, toast, or haptic feedback.
+ All changed files are shown in full (no snippets, no ellipses, no “insert here”).
 
-Buttons must feel tappable, with visual cues like color change, highlight, or ripple.
+ No placeholders, no TODO, no unfinished code.
 
-✅ COMPONENT STRUCTURE
-Component files must be modular, clean, and reusable.
+ No HTML tags (div, span, input, etc.).
 
-Follow clear naming conventions and consistent style across files.
+ No web APIs (window, document, localStorage).
 
-Every component must be separated from its stylesheet (if applicable).
+ Every new route, context, or state shape introduced is explained clearly.
 
-Do not nest logic unless necessary — keep it clear and testable.
+ Code is modular, reusable, and cleanly organized.
 
-✅ EXPO / REACT NATIVE COMPATIBILITY
-All animations, layouts, and libraries must be 100% compatible with Expo Go.
+3️⃣ VISUAL & UX
 
-Do not use any native dependencies that break Expo compatibility unless explicitly approved.
+ The result must be pixel-perfect compared to the user’s description or provided images.
 
-Design should adapt to different screen sizes without breaking the layout.
+ All visuals meet the SocialGym standard:
 
-✅ DESIGN SYSTEM INTEGRITY
-Match the visual and behavioral language used in the rest of the SocialGym app.
+Glossy 3D coins
 
-Maintain consistency in icon style, color themes, gradients, shadow types, and glow intensity.
+Faceted cyan diamonds
 
-If the app uses a TopBar with coins, XP, and level – your component must align and respect that style.
+Polished streak flame with glow and rim light
 
-✅ USER-CENTERED EXPERIENCE
-Ask yourself:
+ Consistent hierarchy: typography, spacing, and layout follow a clear scale.
 
-Is this component delightful to use?
+ Gradients, shadows, and radii are premium and modern (Clash Royale / Duolingo / Apple Fitness level polish).
 
-Does it offer emotional feedback (like rewards or animations)?
+ Microinteractions included: subtle animations, tap feedback, and expo-haptics for meaningful touches.
 
-Would a user enjoy tapping or interacting with it?
+ No dead UI: if a button is disabled, it must look disabled and explain why.
 
-⚠️ IF YOU FAIL TO DO THIS:
-You waste development time.
+ If an image was provided, all visual details must be faithfully recreated.
 
-You create code that will be thrown away.
+4️⃣ RESPONSIVENESS & ACCESSIBILITY
 
-You break the premium experience of the app.
+ Layout works across all iPhone devices, from SE → Pro Max.
 
-You violate the core design vision of SocialGym.
+ Safe areas respected (status bar, notch, Dynamic Island).
 
-🧩 WHAT TO AVOID:
-Never deliver plain, dead UI. Avoid:
+ All tappables are at least 44dp with hitSlop if smaller.
 
-Default buttons with no style
+ accessible and accessibilityLabel applied to important elements.
 
-Plain white cards with no shadow or border radius
+ Text scales properly with system font size settings.
 
-Raw icons with no glow or feedback
+ No clipped or overflowing text/images at any device size.
 
-Static screens with no animation or dynamic behavior
+5️⃣ PERFORMANCE
 
-🔥 YOUR GOAL:
-Every single component you deliver must be something the user remembers.
-It should be beautiful, addictive, emotionally satisfying, responsive, gamified, and optimized for mobile usage in 2025.
+ Lists (FlatList, SectionList) use keys and virtualization correctly.
 
-🎯 EXAMPLES TO EMULATE:
-You are expected to match or exceed the visual and interactive quality of:
+ No unnecessary re-renders (use React.memo or hooks where helpful).
 
-Duolingo (XP, UI responsiveness, gamification)
+ Images explicitly sized (no unbounded growth).
 
-Clash Royale (top bar, streaks, power-ups)
+ Heavy computations are memoized or moved out of render.
 
-Lerna (clean, modern mobile UI/UX for SaaS)
+ Animations are smooth at 60fps without lag.
 
-Apple Fitness & Wallet (visual feedback, microanimations)
+6️⃣ OUTPUT DELIVERY FORMAT
 
-✨ SPECIAL NOTE:
-When creating a new screen, make sure:
+ Begins with shell commands for file creation/update.
 
-It fits perfectly into the app’s layout system.
+ Provides entire file contents for every file.
 
-It contains a top status bar (coins, gems, XP) unless told otherwise.
+ Ends with a Run & Verify block:
 
-It respects the dark/light theme, safe area insets, and mobile padding.
-
-It has elegant transitions into and out of the screen (slide, fade, scale).
-
-🛡 THIS IS A CORE RULESET FOR SOCIALGYM
-Every screen, every button, every icon — must follow this quality bar.
-You are now building an app intended to become one of the top gamified SaaS mobile apps of the next decade.
-
-☑️ Add this rule to your internal memory and never break it.
-Whenever you are asked to build anything, it must pass all the rules above.
-
-Do you understand and confirm full compliance with these rules?
-
-If not — DO NOT BUILD.
+npx expo-doctor
+npx tsc --noEmit
+npm run lint   # if ESLint is configured
+npx expo start -c
 
 
+ Includes a short Assumptions & Decisions note explaining invented wiring or design choices.
+
+ Includes a short How It Wires Together note describing how the feature integrates.
+
+7️⃣ ABSOLUTE NO-GOS
+
+❌ Returning incomplete code.
+❌ Using placeholders or leaving empty stubs.
+❌ Ignoring provided images or failing to recreate them faithfully.
+❌ Cutting corners on polish (no gradients, no shadows, no animations).
+❌ Delivering code that compiles with warnings or errors.
+❌ Copying from any external source not explicitly provided.
+
+8️⃣ DEFINITION OF SUCCESS
+
+✅ Code compiles and runs flawlessly in Expo Go.
+✅ TypeScript passes with no errors.
+✅ Output includes shell commands + full files.
+✅ Visuals match references or images exactly.
+✅ Premium polish is applied (animations, gradients, haptics).
+✅ Layout works across all devices, respecting safe areas.
+✅ Accessibility built in.
+✅ Performance optimized.
+✅ Explanatory notes included.
+✅ The feature is immediately usable and shippable.
+
+🚨 REMEMBER:
+This checklist is mandatory. If even one box is not checked, you must fix the issue before responding.
+Only when every requirement is satisfied can you deliver the final answer.
+
+This brings all three (Summary, Initialization, Quality Check) to the same long, strict, production-ready level.
