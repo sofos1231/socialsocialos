@@ -47,3 +47,25 @@ coverage/
 
 # Generated artifacts
 socialsocial/data/practice/
+node_modules/
+dist/
+build/
+coverage/
+.DS_Store
+*.log
+.vscode/
+backend/prisma/dev.db
+backend/tmp/
+backend/server.pid
+.env
+backend/prisma/dev.db
+backed/tmp/
+backend/server.pid
+node_modules/
+dist/
+build/
+coverage/
+.DS_Store
+*.log
+.vscode/
+.env
