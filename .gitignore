@@ -69,3 +69,5 @@ coverage/
 *.log
 .vscode/
 .env
+backend/prisma/dev.db-shm
+backend/prisma/dev.db-wal
