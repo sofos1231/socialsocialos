@@ -47,3 +47,8 @@ coverage/
 
 # Generated artifacts
 socialsocial/data/practice/
+
+# Track Prisma migrations in backend
+!backend/prisma/
+!backend/prisma/migrations/
+!backend/prisma/migrations/**
