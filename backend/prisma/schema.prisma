@@ -6,72 +6,120 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
-  name      String?
   createdAt DateTime @default(now())
+  sessionVersion Int  @default(0)
+  streakCurrent   Int      @default(0)
+  streakLastActiveAt DateTime?
+  passwordHash String
+}
+
+model IdempotencyKey {
+  id           String   @id @default(cuid())
+  key          String
+  userId       String
+  route        String
+  bodyHash     String
+  status       Int
+  responseJson String
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@unique([key, userId, route])
+}
+
+model EconomyWallet {
+  userId   String   @id
+  coins    Int      @default(0)
+  diamonds Int      @default(0)
+  tickets  Int      @default(0)
   updatedAt DateTime @updatedAt
-
-  profile   UserProfile?
-  stats     UserStats?
-  missions  Mission[]
-  sessions  PracticeSession[]
 }
 
-model UserProfile {
-  id       String @id @default(cuid())
-  userId   String @unique
-  user     User   @relation(fields: [userId], references: [id])
-  level    Int    @default(1)
-  xp       Int    @default(0)
-  streak   Int    @default(0)
+model ShopCatalog {
+  key      String  @id
+  type     String
+  pricing  Json
+  bonus    Json?
+  limits   Json?
+  active   Boolean @default(true)
 }
 
-model UserStats {
-  id           String @id @default(cuid())
-  userId       String @unique
-  user         User   @relation(fields: [userId], references: [id])
-  totalSessions Int   @default(0)
-  totalMissions Int   @default(0)
-  totalXp      Int    @default(0)
-}
-
-model Mission {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  category    String
-  difficulty  String   @default("beginner")
-  xpReward    Int      @default(10)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id])
-  completed   Boolean  @default(false)
-  completedAt DateTime?
-}
-
-model PracticeSession {
+model PowerupInventory {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  category  String
-  duration  Int      // in minutes
-  score     Int?
-  createdAt DateTime @default(now())
+  type      String
+  charges   Int      @default(0)
+  startsAt  DateTime?
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, type])
 }
 
-model ShopItem {
-  id          String @id @default(cuid())
-  name        String
-  description String?
-  price       Int
-  type        String // badge, powerup, etc.
-  available   Boolean @default(true)
+model Entitlement {
+  id       String   @id @default(cuid())
+  userId   String
+  key      String
+  active   Boolean  @default(true)
+  startsAt DateTime
+  endsAt   DateTime?
+  source   String
+
+  @@index([userId, key, active])
+}
+
+model Purchase {
+  id         String   @id @default(cuid())
+  userId     String
+  platform   String
+  sku        String
+  qty        Int      @default(1)
+  price      Float?
+  currency   String?
+  storeTxId  String   @unique
+  status     String
+  purchasedAt DateTime
+  expiresAt  DateTime?
+  meta       Json?
+}
+
+model Event {
+  id      String   @id @default(cuid())
+  userId  String
+  name    String
+  props   Json?
+  ts      DateTime
+
+  @@index([userId, ts])
+}
+
+model MetricsWeekly {
+  userId    String
+  weekStart DateTime
+  xp        Int      @default(0)
+  fillerPerMin Float?
+  confidence   Float?
+  energy       String?
+  sentiment    Float?
+  updatedAt    DateTime @updatedAt
+
+  @@id([userId, weekStart])
+}
+
+model LimitedDeal {
+  id        String   @id @default(cuid())
+  key       String
+  startsAt  DateTime
+  endsAt    DateTime
+  rules     Json
+  active    Boolean  @default(true)
+
+  @@index([key, active])
 }

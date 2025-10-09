@@ -1,0 +1,497 @@
+openapi: 3.0.3
+info:
+  title: SocialGym API
+  version: '1.0'
+servers:
+  - url: http://localhost:3000
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      responses:
+        '200':
+          description: Liveness
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  db: { type: string, enum: [up, down] }
+                  latencyMs: { type: integer }
+                  ts: { type: string, format: date-time }
+  /ready:
+    get:
+      operationId: getReady
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  db: { type: string, enum: [up] }
+                  latencyMs: { type: integer }
+                  ts: { type: string, format: date-time }
+        '503':
+          description: Not Ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanonicalError'
+  /missions:
+    get:
+      operationId: getMissions
+      responses:
+        '200':
+          description: List missions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        title: { type: string }
+                        description: { type: string }
+  /missions/{id}:
+    get:
+      operationId: getMission
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Mission
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  title: { type: string }
+                  description: { type: string }
+                  difficulty: { type: string }
+                  xpReward: { type: integer }
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CanonicalError' }
+  /missions/{id}/complete:
+    post:
+      operationId: completeMission
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientTs]
+              properties:
+                clientTs: { type: string, format: date-time }
+                score: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  missionId: { type: string }
+                  xpEarned: { type: integer }
+                  streak:
+                    type: object
+                    properties:
+                      current: { type: integer }
+                      lastActiveDate: { type: string, format: date-time }
+        '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+  /missions/{id}/start:
+    post:
+      operationId: startMission
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+  /v1/shop/buy-powerup:
+    post:
+      operationId: buyPowerup
+      security:
+        - bearer: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, qty]
+              properties:
+                key: { type: string }
+                qty: { type: integer, minimum: 1 }
+      responses:
+        '200': { description: OK }
+        '409': { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+        '429': { description: Rate Limited, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+
+  /v1/powerups/activate:
+    post:
+      operationId: activatePowerup
+      security:
+        - bearer: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, attemptId]
+              properties:
+                type: { type: string }
+                attemptId: { type: string }
+      responses:
+        '200': { description: OK }
+        '409': { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+        '429': { description: Rate Limited, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+
+  /v1/iap/verify-apple:
+    post:
+      operationId: verifyApple
+      security:
+        - bearer: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                transactionJWS: { type: string }
+                sku: { type: string }
+      responses:
+        '200': { description: Verified }
+        '409': { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+        '429': { description: Rate Limited, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+
+  /v1/iap/verify-google:
+    post:
+      operationId: verifyGoogle
+      security:
+        - bearer: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purchaseToken, sku]
+              properties:
+                purchaseToken: { type: string }
+                sku: { type: string }
+      responses:
+        '200': { description: Verified }
+        '409': { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+        '429': { description: Rate Limited, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientTs]
+              properties:
+                clientTs: { type: string, format: date-time }
+      responses:
+        '201':
+          description: Started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  missionId: { type: string }
+                  startedAt: { type: string, format: date-time }
+        '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+        '409': { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+        '429': { description: Rate Limited, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+
+  /users/profile:
+  /v1/me:
+    get:
+      operationId: getMe
+      security:
+        - bearer: []
+      responses:
+        '200':
+          description: Me
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profile:
+                    type: object
+                    properties:
+                      username: { type: string }
+                      email: { type: string }
+                      avatarUrl: { type: string }
+                      level: { type: integer }
+                      title: { type: string }
+                  wallet: { type: object, properties: { coins: {type: integer}, diamonds: {type: integer}, tickets: {type: integer} } }
+                  plan: { type: object, properties: { tier: { type: string }, until: { type: string, format: date-time, nullable: true } } }
+                  entitlements:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        active: { type: boolean }
+                        endsAt: { type: string, format: date-time, nullable: true }
+                  streak: { type: object, properties: { current: { type: integer }, lastActiveDate: { type: string, format: date-time, nullable: true } } }
+                  badges: { type: array, items: { type: object } }
+  /v1/stats/dashboard:
+    get:
+      operationId: getDashboard
+      security:
+        - bearer: []
+      responses:
+        '200':
+          description: Dashboard tiles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  confidence: { type: number }
+                  fillerPerMin: { type: number }
+                  energy: { type: string }
+                  sentiment: { type: number }
+                  xpTotal: { type: integer }
+                  aiInsightsCount: { type: integer }
+                  streak: { type: object, properties: { current: { type: integer }, lastActiveDate: { type: string, format: date-time, nullable: true } } }
+  /v1/stats/weekly-xp:
+    get:
+      operationId: getWeeklyXp
+      security:
+        - bearer: []
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: header
+          name: If-None-Match
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Weekly XP
+          headers:
+            ETag:
+              description: Entity tag for caching
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  labels: { type: array, items: { type: string } }
+                  xp: { type: array, items: { type: integer } }
+        '304':
+          description: Not Modified
+  /v1/shop/catalog:
+    get:
+      operationId: getCatalog
+      security:
+        - bearer: []
+      responses:
+        '200':
+          description: Catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  deal:
+                    type: object
+                    nullable: true
+                    properties:
+                      key: { type: string }
+                      endsAt: { type: string, format: date-time }
+                      multiplier: { type: integer }
+  /v1/iap/verify-apple:
+    post:
+      operationId: verifyApple
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                transactionJWS: { type: string }
+                sku: { type: string }
+      responses:
+        '200':
+          description: Verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  purchase: { type: object, additionalProperties: true }
+                  walletDelta: { type: object, properties: { coins: {type: integer}, diamonds: {type: integer} } }
+                  entitlementsDelta: { type: array, items: { type: string } }
+        '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+  /v1/iap/verify-google:
+    post:
+      operationId: verifyGoogle
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purchaseToken, sku]
+              properties:
+                purchaseToken: { type: string }
+                sku: { type: string }
+      responses:
+        '200':
+          description: Verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  purchase: { type: object, additionalProperties: true }
+                  walletDelta: { type: object, properties: { coins: {type: integer}, diamonds: {type: integer} } }
+                  entitlementsDelta: { type: array, items: { type: string } }
+        '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+    get:
+      operationId: getProfile
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  email: { type: string }
+                  level: { type: integer }
+                  xp: { type: integer }
+    put:
+      operationId: updateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                xp: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  profile:
+                    type: object
+                    additionalProperties: true
+        '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+components:
+  schemas:
+    CanonicalError:
+      type: object
+      required: [ok, error, ts]
+      properties:
+        ok: { type: boolean, enum: [false] }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+        requestId: { type: string, nullable: true }
+        ts: { type: string, format: date-time }
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+

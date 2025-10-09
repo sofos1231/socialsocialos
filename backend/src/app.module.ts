@@ -10,6 +10,14 @@ import { UsersModule } from './modules/users/users.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { ShopModule } from './modules/shop/shop.module';
 import { MissionsModule } from './modules/missions/missions.module';
+import { PrismaModule } from './db/prisma.module';
+import { HealthModule } from './health/health.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { WalletModule } from './modules/wallet/wallet.module';
+import { ShopFeatureModule } from './modules/shop/shop.module';
+import { PowerupsModule } from './modules/powerups/powerups.module';
+import { IapModule } from './modules/iap/iap.module';
+import { EventsModule } from './modules/events/events.module';
 
 @Module({
   imports: [
@@ -23,6 +31,14 @@ import { MissionsModule } from './modules/missions/missions.module';
     StatsModule,
     ShopModule,
     MissionsModule,
+    PrismaModule,
+    HealthModule,
+    AuthModule,
+    WalletModule,
+    ShopFeatureModule,
+    PowerupsModule,
+    IapModule,
+    EventsModule,
   ],
   controllers: [AppController],
 })

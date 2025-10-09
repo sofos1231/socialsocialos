@@ -1,0 +1,15 @@
+# Environment files
+.env
+prisma/.env
+
+# AWS RDS certs
+certs/*.pem
+
+# Dependencies and builds
+node_modules/
+dist/
+
+# Prisma artifacts
+prisma/dev.db
+prisma/migrations/
+
