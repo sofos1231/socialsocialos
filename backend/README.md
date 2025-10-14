@@ -1,61 +1,58 @@
-# SocialGym Backend & Dashboard System
+# Backend (NestJS + Prisma + PostgreSQL)
 
-## 🚀 Quick Start
+## Local setup
 
-**To launch the complete system, just say: "read startup"**
-
-This will automatically:
-- Navigate to the correct directory
-- Install all dependencies
-- Set up the database
-- Launch both backend and dashboard servers
-- Verify everything is working
-
-## 📁 Project Structure
-
-```
-backend/
-├── STARTUP_PROMPT.txt          # 🚀 Automatic startup instructions
-├── QUICK_START.txt             # Quick reference guide
-├── dashboards_bundle/          # All dashboard files
-│   ├── control-panel.html      # Main launcher
-│   ├── frontend-dashboard.html # API testing
-│   ├── middleware-dashboard.html # Auto-wiring
-│   ├── backend-dashboard.html  # Logs & management
-│   └── README.md               # Dashboard documentation
-├── src/                        # NestJS backend code
-├── prisma/                     # Database schema & migrations
-└── package.json                # Dependencies & scripts
-```
-
-## 🎯 What This System Does
-
-- **Backend API**: NestJS + Fastify + Prisma (SQLite)
-- **Dashboard Server**: Vite-served HTML dashboards
-- **Real-time Logs**: SSE integration for live monitoring
-- **Auto-wiring**: Middleware for connecting frontend to backend
-- **API Testing**: Frontend dashboard for smoke testing
-
-## 🌐 URLs (After Startup)
-
-- **Backend API**: http://localhost:3000
-- **Swagger UI**: http://localhost:3000/api
-- **Control Panel**: http://localhost:5173/control-panel.html
-- **Frontend Dashboard**: http://localhost:5173/frontend-dashboard.html
-- **Middleware Dashboard**: http://localhost:5173/middleware-dashboard.html
-- **Backend Dashboard**: http://localhost:5173/backend-dashboard.html
-
-## 📋 Manual Commands (if needed)
-
+1) Copy envs and fill values
 ```bash
-cd backend
-npm install
-npm run prisma:generate
-npx prisma migrate dev --name init
-npm run db:seed
-npm run dev
+cp .env.example .env
+# set DATABASE_URL to your Postgres URL (include ?sslmode=require if RDS)
 ```
 
-## 🎉 Ready to Launch!
+2) Fetch AWS RDS CA bundle (optional but recommended for RDS)
+```bash
+npm run certs:fetch
+# If local TLS verification fails, set NODE_EXTRA_CA_CERTS=./certs/rds-global-bundle.pem
+```
 
-Just say **"read startup"** and the complete SocialGym dashboard system will be launched automatically! 🚀
+3) Install and generate Prisma client
+```bash
+npm install
+npm run postinstall
+```
+
+4) Create DB schema and seed
+```bash
+npm run db:migrate
+npm run db:seed
+```
+
+5) Start dev API
+```bash
+npm run dev
+# Dev server uses NODE_EXTRA_CA_CERTS if not already set
+```
+
+## Endpoints
+
+- GET /health → { ok: true, db: 'up'|'down', latencyMs, ts }
+
+## SSL and RDS
+
+- Prisma uses native SSL from the `DATABASE_URL`. For AWS RDS, append `?sslmode=require` to enforce SSL.
+- Do not disable verification in code. If verification fails locally because the CA is missing, use one of:
+  - Set environment: `NODE_EXTRA_CA_CERTS=./certs/rds-global-bundle.pem`
+  - Download CA bundle via: `npm run certs:fetch`
+
+## Scripts
+
+- postinstall: prisma generate
+- dev: starts Nest in watch mode and honors NODE_EXTRA_CA_CERTS
+- db:migrate: prisma migrate dev --name init
+- db:deploy: prisma migrate deploy
+- db:seed: inserts a single test user if none exists
+- prisma:studio: open Prisma Studio
+- certs:fetch: downloads AWS RDS global CA bundle to `./certs/rds-global-bundle.pem`
+
+## .gitignore important
+
+- `.env`, `prisma/.env`, and `certs/*.pem` are ignored by git.

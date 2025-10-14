@@ -1,0 +1,31 @@
+[
+  {
+    "key": "quick_drill_basic",
+    "title": "Quick Drill",
+    "type": "quick",
+    "category": "social",
+    "locked": false,
+    "reasons": [],
+    "xpReward": 5
+  },
+  {
+    "key": "mission_needs_prereq",
+    "title": "Prereq Mission",
+    "type": "chat",
+    "category": "social",
+    "locked": true,
+    "reasons": [
+      "prereq_not_met"
+    ],
+    "xpReward": 10
+  },
+  {
+    "key": "mission_on_cooldown",
+    "title": "Cooldown Mission",
+    "type": "chat",
+    "category": "interview",
+    "locked": false,
+    "reasons": [],
+    "xpReward": 12
+  }
+]

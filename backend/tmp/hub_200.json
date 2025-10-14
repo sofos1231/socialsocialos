@@ -1,0 +1,51 @@
+{
+  "user": {
+    "id": "cmfhsxwfz0000m12tu6k2d9xj",
+    "level": 1,
+    "xp": 10,
+    "levelXp": 100,
+    "coins": 0,
+    "diamonds": 0,
+    "premium": false,
+    "streak": {
+      "current": 1,
+      "lastActiveDate": "2025-09-13T05:25:23.597Z"
+    },
+    "onboardingComplete": true
+  },
+  "activeSession": {
+    "id": "cmfhtptox00037c3qsaimmpwm",
+    "mode": "quick",
+    "state": "active",
+    "mission": null
+  },
+  "categories": [
+    {
+      "slug": "dating",
+      "title": "Dating & Romance",
+      "total": 0,
+      "completed": 0
+    },
+    {
+      "slug": "interview",
+      "title": "Interview & Career",
+      "total": 1,
+      "completed": 0
+    },
+    {
+      "slug": "social",
+      "title": "Social Confidence",
+      "total": 2,
+      "completed": 0
+    }
+  ],
+  "quickDrill": {
+    "durationSec": 30,
+    "xp": 5
+  },
+  "quick": {
+    "durationSec": 30,
+    "xp": 5
+  },
+  "dailyTip": "Consistency beats intensity."
+}

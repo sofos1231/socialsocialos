@@ -1,0 +1,3 @@
+Error: Error in Schema engine.
+Reason: [schema-engine\connectors\sql-schema-connector\src\sql_renderer\sqlite_renderer.rs:266:35] internal error: entered unreachable code: ColumnTypeFamily::Json on SQLite
+

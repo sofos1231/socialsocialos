@@ -1,0 +1,9 @@
+{
+  "healthOk": true,
+  "haveAllReasons": false,
+  "reasons": [],
+  "cooldownExample": null,
+  "idempotentReplay": false,
+  "metricsDbIsString": false,
+  "metricsApiIsObject": false
+}

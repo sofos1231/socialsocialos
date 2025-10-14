@@ -1,0 +1,8 @@
+{
+  "events": [
+    {
+      "type": "turn.accepted"
+    }
+  ],
+  "accepted": 1
+}

@@ -1,4 +1,4 @@
-import { Injectable, TooManyRequestsException } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import Redis from 'ioredis';
 
 type Bucket = { tokens: number; lastRefill: number };
@@ -21,16 +21,16 @@ export class RateLimitService {
       // Token bucket using Redis INCR + TTL
       const windowSec = 60;
       const limitPerWindow = 5;
-      const key = `rl:${userKey}`;
+      const redisKey = `rl:${key}`;
       return this.redis.multi()
-        .incr(key)
-        .expire(key, windowSec, 'NX')
+        .incr(redisKey)
+        .expire(redisKey, windowSec, 'NX')
         .exec()
         .then(([[, count]]) => {
           const current = Number(count);
           if (current > limitPerWindow) {
             const retryAfterSec = 30;
-            throw new TooManyRequestsException({ code: 'RATE_LIMITED', message: 'Too many requests', details: { retryAfterSec } });
+            throw new HttpException({ ok: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' }, details: { retryAfterSec } }, HttpStatus.TOO_MANY_REQUESTS);
           }
         });
     }
@@ -45,7 +45,7 @@ export class RateLimitService {
     }
     if (bucket.tokens <= 0) {
       const retryAfterSec = 1; // minimal backoff
-      throw new TooManyRequestsException({ code: 'RATE_LIMITED', message: 'Too many requests', details: { retryAfterSec } });
+      throw new HttpException({ ok: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' }, details: { retryAfterSec } }, HttpStatus.TOO_MANY_REQUESTS);
     }
     bucket.tokens -= 1;
     this.buckets.set(key, bucket);

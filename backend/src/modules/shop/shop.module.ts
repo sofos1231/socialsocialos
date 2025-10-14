@@ -8,16 +8,6 @@ import { IdempotencyModule } from '../../common/idempotency/idempotency.module';
   imports: [PrismaModule, IdempotencyModule],
   controllers: [ShopController],
   providers: [ShopService],
-})
-export class ShopFeatureModule {}
-
-import { Module } from '@nestjs/common';
-import { ShopController } from './shop.controller';
-import { ShopService } from './shop.service';
-
-@Module({
-  controllers: [ShopController],
-  providers: [ShopService],
   exports: [ShopService],
 })
 export class ShopModule {}
