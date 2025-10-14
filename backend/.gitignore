@@ -13,3 +13,8 @@ dist/
 prisma/dev.db
 prisma/migrations/
 
+
+# Allow Prisma migrations
+!prisma/
+!prisma/migrations/
+!prisma/migrations/**
