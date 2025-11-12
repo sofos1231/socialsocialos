@@ -1,0 +1,106 @@
+# 🔧 FIX MODE — SOCIALGYM
+
+WHEN TRIGGERED
+- When the user says **“fix mode”**, you enter FIX MODE and follow this file EXACTLY until the task is done.
+
+OBJECTIVE
+- VISUALLY understand the problem shown (screenshots/videos/descriptions).
+- REPRODUCE it locally.
+- FIX it completely.
+- VERIFY it by running in **Expo Go** and visually checking the UI/behavior.
+- DELIVER only when the fix is real, shippable, and verified.
+
+NON-NEGOTIABLE RULES
+1) Visual comprehension first  
+   - You MUST study all screenshots and text to understand what is wrong (layout, spacing, logic, crashes, navigation, animation, assets).
+   - State in one short sentence **what is broken** and **what “correct” looks like**.
+
+2) Root cause > Band-aid  
+   - Reproduce the bug, isolate the root cause, and fix it at the right layer (styles, props, state, navigation, assets, async, platform).
+   - No temporary hacks or TODOs. No commented-out “maybe fixes.”
+
+3) Pixel/behavior parity  
+   - If asked to 1:1 copy a design → you must **match it exactly** (layout, colors, spacing, shadows, icon sizes, fonts).
+   - If asked to repair behavior → it must **work end-to-end** (no half fixes).
+
+4) Full-file delivery  
+   - Always return **full files** (not diffs/snippets), plus the exact shell commands to create/update them.
+   - If any config must change (e.g., `babel.config.js`), return the entire file.
+
+5) Run & visually verify in Expo Go  
+   - You MUST run the app and **see it with your own eyes**. Do not claim success without launching.
+   - Confirm the **right working directory** before running (see Guard below).
+   - If the UI still doesn’t match or the bug persists → keep iterating; do not deliver.
+
+6) Honesty about state  
+   - If you couldn’t launch, couldn’t reproduce, or still see an issue → say it bluntly and continue fixing. Do not say “it works” when it doesn’t.
+
+DIRECTORY GUARD (critical)
+- Cursor often tries `npx expo start` from the wrong folder. That is **not acceptable**.
+- Before any run commands, ALWAYS:
+  - Print the **intended project root** path you will use.
+  - Print `pwd` and the first lines of `package.json` to show `"name"` and `"expo"` fields exist.
+  - Only then run Expo commands from that directory.
+
+STANDARD FIX FLOW (follow in order)
+1) **Understand**
+   - Summarize the bug/visual mismatch in 1–2 sentences.
+   - List acceptance criteria (what a pass looks like).
+
+2) **Reproduce**
+   - Commands to install, clean cache, and start.
+   - If it crashes, copy the relevant error lines.
+
+3) **Diagnose**
+   - Identify the root cause (file(s), component(s), prop/state/navigation/asset issue).
+   - Explain the minimal fix strategy.
+
+4) **Implement**
+   - Provide shell commands (with `cd <project-root>`).
+   - Provide **full file contents** for every touched file.
+   - Keep code TypeScript, Expo-compatible, accessible (≥44dp touch targets), and performant.
+
+5) **Run & Verify**
+   - Show directory guard (print `pwd` + `cat package.json | head -n 20`).
+   - Run:
+     ```
+     npx expo-doctor
+     npx tsc --noEmit
+     npx expo start -c
+     ```
+   - State exactly what you **saw on-device** (layout fixed? navigation works? animations smooth?).
+
+6) **Regression check**
+   - Confirm no new warnings/errors in console.
+   - Confirm related screens still render.
+
+7) **Deliver**
+   - Short “Before vs After” note.
+   - Any follow-up chores (e.g., assets @2x/@3x, theming tokens) listed explicitly.
+
+OUTPUT FORMAT (MANDATORY)
+- Start with the **Directory Guard** block.
+- Then **Shell Commands** (create/update files; `npx expo install ...` if needed).
+- Then each **Full File** in its own code block (no ellipses).
+- Then the **Run & Verify** block.
+- Then:
+  - **Assumptions & Decisions** (what you invented and why)
+  - **How It Wires Together** (where it’s used, props, navigation)
+  - **Regression Risks** (what to watch, how to revert)
+
+ABSOLUTE NO-GOS
+❌ Running `npx expo start` from the wrong directory.  
+❌ Saying “it works” without actually launching and visually checking.  
+❌ Partial code, diffs, or placeholders.  
+❌ Ignoring the provided screenshots/design references.  
+❌ Hiding warnings/errors or skipping TypeScript checks.
+
+DEFINITION OF DONE
+✅ Bug is reproduced, fixed at the root, and verified visually in Expo Go.  
+✅ Exact design match when required (1:1).  
+✅ TypeScript passes, no runtime errors introduced.  
+✅ Clean UI/UX polish; accessible touch targets; smooth interactions.  
+✅ Clear notes and commands included; easy for the user to run.
+
+RUN & VERIFY (template to always include)
+                                                            
