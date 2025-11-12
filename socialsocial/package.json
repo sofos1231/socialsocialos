@@ -12,12 +12,18 @@
     "agent:test:schema": "node tools/agent/tests/schema.test.js",
     "agent:test:idempotent": "node tools/agent/tests/idempotent.test.js",
     "agent:test:routing": "node tools/agent/tests/routing-smoke.js",
-    "format": "npx prettier --write ."
+    "format": "npx prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts,.tsx --max-warnings=0"
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.4",
     "@expo/vector-icons": "^14.0.0",
     "@react-native-async-storage/async-storage": "2.1.2",
+    "@react-navigation/native": "^6.1.17",
+    "@react-navigation/native-stack": "^6.9.25",
+    "@tanstack/react-query": "^5.59.15",
+    "axios": "^1.7.7",
     "expo": "~53.0.0",
     "expo-blur": "^14.1.5",
     "expo-haptics": "~14.1.4",
@@ -25,17 +31,26 @@
     "expo-status-bar": "~2.2.3",
     "react": "19.0.0",
     "react-native": "0.79.5",
+    "react-native-screens": "^4.8.0",
     "react-native-safe-area-context": "^5.4.0",
-    "react-native-svg": "15.11.2"
+    "react-native-svg": "15.11.2",
+    "uuid": "^9.0.1",
+    "zustand": "^4.5.2"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
-    "@types/react": "~19.0.10",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-native": "^0.73.0",
+    "@types/uuid": "^9.0.7",
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
+    "@typescript-eslint/parser": "^8.46.2",
     "ajv": "^8.17.1",
     "ajv-formats": "^2.1.1",
+    "eslint": "^9.38.0",
     "prettier": "^3.6.2",
     "sharp": "^0.34.3",
-    "typescript": "~5.8.3"
+    "typescript": "^5.4.0"
   },
   "private": true
 }

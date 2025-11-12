@@ -1,0 +1,17 @@
+- ui/topbar
+- ui/cards
+- ui/toast
+- ui/blur
+- ui/charts
+- anim/reanimated3
+- nav/react-navigation6
+- game/xp
+- game/streak
+- game/badges
+- game/leaderboard
+- nest/auth/jwt
+- nest/guards
+- nest/pagination
+- prisma/schema/users
+- prisma/seed
+- prisma/soft-delete

@@ -7,7 +7,7 @@ export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
   // Liveness: always OK
-  @Get('/health')
+  @Get()
   async getHealth() {
     const start = Date.now();
     let db: 'up' | 'down' = 'down';

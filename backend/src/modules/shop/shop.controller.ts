@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Headers, Post, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { JwtGuard } from '../auth/jwt.guard';
+import { AuthGuard } from '@nestjs/passport';
 import { IdempotencyInterceptor } from '../../common/idempotency/idempotency.interceptor';
 import { ShopService } from './shop.service';
 import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
@@ -11,7 +11,7 @@ export class ShopController {
   constructor(private readonly shop: ShopService) {}
 
   @ApiBearerAuth()
-  @UseGuards(JwtGuard)
+  @UseGuards(AuthGuard('jwt'))
   @Get('catalog')
   @ApiOperation({ operationId: 'GET_/v1/shop/catalog' })
   @ApiOkResponse({ description: 'Shop catalog and deal banner' })
@@ -20,7 +20,7 @@ export class ShopController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtGuard, RateLimitGuard)
+  @UseGuards(AuthGuard('jwt'), RateLimitGuard)
   @UseInterceptors(IdempotencyInterceptor)
   @Post('buy-powerup')
   @ApiHeader({ name: 'Idempotency-Key', required: true })

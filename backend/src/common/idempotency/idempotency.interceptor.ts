@@ -1,6 +1,7 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor, ConflictException, BadRequestException } from '@nestjs/common';
 import { Observable, from } from 'rxjs';
 import { IdempotencyService } from './idempotency.service';
+import { idempotentReplaysTotal } from '../../observability/custom-metrics';
 
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
@@ -12,7 +13,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
     if (!idempotencyKey || typeof idempotencyKey !== 'string') {
       throw new BadRequestException({ code: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Idempotency-Key header required' });
     }
-    const userId = req.user?.id || 'anonymous';
+    const userId = req.user?.sub || req.user?.id || 'anonymous';
     const route = `${req.method} ${req.route?.path || req.url}`;
     const body = req.body;
 
@@ -24,7 +25,8 @@ export class IdempotencyInterceptor implements NestInterceptor {
       handler: async () => await next.handle().toPromise(),
     }).then((res) => {
       if ('conflict' in res) {
-        throw new ConflictException({ code: 'IDEMPOTENCY_CONFLICT', message: 'Conflicting request for same key', details: { originalBodyHash: res.originalBodyHash } });
+        try { idempotentReplaysTotal.labels(route).inc(1); } catch {}
+        throw new ConflictException({ code: 'IDEMPOTENT_REPLAY', message: 'Conflicting request for same key', details: { originalBodyHash: res.originalBodyHash } });
       }
       return res.response;
     }));

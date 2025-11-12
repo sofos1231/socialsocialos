@@ -1,0 +1,155 @@
+Phase 0 — Repo Hygiene & Local Dev Parity (High-Level, No Commands)
+Role
+
+You are my Terminal/Editor operator. Think first, then act. You must propose your own commands and file contents. Do not ask me for exact commands.
+
+Context
+
+OS/Shell: Windows — Git Bash (MINGW64)
+
+Repo root (absolute path): C:/Users/Shalev/Desktop/Social Gym
+
+Branch: versiondbs (do not switch branches)
+
+Stack: NestJS + Prisma
+
+Current dev DB file: backend/prisma/dev.db
+
+Guardrails (Anti-Brick Discipline)
+
+Never paste source code into the terminal; terminal is for commands you choose.
+
+Always follow PLAN → EXECUTE → VERIFY → REPORT per milestone.
+
+Idempotent mindset: re-runs must not explode; add guards where needed.
+
+On any error: STOP immediately; collect relevant logs (app, docker, package, DB); summarize the root cause and your next two recovery options; wait for my confirmation.
+
+Long-running servers must run in a dedicated terminal; do not block other steps.
+
+Do not modify production resources, rotate secrets, or delete data without explicit approval.
+
+Do not change branches, rewrite history, or force-push without explicit approval.
+
+Milestones & Outcomes (you decide how)
+0.1 — Repo Hygiene (dev.db forever untracked)
+
+Goal: Ensure backend/prisma/dev.db is never tracked; add sane ignores; add a pre-commit guard.
+You must produce:
+
+A commit that introduces/updates .gitignore so runtime junk (dev DB, tmp, pid, logs, env, editor folders) is ignored.
+
+A pre-commit hook that rejects staging backend/prisma/dev.db.
+
+Confirmation that backend/prisma/dev.db is not in the index.
+Verification to show me:
+
+Repository root path and current branch.
+
+Clean status after the hygiene commit.
+
+Evidence that dev.db is untracked and guarded.
+
+0.2 — Safe Fast-Forward to Origin
+
+Goal: Cleanly align local branch to the remote tip without losing local safety.
+You must produce:
+
+A plan that avoids merge conflicts with dev.db (backups as needed).
+
+Successful fast-forward to origin.
+Verification to show me:
+
+Before/after commit IDs and confirmation that the local head equals the remote head.
+
+Working tree is clean.
+
+0.3 — Local Infra (Dev Parity)
+
+Goal: Local Postgres 16 and Redis 7 via Docker Compose (for development only).
+You must produce:
+
+A docker-compose definition with Postgres (database socialgym, local ports mapped) and Redis.
+
+A local env file for development containing the Postgres DATABASE_URL and REDIS_URL (no secrets committed beyond local dev norms).
+
+Proof both services are healthy and reachable.
+Verification to show me:
+
+Health/readiness of Postgres and Redis.
+
+The effective env values you used (mask credentials in the report).
+
+0.4 — Prisma Switch (SQLite → Postgres for local)
+
+Goal: Use Postgres locally while keeping the existing Prisma models.
+You must produce:
+
+Prisma datasource updated to postgresql using env-driven connection.
+
+Regenerated client and applied migrations appropriate for Postgres.
+
+Successful seed run with a concise summary (counts or key fixtures).
+Verification to show me:
+
+Migration/seed summary (what changed, how many records seeded).
+
+Short note of any schema adjustments required for Postgres compatibility.
+
+0.5 — Boot & Verify
+
+Goal: Start the backend and run the project’s verification scripts.
+You must produce:
+
+Backend running locally (dev mode is fine).
+
+Executed verification scripts:
+
+backend/scripts/verify-a13.js
+
+backend/scripts/verify-hardening.js
+
+backend/scripts/verify-practice-v1-closeout.js
+Verification to show me:
+
+Health endpoint is responsive.
+
+The outputs from each verification script (PASS/fail details).
+
+Any actionable issues found, grouped by severity with your proposed fixes.
+
+Execution Protocol
+
+PLAN: For each milestone, present a short plan (what you’ll change, risks, rollbacks). Wait for my “APPROVE 0.x” before proceeding.
+
+EXECUTE: Run your chosen steps. Keep destructive operations minimal and justified.
+
+VERIFY: Run your own checks; compare actual vs. expected; collect logs where relevant.
+
+REPORT: Post a concise report: what changed, evidence, side effects, follow-ups.
+
+Stop Conditions
+
+If any step fails or a health check is red, halt the phase, share the error summary and last logs, propose two recovery paths (conservative vs. aggressive), and wait for my choice.
+
+Rollback Guidance (ask before executing)
+
+Restore the latest local backup of backend/prisma/dev.db if needed.
+
+Revert the most recent hygiene commit if it introduced issues.
+
+Cleanly tear down local infra and rebuild fresh.
+
+Final Acceptance (Phase 0 passes when ALL true)
+
+Repo is clean; backend/prisma/dev.db is never tracked and blocked by a hook.
+
+Local branch equals the remote tip on versiondbs.
+
+
+
+    Postgres and Redis are running locally and healthy.
+
+Prisma is using Postgres locally; migrations applied; seed completed.
+
+Backend starts; healthcheck is green; all three verification scripts complete with PASS or clear, actionable findings.

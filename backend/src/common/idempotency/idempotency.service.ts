@@ -27,25 +27,32 @@ export class IdempotencyService {
       where: { key_userId_route: { key, userId, route } },
     });
     if (existing) {
-      if (existing.bodyHash !== bodyHash) {
-        return { conflict: true, originalBodyHash: existing.bodyHash } as const;
-      }
-      return { reused: true, response: JSON.parse(existing.responseJson) } as const;
+      // For side-effecting POSTs, treat any replay as conflict per policy
+      return { conflict: true, originalBodyHash: existing.bodyHash } as const;
     }
 
     const result = await handler();
-    await this.prisma.idempotencyKey.create({
-      data: {
-        key,
-        userId,
-        route,
-        bodyHash,
-        status: 200,
-        responseJson: JSON.stringify(result),
-        expiresAt,
-      },
-    });
-    return { reused: false, response: result } as const;
+    try {
+      await this.prisma.idempotencyKey.create({
+        data: {
+          key,
+          userId,
+          route,
+          bodyHash,
+          status: 200,
+          responseJson: JSON.stringify(result),
+          expiresAt,
+        },
+      });
+      return { reused: false, response: result } as const;
+    } catch (e: any) {
+      const msg = String(e?.message || '');
+      const code = String(e?.code || '');
+      if (msg.includes('Unique') || code.toUpperCase() === 'P2002') {
+        return { conflict: true, originalBodyHash: bodyHash } as const;
+      }
+      throw e;
+    }
   }
 }
 

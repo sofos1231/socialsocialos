@@ -41,9 +41,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CanonicalError'
-  /missions:
+  /v1/missions:
     get:
-      operationId: getMissions
+      operationId: listMissions
       responses:
         '200':
           description: List missions
@@ -403,6 +403,22 @@ paths:
                   walletDelta: { type: object, properties: { coins: {type: integer}, diamonds: {type: integer} } }
                   entitlementsDelta: { type: array, items: { type: string } }
         '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+  /v1/wallet:
+    get:
+      operationId: getWallet
+      security:
+        - bearer: []
+      responses:
+        '200':
+          description: Wallet balances
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  coins: { type: integer }
+                  gems: { type: integer }
+                  xp: { type: integer }
   /v1/iap/verify-google:
     post:
       operationId: verifyGoogle
@@ -431,6 +447,133 @@ paths:
                   walletDelta: { type: object, properties: { coins: {type: integer}, diamonds: {type: integer} } }
                   entitlementsDelta: { type: array, items: { type: string } }
         '400': { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+  /v1/wallet/adjust:
+    post:
+      operationId: adjustWallet
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idempotencyKey, delta]
+              properties:
+                idempotencyKey: { type: string }
+                delta:
+                  type: object
+                  properties:
+                    coins: { type: integer }
+                    gems: { type: integer }
+                    xp: { type: integer }
+      responses:
+        '200': { description: Adjusted }
+        '409': { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/CanonicalError' } } } }
+  /v1/auth/refresh:
+    post:
+      operationId: authRefresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses: { '200': { description: OK } }
+
+  /v1/auth/revoke:
+    post:
+      security: [ { bearer: [] } ]
+      operationId: authRevoke
+      responses: { '200': { description: OK } }
+
+  /v1/iap/receipt:
+    post:
+      operationId: iapReceipt
+      security: [ { bearer: [] } ]
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [store, productId, token]
+              properties:
+                store: { type: string, enum: [APPLE, GOOGLE, RC] }
+                productId: { type: string }
+                token: { type: string }
+      responses:
+        '200': { description: OK }
+        '409': { description: Duplicate }
+
+  /v1/subscriptions/webhook:
+    post:
+      operationId: subsWebhook
+      responses: { '202': { description: Accepted } }
+
+  /v1/entitlements:
+    get:
+      operationId: getEntitlements
+      security: [ { bearer: [] } ]
+      responses: { '200': { description: OK } }
+
+  /v1/missions/{id}/claim:
+    post:
+      operationId: missionsClaim
+      security: [ { bearer: [] } ]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema: { type: string }
+      responses: { '200': { description: OK }, '409': { description: Idempotent replay } }
+
+  /v1/notifications/send:
+    post:
+      operationId: notificationsSend
+      security: [ { bearer: [] } ]
+      responses: { '202': { description: Accepted } }
+
+  /v1/notifications/test:
+    post:
+      operationId: notificationsTest
+      security: [ { bearer: [] } ]
+      responses: { '202': { description: Accepted } }
+
+  /v1/stats/user/{userId}:
+    get:
+      operationId: statsGetUser
+      security: [ { bearer: [] } ]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string }
+      responses: { '200': { description: OK } }
+
+  /v1/stats/history:
+    get:
+      operationId: statsHistory
+      security: [ { bearer: [] } ]
+      responses: { '200': { description: OK } }
+
+  /v1/stats/update:
+    post:
+      operationId: statsUpdate
+      security: [ { bearer: [] } ]
+      responses: { '200': { description: OK } }
     get:
       operationId: getProfile
       responses:

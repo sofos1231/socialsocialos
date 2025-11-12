@@ -1,0 +1,27 @@
+{
+  "name": "socialgym-backend",
+  "version": "1.0.0",
+  "description": "Minimal API to ingest practice sessions and expose dashboard stats",
+  "type": "module",
+  "main": "app.js",
+  "scripts": {
+    "dev": "nodemon app.js",
+    "start": "node app.js",
+    "lint": "echo 'add eslint later' && exit 0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-xml-bodyparser": "^0.3.0",
+    "pg": "^8.11.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}
+
+

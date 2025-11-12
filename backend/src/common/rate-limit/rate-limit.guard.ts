@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { RateLimitService } from './rate-limit.service';
+import { rateLimitRejectionsTotal } from '../../observability/custom-metrics';
 
 @Injectable()
 export class RateLimitGuard implements CanActivate {
@@ -11,8 +12,13 @@ export class RateLimitGuard implements CanActivate {
     const route = `${req.method} ${req.route?.path || req.url}`;
     const key = `${userId}:${route}`;
     // Example: 5 req per minute → refill 1 token / 12 sec
-    this.rl.enforce(key, 5, 1 / 12);
-    return true;
+    try {
+      this.rl.enforce(key, 5, 1 / 12);
+      return true;
+    } catch (e) {
+      try { rateLimitRejectionsTotal.labels(route).inc(1); } catch {}
+      throw e;
+    }
   }
 }
 

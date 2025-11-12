@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 set -e
 API=http://localhost:3000
 echo "→ Health"; curl -s $API/health | jq .

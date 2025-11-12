@@ -2,7 +2,7 @@ import { Controller, Get, Post, Param, Body, Headers, UseGuards, UseInterceptors
 import { ApiTags, ApiOperation, ApiOkResponse, ApiHeader, ApiResponse } from '@nestjs/swagger';
 import { MissionsService } from './missions.service';
 import { CompleteMissionDto } from './missions.dto';
-import { JwtGuard } from '../auth/jwt.guard';
+import { AuthGuard } from '@nestjs/passport';
 import { IdempotencyInterceptor } from '../../common/idempotency/idempotency.interceptor';
 import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
 
@@ -29,7 +29,7 @@ export class MissionsController {
   @ApiOperation({ operationId: 'POST_/missions/{id}/complete' })
   @ApiHeader({ name: 'Idempotency-Key', required: false })
   @ApiResponse({ status: 200, description: 'Complete mission' })
-  @UseGuards(JwtGuard, RateLimitGuard)
+  @UseGuards(AuthGuard('jwt'), RateLimitGuard)
   @UseInterceptors(IdempotencyInterceptor)
   completeMission(
     @Param('id') id: string,
@@ -43,7 +43,7 @@ export class MissionsController {
   @ApiOperation({ operationId: 'POST_/missions/{id}/start' })
   @ApiHeader({ name: 'Idempotency-Key', required: false })
   @ApiResponse({ status: 201, description: 'Start mission' })
-  @UseGuards(JwtGuard, RateLimitGuard)
+  @UseGuards(AuthGuard('jwt'), RateLimitGuard)
   @UseInterceptors(IdempotencyInterceptor)
   startMission(
     @Param('id') id: string,

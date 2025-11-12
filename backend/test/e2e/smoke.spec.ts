@@ -24,7 +24,7 @@ describe('E2E Smoke', () => {
   it('Auth login issues JWT; old token revoked on new login', async () => {
     const email = `user_${Date.now()}@example.com`;
     const res = await request(BASE).post('/v1/auth/login').send({ email });
-    expect(res.status).toBe(201).or.toBe(200);
+    expect([200, 201]).toContain(res.status);
     expect(res.body).toHaveProperty('accessToken');
     token = res.body.accessToken;
     // second login

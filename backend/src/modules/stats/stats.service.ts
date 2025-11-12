@@ -2,8 +2,9 @@ import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class StatsService {
-  getOverview() {
+  getOverview(userId?: string) {
     return {
+      userId: userId || null,
       totalSessions: 45,
       totalMissions: 12,
       totalXp: 1250,

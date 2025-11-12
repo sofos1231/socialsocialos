@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  db:
+    image: postgres:16
+    container_name: socialgym-main-db
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: appdb
+    ports:
+      - "5433:5432"
+    volumes:
+      - socialgym_pg:/var/lib/postgresql/data
+volumes:
+  socialgym_pg:

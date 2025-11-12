@@ -1,4 +1,6 @@
-    import React, { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
+import Providers from './src/app/Providers';
+import Root from './src/app/Root';
 import { View, StyleSheet, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -78,42 +80,21 @@ export default function App() {
   }
 
   return (
-    <PlayerProgressProvider>
-    <SafeAreaProvider>
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-        <LinearGradient
-          colors={["#0B0D12", "#0E1118"]} // subtle dark navy gradient
-          style={styles.background}
-        >
-          <View style={styles.content}>
-            <SwipePager
-              index={pagerIndex}
-              onIndexChange={(i) => setCurrentTab(tabFromIndex(i))}
-              onProgress={(f) => setPagerProgress(f)}
-            >
-              <View style={styles.practiceContainer}>
-                <PracticeHub 
-                  onShowPracticeRoad={() => setShowPracticeRoad(true)}
-                  onShowEnhancedRoadmap={() => setShowEnhancedRoadmap(true)}
-                  onShowStreak={() => setShowStreakScreen(true)}
-                  onOpenMission={() => setShowMission(true)}
-                />
-              </View>
-              <StatsScreen />
-              <ShopScreen />
-              <ProfileScreen />
-            </SwipePager>
-          </View>
-          <BottomNavigationBar 
-            currentTab={currentTab}
-            onTabPress={handleTabPress}
-            progress={pagerProgress}
-          />
-        </LinearGradient>
-      </View>
-    </SafeAreaProvider>
-    </PlayerProgressProvider>
+    <Providers>
+      <PlayerProgressProvider>
+      <SafeAreaProvider>
+        <View style={styles.container}>
+          <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+          <LinearGradient
+            colors={["#0B0D12", "#0E1118"]}
+            style={styles.background}
+          >
+            <Root />
+          </LinearGradient>
+        </View>
+      </SafeAreaProvider>
+      </PlayerProgressProvider>
+    </Providers>
   );
 }
 

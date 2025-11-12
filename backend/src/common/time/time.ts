@@ -1,32 +1,31 @@
-import { zonedTimeToUtc, utcToZonedTime, format } from 'date-fns-tz';
+import { fromZonedTime, toZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { addDays, addHours, differenceInCalendarDays, startOfWeek } from 'date-fns';
 
 const JERU_TZ = 'Asia/Jerusalem';
 
 export function nowJeru(): Date {
   const nowUtc = new Date();
-  return utcToZonedTime(nowUtc, JERU_TZ);
+  return toZonedTime(nowUtc, JERU_TZ);
 }
 
 export function toJeruISO(input: Date | string | number): string {
   const d = typeof input === 'string' || typeof input === 'number' ? new Date(input) : input;
-  const jeru = utcToZonedTime(d, JERU_TZ);
-  return format(jeru, "yyyy-MM-dd'T'HH:mm:ss.SSSXXX", { timeZone: JERU_TZ });
+  return formatInTimeZone(d, JERU_TZ, "yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
 }
 
 export function jeruYMD(input: Date | string | number): { y: number; m: number; d: number } {
   const d = typeof input === 'string' || typeof input === 'number' ? new Date(input) : input;
-  const jeru = utcToZonedTime(d, JERU_TZ);
+  const jeru = toZonedTime(d, JERU_TZ);
   return { y: jeru.getFullYear(), m: jeru.getMonth() + 1, d: jeru.getDate() };
 }
 
 // App uses Monday as week start by default; adjust to Sunday by passing weekStartsOn: 0
 export function weekStartJeru(input: Date | string | number, weekStartsOn: 0 | 1 = 1): Date {
   const d = typeof input === 'string' || typeof input === 'number' ? new Date(input) : input;
-  const jeru = utcToZonedTime(d, JERU_TZ);
+  const jeru = toZonedTime(d, JERU_TZ);
   const start = startOfWeek(jeru, { weekStartsOn });
   // Return a UTC instant corresponding to Jeru week start at 00:00
-  return zonedTimeToUtc(start, JERU_TZ);
+  return fromZonedTime(start, JERU_TZ);
 }
 
 export function isSameJeruDay(a: Date, b: Date): boolean {
@@ -38,8 +37,8 @@ export function isSameJeruDay(a: Date, b: Date): boolean {
 export function isRollover(prevLastActive: Date | null, now: Date): boolean {
   if (!prevLastActive) return true;
   const days = differenceInCalendarDays(
-    utcToZonedTime(now, JERU_TZ),
-    utcToZonedTime(prevLastActive, JERU_TZ)
+    toZonedTime(now, JERU_TZ),
+    toZonedTime(prevLastActive, JERU_TZ)
   );
   return days >= 1;
 }

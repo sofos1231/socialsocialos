@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Headers, Post, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { JwtGuard } from '../auth/jwt.guard';
+import { AuthGuard } from '@nestjs/passport';
 import { IdempotencyInterceptor } from '../../common/idempotency/idempotency.interceptor';
 import { PowerupsService } from './powerups.service';
 import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
@@ -11,7 +11,7 @@ export class PowerupsController {
   constructor(private readonly powerups: PowerupsService) {}
 
   @ApiBearerAuth()
-  @UseGuards(JwtGuard)
+  @UseGuards(AuthGuard('jwt'))
   @Get()
   @ApiOperation({ operationId: 'GET_/v1/powerups' })
   @ApiOkResponse({ description: 'Active and inventory' })
@@ -21,7 +21,7 @@ export class PowerupsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtGuard, RateLimitGuard)
+  @UseGuards(AuthGuard('jwt'), RateLimitGuard)
   @UseInterceptors(IdempotencyInterceptor)
   @Post('activate')
   @ApiHeader({ name: 'Idempotency-Key', required: true })

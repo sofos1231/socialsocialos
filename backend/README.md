@@ -2,10 +2,9 @@
 
 ## Local setup
 
-1) Copy envs and fill values
+1) Create `.env`
 ```bash
-cp .env.example .env
-# set DATABASE_URL to your Postgres URL (include ?sslmode=require if RDS)
+echo "DATABASE_URL=postgresql://app:app@localhost:5433/appdb?schema=public" > .env
 ```
 
 2) Fetch AWS RDS CA bundle (optional but recommended for RDS)
@@ -29,7 +28,6 @@ npm run db:seed
 5) Start dev API
 ```bash
 npm run dev
-# Dev server uses NODE_EXTRA_CA_CERTS if not already set
 ```
 
 ## Endpoints
@@ -38,10 +36,7 @@ npm run dev
 
 ## SSL and RDS
 
-- Prisma uses native SSL from the `DATABASE_URL`. For AWS RDS, append `?sslmode=require` to enforce SSL.
-- Do not disable verification in code. If verification fails locally because the CA is missing, use one of:
-  - Set environment: `NODE_EXTRA_CA_CERTS=./certs/rds-global-bundle.pem`
-  - Download CA bundle via: `npm run certs:fetch`
+- Local development uses Docker Postgres on 5433; no RDS required.
 
 ## Scripts
 

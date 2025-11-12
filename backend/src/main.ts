@@ -6,6 +6,8 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { CanonicalErrorFilter } from './common/http/canonical-error.filter';
+import helmet from '@fastify/helmet';
+import { setupHttpMetrics } from './observability/metrics';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -14,10 +16,23 @@ async function bootstrap() {
   );
 
   // Enable CORS
+  const allowList = (process.env.CORS_ORIGINS?.split(',').map(s => s.trim()).filter(Boolean)) || [
+    'http://localhost:5173',
+    'http://localhost:19006',
+  ];
   await app.register(cors, {
-    origin: ['http://localhost:5173'],
+    origin: (origin: string, cb: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin) return cb(null, true);
+      if (allowList.includes(origin)) return cb(null, true);
+      return cb(new Error(`CORS: ${origin} not allowed`), false);
+    },
     credentials: true,
-  });
+    allowedHeaders: ['authorization','content-type','idempotency-key','x-idempotency-key'],
+    methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  } as any);
+
+  // Security headers
+  await app.register(helmet, { contentSecurityPolicy: false });
 
 
 
@@ -44,6 +59,9 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
+
+  // Metrics
+  setupHttpMetrics(app, 'backend');
 
   const port = Number(process.env.PORT) || 3000;
   await app.listen(port, '0.0.0.0');
