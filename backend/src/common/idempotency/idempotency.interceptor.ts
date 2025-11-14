@@ -1,36 +1,28 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { Observable, from } from 'rxjs';
-import { IdempotencyService } from './idempotency.service';
-import { idempotentReplaysTotal } from '../../observability/custom-metrics';
+import { switchMap } from 'rxjs/operators';
+import { IdempotencyService } from '../idempotency/idempotency.service';
 
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
-  constructor(private readonly idempotency: IdempotencyService) {}
+  constructor(private readonly idem: IdempotencyService) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const req = context.switchToHttp().getRequest<any>();
-    const idempotencyKey = req.headers['idempotency-key'];
-    if (!idempotencyKey || typeof idempotencyKey !== 'string') {
-      throw new BadRequestException({ code: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Idempotency-Key header required' });
-    }
-    const userId = req.user?.sub || req.user?.id || 'anonymous';
-    const route = `${req.method} ${req.route?.path || req.url}`;
-    const body = req.body;
+  intercept(ctx: ExecutionContext, next: CallHandler): Observable<any> {
+    const req = ctx.switchToHttp().getRequest<Request & { headers: Record<string,string> }>();
+    const key = (req.headers['idempotency-key'] || req.headers['Idempotency-Key']) as string | undefined;
 
-    return from(this.idempotency.handle({
-      key: idempotencyKey,
-      userId,
-      route,
-      body,
-      handler: async () => await next.handle().toPromise(),
-    }).then((res) => {
-      if ('conflict' in res) {
-        try { idempotentReplaysTotal.labels(route).inc(1); } catch {}
-        throw new ConflictException({ code: 'IDEMPOTENT_REPLAY', message: 'Conflicting request for same key', details: { originalBodyHash: res.originalBodyHash } });
-      }
-      return res.response;
-    }));
+    if (!key) return next.handle();
+
+    return from(this.idem.isDuplicate(key)).pipe(
+      switchMap(isDup => {
+        if (isDup) {
+          return from(this.idem.fetch(key)).pipe(switchMap(cached => {
+            // If you cached full response, you’d return it; for now, just pass through.
+            return next.handle(); 
+          }));
+        }
+        return next.handle();
+      }),
+    );
   }
 }
-
-

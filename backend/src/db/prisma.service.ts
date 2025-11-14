@@ -3,15 +3,14 @@ import { PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
-  async onModuleInit(): Promise<void> {
+  async onModuleInit() {
     await this.$connect();
   }
 
-  async enableShutdownHooks(app: INestApplication): Promise<void> {
-    (this as any).$on('beforeExit', async () => {
+  async enableShutdownHooks(app: INestApplication) {
+    // 👇 explicitly cast event name to keyof PrismaClient
+    (this as any).$on('beforeExit' as any, async () => {
       await app.close();
     });
   }
 }
-
-

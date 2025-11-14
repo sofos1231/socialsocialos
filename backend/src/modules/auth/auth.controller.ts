@@ -5,17 +5,18 @@ import { SignUpDto } from './dto/signup.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { RateLimitGuard } from '../../common/rate-limit/rate-limit.guard';
 import { authAttemptsTotal } from '../../observability/custom-metrics';
+import { LoginDto } from './dto/login.dto';
 
 @ApiTags('auth')
-@Controller('v1/auth')
+@Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @UseGuards(RateLimitGuard)
   @Post('login')
-  async login(@Body() body: { email: string }) {
+  async login(@Body() body: LoginDto) {
     try {
-      const res = await this.auth.login(body.email);
+      const res = await (this.auth as any).login(body.email, body.password);
       try { authAttemptsTotal.labels('/v1/auth/login', 'success').inc(1); } catch {}
       return res;
     } catch (e) {

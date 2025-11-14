@@ -1,9 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import Providers from './src/app/Providers';
 import Root from './src/app/Root';
 import { View, StyleSheet, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import './src/utils/networkDebug';
 import BottomNavigationBar from './components/BottomNavigationBar';
 import PracticeHub from './components/PracticeHub';
 import PracticeRoad from './screens/PracticeRoad';
@@ -17,11 +18,15 @@ import SwipePager from './components/SwipePager';
 import StreakScreen from './screens/StreakScreen';
 import { PlayerProgressProvider } from './src/state/playerProgress';
 
-    const TABS = ['practice', 'stats', 'shop', 'profile'];
+console.log('*** APP FILE LOADED (TOP-LEVEL) ***');
+
+const TABS = ['practice', 'stats', 'shop', 'profile'];
 const indexFromTab = (tab) => Math.max(0, TABS.indexOf(tab));
 const tabFromIndex = (i) => TABS[Math.max(0, Math.min(TABS.length - 1, i))];
 
 export default function App() {
+  console.log('*** APP COMPONENT RENDER ***');
+
   const [currentTab, setCurrentTab] = useState('practice');
   const [showMission, setShowMission] = useState(false);
   const [showPracticeRoad, setShowPracticeRoad] = useState(false);
@@ -29,6 +34,10 @@ export default function App() {
   const [showStreakScreen, setShowStreakScreen] = useState(false);
   const [showEnhancedRoadmap, setShowEnhancedRoadmap] = useState(false);
   const pagerRef = useRef(null);
+
+  useEffect(() => {
+    console.log('*** APP USEEFFECT RUN ***');
+  }, []);
 
   const handleTabPress = (tabName) => {
     setCurrentTab(tabName);
@@ -39,12 +48,12 @@ export default function App() {
 
   // Mock navigation object for MissionScreen
   const mockNavigation = {
-    goBack: () => setShowMission(false)
+    goBack: () => setShowMission(false),
   };
 
   // Mock navigation object for PracticeRoad
   const mockRoadNavigation = {
-    goBack: () => setShowPracticeRoad(false)
+    goBack: () => setShowPracticeRoad(false),
   };
 
   if (showMission) {
@@ -82,52 +91,52 @@ export default function App() {
   return (
     <Providers>
       <PlayerProgressProvider>
-      <SafeAreaProvider>
-        <View style={styles.container}>
-          <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-          <LinearGradient
-            colors={["#0B0D12", "#0E1118"]}
-            style={styles.background}
-          >
-            <Root />
-          </LinearGradient>
-        </View>
-      </SafeAreaProvider>
+        <SafeAreaProvider>
+          <View style={styles.container}>
+            <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+            <LinearGradient
+              colors={['#0B0D12', '#0E1118']}
+              style={styles.background}
+            >
+              <Root />
+            </LinearGradient>
+          </View>
+        </SafeAreaProvider>
       </PlayerProgressProvider>
     </Providers>
   );
 }
 
-    const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    background: {
-        flex: 1,
-    },
-    content: {
-      flex: 1,
-      // No extra top padding; TransparentTopBar in PracticeHub handles safe-area spacing
-    },
-          placeholderContent: {
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-          },
-          practiceContainer: {
-            flex: 1,
-          },
-          missionButton: {
-            backgroundColor: '#6366f1',
-            paddingHorizontal: 20,
-            paddingVertical: 12,
-            borderRadius: 8,
-            margin: 20,
-            alignSelf: 'center',
-          },
-          missionButtonText: {
-            color: '#ffffff',
-            fontSize: 16,
-            fontWeight: '600',
-          },
-}); 
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  background: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+    // No extra top padding; TransparentTopBar in PracticeHub handles safe-area spacing
+  },
+  placeholderContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  practiceContainer: {
+    flex: 1,
+  },
+  missionButton: {
+    backgroundColor: '#6366f1',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    margin: 20,
+    alignSelf: 'center',
+  },
+  missionButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});

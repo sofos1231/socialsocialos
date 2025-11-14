@@ -10,6 +10,8 @@ export function setOnAuthLost(cb: OnAuthLost) { _onAuthLost = cb; }
 // eslint-disable-next-line no-console
 console.log('[ENV] API_URL =', ENV.API_URL);
 export const api: AxiosInstance = axios.create({ baseURL: ENV.API_URL, timeout: 15000 });
+// eslint-disable-next-line no-console
+console.log('[API] axios.create baseURL=', api.defaults.baseURL);
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = getAccessToken();
@@ -21,6 +23,15 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     config.url = `/v1${config.url}`;
   }
   (config as any)._ts = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  // eslint-disable-next-line no-console
+  console.log('[API][REQUEST]', {
+    baseURL: (config as any).baseURL || api.defaults.baseURL,
+    url: config.url,
+    method: config.method,
+    data: config.data,
+    authorization: (config.headers as any)?.Authorization || (config.headers as any)?.authorization,
+    headers: config.headers,
+  });
   return config;
 });
 
@@ -35,7 +46,18 @@ async function refreshOnce() {
 }
 
 api.interceptors.response.use(
-  (res: AxiosResponse) => res,
+  (res: AxiosResponse) => {
+    // eslint-disable-next-line no-console
+    console.log('[API][RESPONSE]', {
+      url: res.config?.url,
+      baseURL: (res.config as any)?.baseURL || api.defaults.baseURL,
+      status: res.status,
+      data: res.data,
+      method: res.config?.method,
+      headers: res.config?.headers,
+    });
+    return res;
+  },
   async (err: AxiosError) => {
     const cfg = err.config as any;
     const status = err.response?.status;
@@ -44,6 +66,23 @@ api.interceptors.response.use(
     const dur = ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - started) | 0;
     // eslint-disable-next-line no-console
     console.log(`[api] ${cfg?.method?.toUpperCase()} ${cfg?.url} -> ${status} in ${dur}ms`);
+    // eslint-disable-next-line no-console
+    console.log('[API][ERROR]', {
+      message: err?.message,
+      name: (err as any)?.name,
+      status: err?.response?.status,
+      data: err?.response?.data,
+      url: err?.config?.url,
+      baseURL: err?.config?.baseURL,
+      method: err?.config?.method,
+      headers: err?.config?.headers,
+      code: (err as any)?.code,
+      errno: (err as any)?.errno,
+    });
+    if ((err as any)?.code === 'ECONNREFUSED' || (err as any)?.code === 'ETIMEDOUT' || (err as any)?.code === 'ENETUNREACH') {
+      // eslint-disable-next-line no-console
+      console.log('[API][ERROR] Low-level network failure detected');
+    }
 
     if (status === 401 && !cfg._retried) {
       cfg._retried = true;
