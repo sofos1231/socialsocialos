@@ -15,7 +15,7 @@ export class AuthController {
   @UseGuards(RateLimitGuard)
   @Post('login')
   async login(@Body() body: LoginDto) {
-    try {
+    try { 
       const res = await (this.auth as any).login(body.email, body.password);
       try { authAttemptsTotal.labels('/v1/auth/login', 'success').inc(1); } catch {}
       return res;

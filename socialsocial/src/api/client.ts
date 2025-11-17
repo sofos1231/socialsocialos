@@ -1,8 +1,10 @@
+// socialsocial/src/api/client.ts
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE_URL } from '../config/api';
 
 const api = axios.create({
-  baseURL: 'http://localhost:3000/v1',
+  baseURL: API_BASE_URL, // e.g. http://10.0.0.2:3000/v1
   timeout: 10000,
 });
 
@@ -13,10 +15,10 @@ api.interceptors.request.use(async (config) => {
       config.headers = config.headers ?? {};
       (config.headers as any).Authorization = `Bearer ${token}`;
     }
-  } catch {}
+  } catch {
+    // ignore token read errors
+  }
   return config;
 });
 
 export default api;
-
-

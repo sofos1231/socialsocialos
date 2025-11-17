@@ -1,3 +1,4 @@
+// backend/src/app.module.ts
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
@@ -8,9 +9,11 @@ import { IdempotencyInterceptor } from './common/idempotency/idempotency.interce
 import { PrismaModule } from './db/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
-
-// 👇 THIS was missing in imports
 import { HealthModule } from './health/health.module';
+
+// חדשים
+import { PracticeModule } from './modules/practice/practice.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -22,9 +25,11 @@ import { HealthModule } from './health/health.module';
     PrismaModule,
 
     // Feature modules
-    AuthModule,        // /v1/auth/*
-    SessionsModule,    // /v1/sessions/*
-    HealthModule,      // /v1/health + /v1/health/ready  ✅
+    AuthModule,       // /v1/auth/*
+    SessionsModule,   // /v1/sessions/*
+    HealthModule,     // /v1/health/*
+    PracticeModule,   // /v1/practice/*
+    DashboardModule,  // /v1/dashboard/*
   ],
   controllers: [],
   providers: [

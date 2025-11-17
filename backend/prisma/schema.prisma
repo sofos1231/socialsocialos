@@ -11,14 +11,16 @@ datasource db {
 }
 
 model User {
-  id                 String            @id @default(cuid())
-  email              String            @unique
-  createdAt          DateTime          @default(now())
-  sessionVersion     Int               @default(0)
-  streakCurrent      Int               @default(0)
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  createdAt          DateTime  @default(now())
+  sessionVersion     Int       @default(0)
+  streakCurrent      Int       @default(0)
   streakLastActiveAt DateTime?
   passwordHash       String
-  PracticeSession    PracticeSession[]
+
+  // Back-relation to practice sessions
+  sessions PracticeSession[]
 }
 
 model IdempotencyKey {
@@ -169,14 +171,13 @@ enum Store {
   RC
 }
 
-// NOTE: You already have `Entitlement` in the client.
-// If you ALSO have a separate UserEntitlement model, keep it, but the client shows only `entitlement`.
+// Practice sessions for SocialGym
 model PracticeSession {
   id          String   @id @default(cuid())
   userId      String
   createdAt   DateTime @default(now())
   topic       String
-  score       Int
+  score       Int      @default(0)
   xpGained    Int
   durationSec Int
   notes       String?

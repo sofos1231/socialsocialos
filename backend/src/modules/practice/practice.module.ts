@@ -1,3 +1,5 @@
+// backend/src/modules/practice/practice.module.ts
+
 import { Module } from '@nestjs/common';
 import { PracticeController } from './practice.controller';
 import { PracticeService } from './practice.service';
