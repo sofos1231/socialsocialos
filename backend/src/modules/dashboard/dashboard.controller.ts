@@ -1,17 +1,17 @@
-// backend/src/modules/dashboard/dashboard.controller.ts
-
+// src/modules/dashboard/dashboard.controller.ts
 import { Controller, Get, Req, UseGuards } from '@nestjs/common';
-import { DashboardService } from './dashboard.service';
-import { JwtAuthGuard } from '../../modules/auth/jwt-auth.guard';
+import { StatsService } from '../stats/stats.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('dashboard')
+@UseGuards(JwtAuthGuard) // 👈 protect all routes in this controller
 export class DashboardController {
-  constructor(private readonly dashboardService: DashboardService) {}
+  constructor(private readonly statsService: StatsService) {}
 
-  @UseGuards(JwtAuthGuard)
   @Get('summary')
-  async getSummary(@Req() req) {
-    const userId = req.user.sub ?? req.user.id;
-    return this.dashboardService.getSummary(userId);
+  async getSummary(@Req() req: any) {
+    // JwtAuthGuard + JwtStrategy put the payload on req.user
+    const userId = req.user?.sub;
+    return this.statsService.getDashboardForUser(userId);
   }
 }

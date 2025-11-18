@@ -1,11 +1,11 @@
-// backend/src/modules/dashboard/dashboard.module.ts
-
+// src/modules/dashboard/dashboard.module.ts
 import { Module } from '@nestjs/common';
-import { DashboardService } from './dashboard.service';
 import { DashboardController } from './dashboard.controller';
+import { StatsModule } from '../stats/stats.module';
 
 @Module({
+  imports: [StatsModule],     // 👈 get access to StatsService
   controllers: [DashboardController],
-  providers: [DashboardService],
+  // no need for providers here, StatsService comes from StatsModule
 })
 export class DashboardModule {}

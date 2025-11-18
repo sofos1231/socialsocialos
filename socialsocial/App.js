@@ -1,4 +1,3 @@
 // socialsocial/App.js
-import Root from './src/app/Root';
-
-export default Root;
+import App from './App.tsx';
+export default App;

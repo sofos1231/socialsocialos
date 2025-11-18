@@ -166,14 +166,45 @@ export class AuthService {
 
       const passwordHash = await bcrypt.hash(password, 10);
 
-      const user = await this.prisma.user.create({
-        data: {
-          email: normEmail,
-          passwordHash,
-          // אם בעתיד תרצה להוסיף name לטבלה – כאן נשים אותו
-          // name,
-        },
-        select: { id: true, email: true, createdAt: true },
+      // 🔥 NEW: transaction = User + UserWallet + UserStats
+      const user = await this.prisma.$transaction(async (tx) => {
+        // 1. Create the user
+        const createdUser = await tx.user.create({
+          data: {
+            email: normEmail,
+            passwordHash,
+            // אם בעתיד תרצה להוסיף name לטבלה – כאן נשים אותו
+            // name,
+          },
+          select: { id: true, email: true, createdAt: true },
+        });
+
+        // 2. Create the wallet with valid defaults
+        await tx.userWallet.create({
+          data: {
+            userId: createdUser.id,
+            xp: 0,
+            level: 1,
+            coins: 0,
+            gems: 0,
+            lifetimeXp: 0,
+          },
+        });
+
+        // 3. Create the stats with valid defaults
+        await tx.userStats.create({
+          data: {
+            userId: createdUser.id,
+            sessionsCount: 0,
+            successCount: 0,
+            failCount: 0,
+            averageScore: 0,
+            averageMessageScore: 0,
+            lastSessionAt: null,
+          },
+        });
+
+        return createdUser;
       });
 
       return this.issue(user.id, user.email);
