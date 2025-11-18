@@ -1,16 +1,30 @@
 // src/modules/sessions/sessions.service.ts
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
 import { StatsService } from '../stats/stats.service';
+import {
+  computeSessionRewards,
+  MessageEvaluationInput,
+  SessionRewardsSummary,
+  MessageRarity,
+} from './scoring';
+import { MessageGrade, MessageRole } from '@prisma/client';
 
-const MOCK_SESSION_SCORE = 80;
-const MOCK_MESSAGE_SCORE = 80;
-const MOCK_IS_SUCCESS = true;
+// זמני: ציוני הודעות לסשן מדומה אחד (עד שה-AI יחזיר לנו ציונים אמיתיים)
+const MOCK_MESSAGE_SCORES: number[] = [62, 74, 88, 96];
 
-// כמה נותנים לסשן אחד בשלב הזה (עד שנכניס את רמת ה־rarity האמיתית)
-const MOCK_XP_GAIN = 60;
-const MOCK_COINS_GAIN = 20;
-const MOCK_GEMS_GAIN = 0;
+// מיפוי rarity → grade בדשבורד
+const RARITY_TO_GRADE: Record<MessageRarity, MessageGrade> = {
+  C: MessageGrade.BAD,
+  B: MessageGrade.WEAK,
+  A: MessageGrade.NEUTRAL,
+  S: MessageGrade.GOOD,
+  'S+': MessageGrade.BRILLIANT,
+};
 
 @Injectable()
 export class SessionsService {
@@ -21,7 +35,6 @@ export class SessionsService {
 
   /**
    * Safety net: make sure wallet + stats exist for the user.
-   * (בשביל יוזרים ישנים או אם משהו השתבש פעם אחת)
    */
   private async ensureUserProfilePrimitives(userId: string) {
     await this.prisma.$transaction(async (tx) => {
@@ -55,55 +68,110 @@ export class SessionsService {
   }
 
   /**
-   * Phase 2.3: mock practice session pipeline.
-   * - מעדכן UserStats
-   * - מעדכן UserWallet
-   * - מחזיר גם rewards וגם dashboard snapshot
+   * מנוע כללי לסשן עם ציונים – זה הלב של Phase 3.
+   * לא מחזיר dashboard – רק summary בסיסי + sessionId.
    */
-  async createMockSession(userId: string) {
-    if (!userId) {
-      throw new UnauthorizedException({
-        code: 'AUTH_INVALID',
-        message: 'Missing user id',
+  private async runScoredSession(params: {
+    userId: string;
+    topic: string;
+    messageScores: number[];
+  }): Promise<{
+    summary: SessionRewardsSummary;
+    finalScore: number;
+    isSuccess: boolean;
+    sessionId: string;
+  }> {
+    const { userId, topic, messageScores } = params;
+
+    if (!messageScores || !Array.isArray(messageScores) || messageScores.length === 0) {
+      throw new BadRequestException({
+        code: 'SESSION_EMPTY',
+        message: 'messageScores must contain at least one score',
       });
     }
 
-    // לוודא שיש wallet/stats
-    await this.ensureUserProfilePrimitives(userId);
-
     const now = new Date();
 
-    // נריץ את הכול בטרנזקציה אחת כדי לא לשבור עקביות
-    await this.prisma.$transaction(async (tx) => {
-      // 1) נקרא את הסטטיסטיקות הנוכחיות
-      const stats = await tx.userStats.findUnique({
-        where: { userId },
-      });
+    // 1) חישוב rewards לסשן על בסיס ציוני הודעות
+    const inputs: MessageEvaluationInput[] = messageScores.map((score) => ({
+      score,
+    }));
 
-      const wallet = await tx.userWallet.findUnique({
-        where: { userId },
-      });
+    const summary: SessionRewardsSummary = computeSessionRewards(inputs);
+    const finalScore = Math.round(summary.finalScore);
+    const isSuccess = finalScore >= 60;
+
+    // 2) טרנזקציה: session + messages + stats + wallet
+    const createdSession = await this.prisma.$transaction(async (tx) => {
+      const stats = await tx.userStats.findUnique({ where: { userId } });
+      const wallet = await tx.userWallet.findUnique({ where: { userId } });
 
       if (!stats || !wallet) {
         throw new Error('UserStats or UserWallet missing after ensureUserProfilePrimitives');
       }
 
-      // 2) נחשב סטטיסטיקות חדשות
+      // 2.1) יצירת PracticeSession
+      const session = await tx.practiceSession.create({
+        data: {
+          userId,
+          topic,
+          score: finalScore,
+
+          xpGained: summary.totalXp,
+          coinsGained: summary.totalCoins,
+          gemsGained: summary.totalGems,
+
+          messageCount: messageScores.length,
+          rarityCounts: summary.rarityCounts as any,
+          payload: { messageScores },
+          durationSec: 60,
+
+          status: 'SUCCESS',
+          templateId: null,
+          personaId: null,
+          overallScore: finalScore,
+          endedAt: now,
+          isSuccess,
+        },
+      });
+
+      // 2.2) יצירת ChatMessage לכל הודעה
+      const messagesData = summary.messages.map((m, index) => ({
+        sessionId: session.id,
+        userId,
+        role: MessageRole.USER,
+        // בהמשך: נכניס כאן טקסט אמיתי של היוזר / ה-AI
+        content: `Mock message #${index + 1}`,
+        grade: RARITY_TO_GRADE[m.rarity],
+        xpDelta: m.xp,
+        coinsDelta: m.coins,
+        gemsDelta: m.gems,
+        isBrilliant: m.rarity === 'S+',
+        isLifesaver: false,
+        meta: {
+          index,
+          score: m.score,
+          rarity: m.rarity,
+        } as any,
+      }));
+
+      if (messagesData.length > 0) {
+        await tx.chatMessage.createMany({ data: messagesData });
+      }
+
+      // 2.3) עדכון סטטיסטיקות
       const newSessionsCount = stats.sessionsCount + 1;
-      const newSuccessCount = stats.successCount + (MOCK_IS_SUCCESS ? 1 : 0);
-      const newFailCount = stats.failCount + (MOCK_IS_SUCCESS ? 0 : 1);
+      const newSuccessCount = stats.successCount + (isSuccess ? 1 : 0);
+      const newFailCount = stats.failCount + (isSuccess ? 0 : 1);
 
+      const prevAvgScore = stats.averageScore ?? 0;
       const newAverageScore =
-        newSessionsCount === 0
-          ? MOCK_SESSION_SCORE
-          : (stats.averageScore * stats.sessionsCount + MOCK_SESSION_SCORE) /
-            newSessionsCount;
+        (prevAvgScore * stats.sessionsCount + finalScore) / newSessionsCount;
 
+      const prevAvgMessageScore = stats.averageMessageScore ?? 0;
       const newAverageMessageScore =
-        newSessionsCount === 0
-          ? MOCK_MESSAGE_SCORE
-          : (stats.averageMessageScore * stats.sessionsCount + MOCK_MESSAGE_SCORE) /
-            newSessionsCount;
+        (prevAvgMessageScore * stats.sessionsCount + finalScore) /
+        newSessionsCount;
 
       await tx.userStats.update({
         where: { userId },
@@ -118,35 +186,85 @@ export class SessionsService {
         },
       });
 
-      // 3) נעדכן Wallet עם ה-XP והמטבעות
+      // 2.4) עדכון Wallet
       await tx.userWallet.update({
         where: { userId },
         data: {
-          xp: wallet.xp + MOCK_XP_GAIN,
-          lifetimeXp: wallet.lifetimeXp + MOCK_XP_GAIN,
-          coins: wallet.coins + MOCK_COINS_GAIN,
-          gems: wallet.gems + MOCK_GEMS_GAIN,
+          xp: wallet.xp + summary.totalXp,
+          lifetimeXp: wallet.lifetimeXp + summary.totalXp,
+          coins: wallet.coins + summary.totalCoins,
+          gems: wallet.gems + summary.totalGems,
         },
       });
 
-      // בשלב הזה עוד לא שומרים PracticeSession אמיתי – זה יגיע בפאזה 3
+      return session;
     });
 
-    // 4) נחזיר snapshot של הדאשבורד אחרי הסשן + rewards של הסשן
+    return {
+      summary,
+      finalScore,
+      isSuccess,
+      sessionId: createdSession.id,
+    };
+  }
+
+  /**
+   * API כללי – משומש ע"י /v1/sessions/mock וגם /v1/practice/session
+   */
+  async createScoredSessionFromScores(params: {
+    userId: string;
+    topic: string;
+    messageScores: number[];
+  }) {
+    const { userId, topic, messageScores } = params;
+
+    if (!userId) {
+      throw new UnauthorizedException({
+        code: 'AUTH_INVALID',
+        message: 'Missing user id',
+      });
+    }
+
+    await this.ensureUserProfilePrimitives(userId);
+
+    const { summary, finalScore, isSuccess, sessionId } =
+      await this.runScoredSession({ userId, topic, messageScores });
+
     const dashboard = await this.statsService.getDashboardForUser(userId);
 
     return {
       ok: true,
       rewards: {
-        score: MOCK_SESSION_SCORE,
-        messageScore: MOCK_MESSAGE_SCORE,
-        isSuccess: MOCK_IS_SUCCESS,
-        xpGained: MOCK_XP_GAIN,
-        coinsGained: MOCK_COINS_GAIN,
-        gemsGained: MOCK_GEMS_GAIN,
+        score: finalScore,
+        messageScore: finalScore,
+        isSuccess,
+        xpGained: summary.totalXp,
+        coinsGained: summary.totalCoins,
+        gemsGained: summary.totalGems,
+        rarityCounts: summary.rarityCounts,
+        messages: summary.messages.map((m, index) => ({
+          index,
+          score: m.score,
+          rarity: m.rarity,
+          xp: m.xp,
+          coins: m.coins,
+          gems: m.gems,
+        })),
       },
       dashboard,
+      sessionId,
     };
+  }
+
+  /**
+   * Mock endpoint – פשוט משתמש ב־createScoredSessionFromScores עם מס’ים קבועים.
+   */
+  async createMockSession(userId: string) {
+    return this.createScoredSessionFromScores({
+      userId,
+      topic: 'Mock practice session',
+      messageScores: MOCK_MESSAGE_SCORES,
+    });
   }
 
   /**

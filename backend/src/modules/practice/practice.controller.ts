@@ -1,8 +1,6 @@
-// backend/src/modules/practice/practice.controller.ts
-
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
-import { PracticeService } from './practice.service';
+import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PracticeService } from './practice.service';
 import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
 
 @Controller('practice')
@@ -11,14 +9,11 @@ export class PracticeController {
 
   @UseGuards(JwtAuthGuard)
   @Post('session')
-  async createSession(
+  async runSession(
     @Req() req: any,
-    @Body() body: CreatePracticeSessionDto,
+    @Body() dto: CreatePracticeSessionDto,
   ) {
-    const userId = req.user.sub ?? req.user.id;
-
-    const score = body.score;
-
-    return this.practiceService.createSession(userId, score);
+    const userId = req.user?.sub;
+    return this.practiceService.runRealSession(userId, dto);
   }
 }

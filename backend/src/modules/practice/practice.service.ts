@@ -1,38 +1,54 @@
 // backend/src/modules/practice/practice.service.ts
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { SessionsService } from '../sessions/sessions.service';
+import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
 
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../db/prisma.service';
+// דפוס ניקוד זמני עד שיהיה לנו AI אמיתי
+const SCORE_PATTERN = [62, 74, 88, 96];
 
 @Injectable()
 export class PracticeService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly sessionsService: SessionsService) {}
 
-  async createSession(userId: string, score: number) {
-    if (score === undefined || score === null) {
-      throw new BadRequestException('score is required');
+  /**
+   * Phase 3.4: סשן תרגול אמיתי.
+   * כרגע – רק ממפה הודעות → ציונים לפי דפוס קבוע,
+   * ואז משתמש במנוע הכללי של SessionsService.
+   */
+  async runRealSession(userId: string, dto: CreatePracticeSessionDto) {
+    if (!userId) {
+      throw new UnauthorizedException({
+        code: 'AUTH_INVALID',
+        message: 'Missing user id',
+      });
     }
 
-    const numericScore = Number(score);
-
-    if (Number.isNaN(numericScore)) {
-      throw new BadRequestException('score must be a number');
+    const messages = dto.messages ?? [];
+    if (!messages.length) {
+      throw new BadRequestException({
+        code: 'SESSION_EMPTY',
+        message: 'messages must contain at least one message',
+      });
     }
 
-    if (numericScore < 0 || numericScore > 100) {
-      throw new BadRequestException('score must be between 0 and 100');
-    }
+    const topic = dto.topic?.trim() || 'Practice session';
 
-    // ⚠️ חובה לספק topic / xpGained / durationSec כי הם required ב-Prisma
-    return this.prisma.practiceSession.create({
-      data: {
-        score: numericScore,
-        topic: 'mock-session',   // תחליף לערך אמיתי אם תרצה
-        xpGained: 0,             // כרגע 0 – אפשר לעדכן בהמשך
-        durationSec: 0,          // גם כאן – כרגע placeholder
-        user: {
-          connect: { id: userId },
-        },
-      },
+    // ⚠️ כרגע אין לנו AI – אז נותנים ציונים לפי pattern קבוע
+    // [62, 74, 88, 96] בלופ – רק כדי להפעיל את מנוע ה־scoring.
+    const messageScores = messages.map(
+      (_m, index) => SCORE_PATTERN[index % SCORE_PATTERN.length],
+    );
+
+    // מנוע מלא: יוצר PracticeSession, ChatMessage, מעדכן סטטיסטיקות וארנק,
+    // ומחזיר rewards + dashboard + sessionId.
+    return this.sessionsService.createScoredSessionFromScores({
+      userId,
+      topic,
+      messageScores,
     });
   }
 }

@@ -137,23 +137,34 @@ model PowerUpType {
 
 // ===== Dynamic / user gameplay data =====
 
-// Practice sessions for SocialGym
 model PracticeSession {
-  id          String   @id @default(cuid())
-  userId      String
-  createdAt   DateTime @default(now())
-  topic       String
-  score       Int      @default(0)
-  xpGained    Int
-  durationSec Int
-  notes       String?
+  id        String   @id @default(cuid())
+  userId    String
+  createdAt DateTime @default(now())
+  topic     String
 
-  // New fields for grand plan (kept optional so existing rows stay valid)
+  // Final session score
+  score Int @default(0)
+
+  // Aggregate rewards stored for history
+  xpGained    Int @default(0)
+  coinsGained Int @default(0)
+  gemsGained  Int @default(0)
+
+  // Meta about the conversation
+  messageCount Int     @default(0)
+  rarityCounts Json?
+  payload      Json?
+  durationSec  Int     @default(0)
+  notes        String?
+
+  // Grand plan fields
   status       MissionStatus @default(IN_PROGRESS)
   templateId   String?
   personaId    String?
   overallScore Int?
   endedAt      DateTime?
+  isSuccess    Boolean?
 
   user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   template PracticeMissionTemplate? @relation(fields: [templateId], references: [id])
