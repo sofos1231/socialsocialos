@@ -10,6 +10,31 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ===== Enums =====
+
+enum MissionStatus {
+  IN_PROGRESS
+  SUCCESS
+  FAIL
+  ABORTED
+}
+
+enum MessageRole {
+  USER
+  AI
+  SYSTEM
+}
+
+enum MessageGrade {
+  BRILLIANT
+  GOOD
+  NEUTRAL
+  WEAK
+  BAD
+}
+
+// ===== Core User / Auth =====
+
 model User {
   id                 String    @id @default(cuid())
   email              String    @unique
@@ -19,8 +44,21 @@ model User {
   streakLastActiveAt DateTime?
   passwordHash       String
 
-  // Back-relation to practice sessions
+  // Practice sessions
   sessions PracticeSession[]
+
+  // Wallet & stats
+  wallet UserWallet?
+  stats  UserStats?
+
+  // Messages
+  messages ChatMessage[]
+
+  // Power-ups
+  powerUpUsages PowerUpUsage[]
+
+  // Refresh tokens
+  refreshTokens RefreshToken[]
 }
 
 model IdempotencyKey {
@@ -37,96 +75,6 @@ model IdempotencyKey {
   @@unique([key, userId, route])
 }
 
-model EconomyWallet {
-  userId    String   @id
-  coins     Int      @default(0)
-  diamonds  Int      @default(0)
-  tickets   Int      @default(0)
-  updatedAt DateTime @updatedAt
-}
-
-model ShopCatalog {
-  key     String  @id
-  type    String
-  pricing Json
-  bonus   Json?
-  limits  Json?
-  active  Boolean @default(true)
-}
-
-model PowerupInventory {
-  id        String    @id @default(cuid())
-  userId    String
-  type      String
-  charges   Int       @default(0)
-  startsAt  DateTime?
-  expiresAt DateTime?
-  createdAt DateTime  @default(now())
-
-  @@index([userId, type])
-}
-
-model Entitlement {
-  id       String    @id @default(cuid())
-  userId   String
-  key      String
-  active   Boolean   @default(true)
-  startsAt DateTime
-  endsAt   DateTime?
-  source   String
-
-  @@index([userId, key, active])
-}
-
-model Purchase {
-  id          String    @id @default(cuid())
-  userId      String
-  platform    String
-  sku         String
-  qty         Int       @default(1)
-  price       Float?
-  currency    String?
-  storeTxId   String    @unique
-  status      String
-  purchasedAt DateTime
-  expiresAt   DateTime?
-  meta        Json?
-}
-
-model Event {
-  id     String   @id @default(cuid())
-  userId String
-  name   String
-  props  Json?
-  ts     DateTime
-
-  @@index([userId, ts])
-}
-
-model MetricsWeekly {
-  userId       String
-  weekStart    DateTime
-  xp           Int      @default(0)
-  fillerPerMin Float?
-  confidence   Float?
-  energy       String?
-  sentiment    Float?
-  updatedAt    DateTime @updatedAt
-
-  @@id([userId, weekStart])
-}
-
-model LimitedDeal {
-  id       String   @id @default(cuid())
-  key      String
-  startsAt DateTime
-  endsAt   DateTime
-  rules    Json
-  active   Boolean  @default(true)
-
-  @@index([key, active])
-}
-
 model RefreshToken {
   id        String   @id @default(cuid())
   userId    String
@@ -135,41 +83,59 @@ model RefreshToken {
   createdAt DateTime @default(now())
   revoked   Boolean  @default(false)
 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, expiresAt, revoked])
 }
 
-model Subscription {
-  id         String    @id @default(cuid())
-  userId     String
-  store      String
-  productId  String
-  status     String
-  periodEnd  DateTime?
-  receiptKey String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+// ===== Reference tables (static-ish configuration) =====
 
-  @@index([userId, status])
+// AI personas (characters)
+model AiPersona {
+  id          String   @id @default(cuid())
+  name        String
+  shortLabel  String? // e.g. "Shy Student"
+  description String?
+  style       String? // tone / vibe
+  avatarUrl   String?
+  difficulty  Int? // 1–5
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  sessions PracticeSession[]
 }
 
-model UserEntitlement {
-  id       String    @id @default(cuid())
-  userId   String
-  key      String
-  active   Boolean   @default(true)
-  source   String
-  startsAt DateTime  @default(now())
-  endsAt   DateTime?
+// Mission templates (types of trainings)
+model PracticeMissionTemplate {
+  id           String   @id @default(cuid())
+  code         String   @unique // e.g. "FIRST_MESSAGE_APP"
+  title        String
+  description  String?
+  category     String? // e.g. "DATING"
+  difficulty   Int? // 1–5
+  timeLimitSec Int? // optional
+  maxMessages  Int? // optional
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
 
-  @@index([userId, key, active])
+  sessions PracticeSession[]
 }
 
-// === Subscriptions (IAP receipts normalized) ===
-enum Store {
-  APPLE
-  GOOGLE
-  RC
+// Power-up catalog (e.g. Lifesaver)
+model PowerUpType {
+  id                String   @id @default(cuid())
+  code              String   @unique // e.g. "LIFESAVER"
+  name              String
+  description       String?
+  gemCost           Int
+  maxUsesPerSession Int?
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+
+  usages PowerUpUsage[]
 }
+
+// ===== Dynamic / user gameplay data =====
 
 // Practice sessions for SocialGym
 model PracticeSession {
@@ -182,7 +148,90 @@ model PracticeSession {
   durationSec Int
   notes       String?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // New fields for grand plan (kept optional so existing rows stay valid)
+  status       MissionStatus @default(IN_PROGRESS)
+  templateId   String?
+  personaId    String?
+  overallScore Int?
+  endedAt      DateTime?
+
+  user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template PracticeMissionTemplate? @relation(fields: [templateId], references: [id])
+  persona  AiPersona?               @relation(fields: [personaId], references: [id])
+  messages ChatMessage[]
+  powerUps PowerUpUsage[]
 
   @@index([userId, createdAt])
+  @@index([templateId])
+  @@index([personaId])
+}
+
+// Individual chat messages inside a session
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  userId    String
+  createdAt DateTime    @default(now())
+  role      MessageRole
+  content   String
+
+  // Per-message feedback
+  grade       MessageGrade?
+  xpDelta     Int           @default(0)
+  coinsDelta  Int           @default(0)
+  gemsDelta   Int           @default(0)
+  isBrilliant Boolean       @default(false)
+  isLifesaver Boolean       @default(false)
+  meta        Json?
+
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+// Wallet = XP, coins, gems, level
+model UserWallet {
+  userId     String   @id
+  xp         Int      @default(0)
+  level      Int      @default(1)
+  coins      Int      @default(0)
+  gems       Int      @default(0)
+  lifetimeXp Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Aggregated stats for dashboard
+model UserStats {
+  userId              String    @id
+  sessionsCount       Int       @default(0)
+  successCount        Int       @default(0)
+  failCount           Int       @default(0)
+  averageScore        Float?
+  averageMessageScore Float?
+  lastSessionAt       DateTime?
+  lastUpdatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Logged power-up usages per session
+model PowerUpUsage {
+  id            String   @id @default(cuid())
+  userId        String
+  sessionId     String?
+  powerUpTypeId String
+  usedAt        DateTime @default(now())
+  gemsSpent     Int      @default(0)
+  meta          Json?
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session     PracticeSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  powerUpType PowerUpType      @relation(fields: [powerUpTypeId], references: [id], onDelete: Restrict)
+
+  @@index([userId, usedAt])
+  @@index([sessionId])
+  @@index([powerUpTypeId])
 }
