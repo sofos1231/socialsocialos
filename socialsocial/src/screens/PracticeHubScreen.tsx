@@ -1,6 +1,6 @@
-// socialsocial/src/screens/DashboardScreen.tsx
+// socialsocial/src/screens/PracticeHubScreen.tsx
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,88 +10,38 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { api } from '../api/client';
-import { RootStackParamList } from '../navigation/types';
+import { PracticeStackParamList } from '../navigation/types';
+import { useDashboardLoop } from '../hooks/useDashboardLoop';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
+type Props = NativeStackScreenProps<PracticeStackParamList, 'PracticeHub'>;
 
-interface DashboardSnapshot {
-  ok: boolean;
-  user: {
-    id: string;
-    email: string;
-    createdAt: string;
-  };
-  streak: {
-    current: number;
-  };
-  wallet: {
-    xp: number;
-    level: number;
-    coins: number;
-    gems: number;
-    lifetimeXp: number;
-  };
-  stats: {
-    sessionsCount: number;
-    successCount: number;
-    failCount: number;
-    averageScore: number;
-    averageMessageScore: number;
-    lastSessionAt: string | null;
-  };
-}
-
-export default function DashboardScreen({ navigation }: Props) {
-  const [loading, setLoading] = useState(false);
-  const [summary, setSummary] = useState<DashboardSnapshot | null>(null);
-
-  const fetchSummary = useCallback(async () => {
-    try {
-      setLoading(true);
-
-      // Make sure we actually have a token before calling the backend
-      const storedAccessToken =
-        (await AsyncStorage.getItem('accessToken')) ||
-        (await AsyncStorage.getItem('token'));
-
-      if (!storedAccessToken) {
-        Alert.alert('Not logged in', 'Please log in again to view your dashboard.');
-        setSummary(null);
-        return;
-      }
-
-      const res = await api.get<DashboardSnapshot>('/dashboard/summary');
-      console.log('[UI][DASHBOARD] summary', res.data);
-      setSummary(res.data);
-    } catch (err: any) {
-      const payload = err?.response?.data || String(err);
-      console.log('[Dashboard Error]', payload);
-      Alert.alert('Error', 'Failed to load dashboard summary');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchSummary();
-  }, [fetchSummary]);
+export default function PracticeHubScreen({ navigation }: Props) {
+  const {
+    summary,
+    lastRewards,
+    loadingSummary,
+    loadingPractice,
+    error,
+    reloadSummary,
+    runDebugPractice,
+  } = useDashboardLoop();
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Dashboard</Text>
 
-      {loading && (
+      {!!error && <Text style={styles.errorText}>{error}</Text>}
+
+      {loadingSummary && (
         <View style={styles.loadingRow}>
           <ActivityIndicator />
           <Text style={styles.loadingText}>Loading summary…</Text>
         </View>
       )}
 
-      {summary && !loading && (
+      {summary && !loadingSummary && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>User</Text>
           <Text style={styles.value}>Email: {summary.user.email}</Text>
@@ -116,26 +66,53 @@ export default function DashboardScreen({ navigation }: Props) {
           <Text style={styles.value}>
             Avg Message Score: {summary.stats.averageMessageScore}
           </Text>
+          <Text style={styles.value}>
+            Last Session: {summary.stats.lastSessionAt || '—'}
+          </Text>
         </View>
       )}
 
-      {!summary && !loading && (
+      {!summary && !loadingSummary && (
         <Text style={styles.emptyText}>
           No dashboard data yet. Run a practice session to generate stats.
         </Text>
       )}
 
       <TouchableOpacity
+        style={[styles.button, styles.primaryButton, loadingPractice && styles.buttonDisabled]}
+        onPress={runDebugPractice}
+        disabled={loadingPractice}
+      >
+        <Text style={styles.buttonText}>
+          {loadingPractice ? 'Running…' : 'Run Debug Practice'}
+        </Text>
+      </TouchableOpacity>
+
+      {lastRewards && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Last Rewards</Text>
+          <Text style={styles.value}>Score: {lastRewards.score}</Text>
+          <Text style={styles.value}>XP gained: {lastRewards.xpGained}</Text>
+          <Text style={styles.value}>Coins: {lastRewards.coinsGained}</Text>
+          <Text style={styles.value}>Gems: {lastRewards.gemsGained}</Text>
+        </View>
+      )}
+
+      <TouchableOpacity
         style={[styles.button, styles.primaryButton]}
-        onPress={() => navigation.navigate('Practice')}
+        onPress={() => navigation.navigate('PracticeSession')}
       >
         <Text style={styles.buttonText}>Go to Practice</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.button, styles.secondaryButton, loading && styles.buttonDisabled]}
-        onPress={fetchSummary}
-        disabled={loading}
+        style={[
+          styles.button,
+          styles.secondaryButton,
+          loadingSummary && styles.buttonDisabled,
+        ]}
+        onPress={reloadSummary}
+        disabled={loadingSummary}
       >
         <Text style={styles.buttonText}>Refresh Summary</Text>
       </TouchableOpacity>
@@ -155,6 +132,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 16,
     color: '#fff',
+  },
+  errorText: {
+    color: '#f87171',
+    marginBottom: 10,
   },
   loadingRow: {
     flexDirection: 'row',

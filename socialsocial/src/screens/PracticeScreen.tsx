@@ -12,42 +12,14 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { api } from '../api/client';
-import { RootStackParamList } from '../navigation/types';
+import { PracticeStackParamList, PracticeSessionRequest, PracticeSessionResponse } from '../navigation/types';
+import { createPracticeSession } from '../api/practice';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Practice'>;
-
-interface PracticeRequestBody {
-  topic: string;
-  messages: { role: 'USER' | 'AI'; content: string; timestamp?: string }[];
-}
-
-interface PracticeResponse {
-  ok: boolean;
-  rewards: {
-    score: number;
-    messageScore: number;
-    isSuccess: boolean;
-    xpGained: number;
-    coinsGained: number;
-    gemsGained: number;
-    rarityCounts: Record<string, number>;
-    messages: {
-      index: number;
-      score: number;
-      rarity: string;
-      xp: number;
-      coins: number;
-      gems: number;
-    }[];
-  };
-  dashboard: any;
-  sessionId?: string;
-}
+type Props = NativeStackScreenProps<PracticeStackParamList, 'PracticeSession'>;
 
 export default function PracticeScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
-  const [lastResponse, setLastResponse] = useState<PracticeResponse | null>(null);
+  const [lastResponse, setLastResponse] = useState<PracticeSessionResponse | null>(null);
 
   const runPractice = async () => {
     try {
@@ -67,7 +39,7 @@ export default function PracticeScreen({ navigation }: Props) {
         return;
       }
 
-      const body: PracticeRequestBody = {
+      const body: PracticeSessionRequest = {
         topic: 'First real practice',
         messages: [
           { role: 'USER', content: 'Hey :)' },
@@ -79,22 +51,15 @@ export default function PracticeScreen({ navigation }: Props) {
 
       console.log('[UI][PRACTICE] sending body', body);
 
-      const res = await api.post<PracticeResponse>('/practice/session', body, {
-        headers: {
-          Authorization: `Bearer ${storedAccessToken}`,
-        },
-      });
+      const res = await createPracticeSession(storedAccessToken, body);
 
-      console.log('[UI][PRACTICE] response', res.data);
-      setLastResponse(res.data);
+      console.log('[UI][PRACTICE] response', res);
+      setLastResponse(res);
 
       Alert.alert(
         'Practice session complete',
-        `Score: ${res.data.rewards.score}\nXP: ${res.data.rewards.xpGained}\nCoins: ${res.data.rewards.coinsGained}`,
+        `Score: ${res.rewards.score}\nXP: ${res.rewards.xpGained}\nCoins: ${res.rewards.coinsGained}`,
       );
-
-      // optional: go back to dashboard to see updated stats
-      // navigation.navigate('Dashboard');
     } catch (err: any) {
       const payload = err?.response?.data || String(err);
       console.log('[Practice Error]', payload);
@@ -104,7 +69,7 @@ export default function PracticeScreen({ navigation }: Props) {
     }
   };
 
-  const goBack = () => navigation.navigate('Dashboard');
+  const goBack = () => navigation.goBack();
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -128,7 +93,7 @@ export default function PracticeScreen({ navigation }: Props) {
         style={[styles.button, styles.secondaryButton]}
         onPress={goBack}
       >
-        <Text style={styles.buttonText}>Back to Dashboard</Text>
+        <Text style={styles.buttonText}>Back to Hub</Text>
       </TouchableOpacity>
 
       {lastResponse && (

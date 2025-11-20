@@ -18,10 +18,11 @@
       "node"
     ]
   },
+  "include": ["src"], 
   "exclude": [
     "node_modules",
     "dist",
-    "build"
+    "build" 
   ],
   "extends": "expo/tsconfig.base"
 }

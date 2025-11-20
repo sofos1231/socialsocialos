@@ -1,6 +1,6 @@
-// src/api/types.ts
+// socialsocial/src/navigation/types.ts
 
-// ===== Rarity & Rewards =====
+// ===== Practice session & rewards =====
 
 export type MessageRarity = 'C' | 'B' | 'A' | 'S' | 'S+';
 
@@ -86,8 +86,25 @@ export interface PracticeSessionResponse {
   dashboard: DashboardSummaryResponse;
   sessionId: string;
 }
+
+// ===== Navigation param lists =====
+
+// Root stack – Auth + main app host (Dashboard = tabs)
 export type RootStackParamList = {
   Auth: undefined;
-  Dashboard: undefined;
-  Practice: undefined;
+  Dashboard: undefined; // hosts the tab navigator
+  Practice: undefined;  // legacy, can be unused for now
+};
+
+// Bottom tabs
+export type MainTabParamList = {
+  PracticeTab: undefined;
+  StatsTab: undefined;
+  ProfileTab: undefined;
+};
+
+// Practice stack inside Practice tab
+export type PracticeStackParamList = {
+  PracticeHub: undefined;
+  PracticeSession: undefined;
 };
