@@ -1,20 +1,16 @@
 // backend/src/modules/practice/practice.module.ts
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../db/prisma.module';
-import { StatsModule } from '../stats/stats.module';
-import { SessionsModule } from '../sessions/sessions.module';
-
 import { PracticeController } from './practice.controller';
 import { PracticeService } from './practice.service';
+import { SessionsModule } from '../sessions/sessions.module';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
   imports: [
-    PrismaModule,
-    StatsModule,
-    SessionsModule,  // כדי להשתמש ב-createRealSession() או לנהל end-of-session logic
+    SessionsModule,
+    AiModule,         // 👈 NEW — we inject AiScoringService from here
   ],
   controllers: [PracticeController],
   providers: [PracticeService],
-  exports: [PracticeService],
 })
 export class PracticeModule {}

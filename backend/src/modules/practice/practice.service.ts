@@ -1,54 +1,53 @@
 // backend/src/modules/practice/practice.service.ts
-import {
-  BadRequestException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { SessionsService } from '../sessions/sessions.service';
-import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
-
-// דפוס ניקוד זמני עד שיהיה לנו AI אמיתי
-const SCORE_PATTERN = [62, 74, 88, 96];
+import { AiScoringService } from '../ai/ai-scoring.service';
 
 @Injectable()
 export class PracticeService {
-  constructor(private readonly sessionsService: SessionsService) {}
+  constructor(
+    private readonly sessionsService: SessionsService,
+    private readonly aiScoring: AiScoringService,
+  ) {}
 
-  /**
-   * Phase 3.4: סשן תרגול אמיתי.
-   * כרגע – רק ממפה הודעות → ציונים לפי דפוס קבוע,
-   * ואז משתמש במנוע הכללי של SessionsService.
-   */
-  async runRealSession(userId: string, dto: CreatePracticeSessionDto) {
-    if (!userId) {
-      throw new UnauthorizedException({
-        code: 'AUTH_INVALID',
-        message: 'Missing user id',
-      });
-    }
+  async runRealSession(userId: string, dto: any) {
+    const { messages } = dto;
 
-    const messages = dto.messages ?? [];
-    if (!messages.length) {
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
       throw new BadRequestException({
-        code: 'SESSION_EMPTY',
-        message: 'messages must contain at least one message',
+        code: 'PRACTICE_EMPTY',
+        message: 'messages must contain at least one item',
       });
     }
 
+    // Clean topic
     const topic = dto.topic?.trim() || 'Practice session';
 
-    // ⚠️ כרגע אין לנו AI – אז נותנים ציונים לפי pattern קבוע
-    // [62, 74, 88, 96] בלופ – רק כדי להפעיל את מנוע ה־scoring.
-    const messageScores = messages.map(
-      (_m, index) => SCORE_PATTERN[index % SCORE_PATTERN.length],
-    );
+    // 1) 👉 Call our AI scoring skeleton
+    const aiResult = await this.aiScoring.scoreConversation({
+      userId,
+      personaId: dto.personaId ?? null,
+      templateId: dto.templateId ?? null,
+      messages,
+    });
 
-    // מנוע מלא: יוצר PracticeSession, ChatMessage, מעדכן סטטיסטיקות וארנק,
-    // ומחזיר rewards + dashboard + sessionId.
-    return this.sessionsService.createScoredSessionFromScores({
+    // 2) Convert AI result → SessionsService scoring format
+    const messageScores = aiResult.messageScores.map((m) => m.score);
+
+    // 3) Let SessionsService handle DB writes + stats + wallet
+    const sessionResult = await this.sessionsService.createScoredSessionFromScores({
       userId,
       topic,
       messageScores,
     });
+
+    // 4) 🔥 Attach AI metadata (non-breaking, additive field)
+    return {
+      ...sessionResult,
+      ai: {
+        overallScore: aiResult.overallScore,
+        notes: aiResult.notes,
+      },
+    };
   }
 }
