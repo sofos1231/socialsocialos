@@ -93,13 +93,18 @@ export class SessionsService {
     const now = new Date();
 
     // 1) חישוב rewards לסשן על בסיס ציוני הודעות
-    const inputs: MessageEvaluationInput[] = messageScores.map((score) => ({
-      score,
-    }));
+    const inputs: MessageEvaluationInput[] = messageScores.map((score) => ({ score }));
 
     const summary: SessionRewardsSummary = computeSessionRewards(inputs);
     const finalScore = Math.round(summary.finalScore);
     const isSuccess = finalScore >= 60;
+
+    // ממוצע ציוני ההודעות בסשן הנוכחי (לא רק הציון הסופי)
+    const perMessageScores = summary.messages.map((m) => m.score);
+    const sessionMessageAvg =
+      perMessageScores.length > 0
+        ? perMessageScores.reduce((sum, s) => sum + s, 0) / perMessageScores.length
+        : 0;
 
     // 2) טרנזקציה: session + messages + stats + wallet
     const createdSession = await this.prisma.$transaction(async (tx) => {
@@ -126,7 +131,7 @@ export class SessionsService {
           payload: { messageScores },
           durationSec: 60,
 
-          status: 'SUCCESS',
+          status: isSuccess ? 'SUCCESS' : 'FAIL',
           templateId: null,
           personaId: null,
           overallScore: finalScore,
@@ -170,7 +175,7 @@ export class SessionsService {
 
       const prevAvgMessageScore = stats.averageMessageScore ?? 0;
       const newAverageMessageScore =
-        (prevAvgMessageScore * stats.sessionsCount + finalScore) /
+        (prevAvgMessageScore * stats.sessionsCount + sessionMessageAvg) /
         newSessionsCount;
 
       await tx.userStats.update({
