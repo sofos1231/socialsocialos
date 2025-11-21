@@ -1,3 +1,5 @@
+// NOTE: This file currently uses Option A (rarity/xp-based) scoring/rewards. It will be migrated to Option B AiCore metrics later.
+
 // src/modules/sessions/scoring.ts
 
 export type MessageRarity = 'C' | 'B' | 'A' | 'S' | 'S+';

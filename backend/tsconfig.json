@@ -23,11 +23,10 @@
     "src/**/*.ts"
   ],
   "exclude": [
-    "dist",
-    "node_modules",
-    "test",
-    "vite.config.ts",
-    "**/*.spec.ts",
-    "**/*.e2e-spec.ts"
-  ]
+  "node_modules",
+  "test",
+  "vite.config.ts",
+  "**/*.spec.ts",
+  "**/*.e2e-spec.ts"
+]
 }

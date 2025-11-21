@@ -1,3 +1,5 @@
+// NOTE: This file currently uses Option A (rarity/xp-based) scoring/rewards. It will be migrated to Option B AiCore metrics later.
+
 // backend/src/modules/practice/practice.module.ts
 import { Module } from '@nestjs/common';
 import { PracticeController } from './practice.controller';

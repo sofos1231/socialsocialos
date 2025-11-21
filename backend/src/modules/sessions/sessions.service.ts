@@ -1,3 +1,7 @@
+// NOTE: This file currently uses Option A (rarity/xp-based) scoring/rewards
+// as the primary reward engine, and additionally persists Option B AiCore
+// metrics + insights into PracticeSession when provided.
+
 // src/modules/sessions/sessions.service.ts
 import {
   Injectable,
@@ -13,6 +17,8 @@ import {
   MessageRarity,
 } from './scoring';
 import { MessageGrade, MessageRole } from '@prisma/client';
+import { AiSessionResult } from '../ai/ai-scoring.types';
+import { buildAiInsightSummary } from '../ai/ai-insights';
 
 // זמני: ציוני הודעות לסשן מדומה אחד (עד שה-AI יחזיר לנו ציונים אמיתיים)
 const MOCK_MESSAGE_SCORES: number[] = [62, 74, 88, 96];
@@ -215,13 +221,18 @@ export class SessionsService {
 
   /**
    * API כללי – משומש ע"י /v1/sessions/mock וגם /v1/practice/session
+   *
+   * Option A: עדיין אחראי על rewards (xp/coins/gems + rarity/messages).
+   * Option B: אם aiCoreResult קיים, אנחנו גם מעדכנים את שדות ה-AiCore ב־PracticeSession
+   *           וגם aiSummary עם תובנות.
    */
   async createScoredSessionFromScores(params: {
     userId: string;
     topic: string;
     messageScores: number[];
+    aiCoreResult?: AiSessionResult;
   }) {
-    const { userId, topic, messageScores } = params;
+    const { userId, topic, messageScores, aiCoreResult } = params;
 
     if (!userId) {
       throw new UnauthorizedException({
@@ -234,6 +245,38 @@ export class SessionsService {
 
     const { summary, finalScore, isSuccess, sessionId } =
       await this.runScoredSession({ userId, topic, messageScores });
+
+    // 🔥 Option B: אם יש לנו תוצאה מ-AiCore, נשמור את המטריקות + תובנות בטבלת PracticeSession
+    if (aiCoreResult?.metrics) {
+      const m = aiCoreResult.metrics;
+      const aiSummary = buildAiInsightSummary(aiCoreResult);
+
+      await this.prisma.practiceSession.update({
+        where: { id: sessionId },
+        data: {
+          // Core scores
+          charismaIndex: m.charismaIndex ?? null,
+          confidenceScore: m.confidence ?? null,
+          clarityScore: m.clarity ?? null,
+          humorScore: m.humor ?? null,
+          tensionScore: m.tensionControl ?? null,
+          emotionalWarmth: m.emotionalWarmth ?? null,
+          dominanceScore: m.dominance ?? null,
+
+          // Counters
+          fillerWordsCount: m.fillerWordsCount ?? null,
+          totalMessages: m.totalMessages ?? null,
+          totalWords: m.totalWords ?? null,
+
+          // Versioning + raw payload
+          aiCoreVersion: aiCoreResult.version ?? null,
+          aiCorePayload: aiCoreResult as any,
+
+          // Single-session insight summary (cast to JSON for Prisma)
+          aiSummary: aiSummary ? (aiSummary as any) : null,
+        },
+      });
+    }
 
     const dashboard = await this.statsService.getDashboardForUser(userId);
 
@@ -269,6 +312,7 @@ export class SessionsService {
       userId,
       topic: 'Mock practice session',
       messageScores: MOCK_MESSAGE_SCORES,
+      // אין לנו AiCore mock כאן, אז אנחנו לא מעבירים aiCoreResult
     });
   }
 

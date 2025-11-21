@@ -1,5 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// NOTE: Practice/Chat stats are currently Option A (rarity/xp-based). Option B trait metrics will be added alongside and gradually replace this.
 
 generator client {
   provider = "prisma-client-js"
@@ -10,55 +9,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ===== Enums =====
-
-enum MissionStatus {
-  IN_PROGRESS
-  SUCCESS
-  FAIL
-  ABORTED
-}
-
-enum MessageRole {
-  USER
-  AI
-  SYSTEM
-}
-
-enum MessageGrade {
-  BRILLIANT
-  GOOD
-  NEUTRAL
-  WEAK
-  BAD
-}
-
-// ===== Core User / Auth =====
-
 model User {
-  id                 String    @id @default(cuid())
-  email              String    @unique
-  createdAt          DateTime  @default(now())
-  sessionVersion     Int       @default(0)
-  streakCurrent      Int       @default(0)
+  id                 String            @id @default(cuid())
+  email              String            @unique
+  createdAt          DateTime          @default(now())
+  sessionVersion     Int               @default(0)
+  streakCurrent      Int               @default(0)
   streakLastActiveAt DateTime?
   passwordHash       String
-
-  // Practice sessions
-  sessions PracticeSession[]
-
-  // Wallet & stats
-  wallet UserWallet?
-  stats  UserStats?
-
-  // Messages
-  messages ChatMessage[]
-
-  // Power-ups
-  powerUpUsages PowerUpUsage[]
-
-  // Refresh tokens
-  refreshTokens RefreshToken[]
+  tier               AccountTier       @default(FREE)
+  messages           ChatMessage[]
+  powerUpUsages      PowerUpUsage[]
+  sessions           PracticeSession[]
+  refreshTokens      RefreshToken[]
+  stats              UserStats?
+  wallet             UserWallet?
 }
 
 model IdempotencyKey {
@@ -82,126 +47,123 @@ model RefreshToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
   revoked   Boolean  @default(false)
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt, revoked])
 }
 
-// ===== Reference tables (static-ish configuration) =====
-
-// AI personas (characters)
 model AiPersona {
-  id          String   @id @default(cuid())
+  id          String            @id @default(cuid())
   name        String
-  shortLabel  String? // e.g. "Shy Student"
+  shortLabel  String?
   description String?
-  style       String? // tone / vibe
+  style       String?
   avatarUrl   String?
-  difficulty  Int? // 1–5
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-
-  sessions PracticeSession[]
+  difficulty  Int?
+  active      Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  sessions    PracticeSession[]
 }
 
-// Mission templates (types of trainings)
 model PracticeMissionTemplate {
-  id           String   @id @default(cuid())
-  code         String   @unique // e.g. "FIRST_MESSAGE_APP"
+  id           String            @id @default(cuid())
+  code         String            @unique
   title        String
   description  String?
-  category     String? // e.g. "DATING"
-  difficulty   Int? // 1–5
-  timeLimitSec Int? // optional
-  maxMessages  Int? // optional
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-
-  sessions PracticeSession[]
+  category     String?
+  difficulty   Int?
+  timeLimitSec Int?
+  maxMessages  Int?
+  active       Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  sessions     PracticeSession[]
 }
 
-// Power-up catalog (e.g. Lifesaver)
 model PowerUpType {
-  id                String   @id @default(cuid())
-  code              String   @unique // e.g. "LIFESAVER"
+  id                String         @id @default(cuid())
+  code              String         @unique
   name              String
   description       String?
   gemCost           Int
   maxUsesPerSession Int?
-  active            Boolean  @default(true)
-  createdAt         DateTime @default(now())
-
-  usages PowerUpUsage[]
+  active            Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+  usages            PowerUpUsage[]
 }
 
-// ===== Dynamic / user gameplay data =====
-
 model PracticeSession {
-  id        String   @id @default(cuid())
-  userId    String
-  createdAt DateTime @default(now())
-  topic     String
-
-  // Final session score
-  score Int @default(0)
-
-  // Aggregate rewards stored for history
-  xpGained    Int @default(0)
-  coinsGained Int @default(0)
-  gemsGained  Int @default(0)
-
-  // Meta about the conversation
-  messageCount Int     @default(0)
-  rarityCounts Json?
-  payload      Json?
-  durationSec  Int     @default(0)
+  id           String        @id @default(cuid())
+  userId       String
+  createdAt    DateTime      @default(now())
+  topic        String
+  score        Int           @default(0)
+  xpGained     Int           @default(0)
+  durationSec  Int           @default(0)
   notes        String?
-
-  // Grand plan fields
+  endedAt      DateTime?
+  overallScore Int?
+  personaId    String?
   status       MissionStatus @default(IN_PROGRESS)
   templateId   String?
-  personaId    String?
-  overallScore Int?
-  endedAt      DateTime?
+  coinsGained  Int           @default(0)
+  gemsGained   Int           @default(0)
   isSuccess    Boolean?
+  messageCount Int           @default(0)
+  payload      Json?
+  rarityCounts Json?
+  aiMode       String?
+  aiSummary    Json?
 
-  user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  template PracticeMissionTemplate? @relation(fields: [templateId], references: [id])
-  persona  AiPersona?               @relation(fields: [personaId], references: [id])
+  /// --------------------------------------
+  /// ⭐ Option B – Core AI Metrics (B4)
+  /// --------------------------------------
+  charismaIndex   Int?
+  confidenceScore Int?
+  clarityScore    Int?
+  humorScore      Int?
+  tensionScore    Int?
+  emotionalWarmth Int?
+  dominanceScore  Int?
+
+  fillerWordsCount Int?
+  totalMessages    Int?
+  totalWords       Int?
+
+  aiCoreVersion String?
+  aiCorePayload Json?
+  /// --------------------------------------
+
   messages ChatMessage[]
   powerUps PowerUpUsage[]
+  persona  AiPersona?               @relation(fields: [personaId], references: [id])
+  template PracticeMissionTemplate? @relation(fields: [templateId], references: [id])
+  user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([templateId])
   @@index([personaId])
 }
 
-// Individual chat messages inside a session
 model ChatMessage {
-  id        String      @id @default(cuid())
-  sessionId String
-  userId    String
-  createdAt DateTime    @default(now())
-  role      MessageRole
-  content   String
-
-  // Per-message feedback
+  id          String          @id @default(cuid())
+  sessionId   String
+  userId      String
+  createdAt   DateTime        @default(now())
+  role        MessageRole
+  content     String
   grade       MessageGrade?
-  xpDelta     Int           @default(0)
-  coinsDelta  Int           @default(0)
-  gemsDelta   Int           @default(0)
-  isBrilliant Boolean       @default(false)
-  isLifesaver Boolean       @default(false)
+  xpDelta     Int             @default(0)
+  coinsDelta  Int             @default(0)
+  gemsDelta   Int             @default(0)
+  isBrilliant Boolean         @default(false)
+  isLifesaver Boolean         @default(false)
   meta        Json?
-
-  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session     PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, createdAt])
 }
 
-// Wallet = XP, coins, gems, level
 model UserWallet {
   userId     String   @id
   xp         Int      @default(0)
@@ -210,11 +172,9 @@ model UserWallet {
   gems       Int      @default(0)
   lifetimeXp Int      @default(0)
   updatedAt  DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// Aggregated stats for dashboard
 model UserStats {
   userId              String    @id
   sessionsCount       Int       @default(0)
@@ -224,25 +184,48 @@ model UserStats {
   averageMessageScore Float?
   lastSessionAt       DateTime?
   lastUpdatedAt       DateTime  @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// Logged power-up usages per session
 model PowerUpUsage {
-  id            String   @id @default(cuid())
+  id            String           @id @default(cuid())
   userId        String
   sessionId     String?
   powerUpTypeId String
-  usedAt        DateTime @default(now())
-  gemsSpent     Int      @default(0)
+  usedAt        DateTime         @default(now())
+  gemsSpent     Int              @default(0)
   meta          Json?
-
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  session     PracticeSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-  powerUpType PowerUpType      @relation(fields: [powerUpTypeId], references: [id], onDelete: Restrict)
+  powerUpType   PowerUpType      @relation(fields: [powerUpTypeId], references: [id])
+  session       PracticeSession? @relation(fields: [sessionId], references: [id])
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, usedAt])
   @@index([sessionId])
   @@index([powerUpTypeId])
+}
+
+enum MissionStatus {
+  IN_PROGRESS
+  SUCCESS
+  FAIL
+  ABORTED
+}
+
+enum MessageRole {
+  USER
+  AI
+  SYSTEM
+}
+
+enum MessageGrade {
+  BRILLIANT
+  GOOD
+  NEUTRAL
+  WEAK
+  BAD
+}
+
+enum AccountTier {
+  FREE
+  PREMIUM
 }

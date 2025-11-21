@@ -2,12 +2,12 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "declaration": true,
+    "noEmit": false,          // 🔥 חובה – לוודא שכן מוציאים JS
+    "emitDeclarationOnly": false, // 🔥 לבטל מצב של d.ts בלבד אם קיים בבסיס
     "rootDir": "./src",
     "outDir": "./dist"
   },
-  "include": [
-    "src/**/*.ts"
-  ],
+  "include": ["src/**/*.ts"],
   "exclude": [
     "node_modules",
     "test",
@@ -18,5 +18,3 @@
     "**/*.e2e-spec.ts"
   ]
 }
-
-

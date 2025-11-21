@@ -69,13 +69,14 @@ export class PracticeService {
 
     // 3) Let SessionsService handle DB writes + stats + wallet
     const sessionResult =
-      await this.sessionsService.createScoredSessionFromScores({
-        userId,
-        topic,
-        messageScores,
-        aiResult,
-      } as any); // 👈 temporary: widen type so we can pass aiResult
-
+    await this.sessionsService.createScoredSessionFromScores({
+      userId,
+      topic,
+      messageScores,
+      aiResult,
+      aiCoreResult, // 👈 NEW: Option B core metrics
+    } as any); // 👈 temporary: widen type so we can pass aiResult + aiCoreResult
+  
     // 4) 🔥 Attach AI metadata
     //    - ai     = existing Option A rarity/xp payload (unchanged)
     //    - aiCore = new Option B core metrics payload (read-only for now)
