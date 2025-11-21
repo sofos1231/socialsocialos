@@ -8,7 +8,7 @@ export class StatsService {
 
   /**
    * Safety net for legacy users:
-   * Ensures every user has UserWallet + UserStats rows.
+   * Makes sure every user has UserWallet + UserStats rows.
    */
   private async ensureUserProfilePrimitives(userId: string) {
     const [wallet, stats] = await Promise.all([
@@ -49,14 +49,59 @@ export class StatsService {
   }
 
   /**
-   * Main unified dashboard response builder.
-   * Combines:
-   * - User
-   * - UserWallet
-   * - UserStats
-   * - Latest Option-B metrics
-   * - Aggregated Option-B metrics
-   * - Insights (latest + performance trends)
+   * B8.1 – Compute a single Social Score from latest/average charisma index.
+   * Prefer latest charismaIndex, fallback to averages, otherwise null.
+   */
+  private computeSocialScore(
+    latestCharismaIndex: number | null,
+    avgCharismaIndex: number | null,
+  ): number | null {
+    if (typeof latestCharismaIndex === 'number') {
+      return Math.round(latestCharismaIndex);
+    }
+    if (typeof avgCharismaIndex === 'number') {
+      return Math.round(avgCharismaIndex);
+    }
+    return null;
+  }
+
+  /**
+   * B8.1 – Map Social Score to a tier label.
+   *
+   * < 40      → Beginner
+   * 40–54     → Improving
+   * 55–69     → Competent
+   * 70–79     → Skilled
+   * 80–89     → Strong
+   * 90–96     → Elite
+   * ≥ 97      → Apex
+   */
+  private mapSocialTier(score: number | null): string | null {
+    if (score == null) return null;
+    if (score < 40) return 'Beginner';
+    if (score < 55) return 'Improving';
+    if (score < 70) return 'Competent';
+    if (score < 80) return 'Skilled';
+    if (score < 90) return 'Strong';
+    if (score < 97) return 'Elite';
+    return 'Apex';
+  }
+
+  /**
+   * Main dashboard summary for a user.
+   * Reads User + UserWallet + UserStats + latest/average PracticeSession metrics
+   * and returns a unified object.
+   *
+   * Top-level shape stays the same:
+   * { ok, user, streak, wallet, stats }
+   *
+   * Inside `stats` we now also expose:
+   * - stats.latest        → latest Option-B metrics (per-session)
+   * - stats.averages      → average Option-B metrics across all sessions
+   * - stats.insights      → latest aiSummary + improving/declining traits
+   * - stats.socialScore   → main Social Score number (B8.1)
+   * - stats.socialTier    → corresponding tier label (B8.1)
+   * - stats.recentSessions→ last 5 session scores for trend visualization (B8.2)
    */
   async getDashboardForUser(userId: string) {
     if (!userId) {
@@ -66,11 +111,11 @@ export class StatsService {
       });
     }
 
+    // Make sure wallet + stats exist (for old users)
     await this.ensureUserProfilePrimitives(userId);
 
     const [user, wallet, stats, latestSession, aggregated, lastSessions] =
       await Promise.all([
-        // Basic user row
         this.prisma.user.findUnique({
           where: { id: userId },
           select: {
@@ -80,11 +125,14 @@ export class StatsService {
             streakCurrent: true,
           },
         }),
+        this.prisma.userWallet.findUnique({
+          where: { userId },
+        }),
+        this.prisma.userStats.findUnique({
+          where: { userId },
+        }),
 
-        this.prisma.userWallet.findUnique({ where: { userId } }),
-        this.prisma.userStats.findUnique({ where: { userId } }),
-
-        // Most recent session with Option-B data (fallback to score)
+        // Latest session for Option-B metrics (and fallback score)
         this.prisma.practiceSession.findFirst({
           where: { userId },
           orderBy: { createdAt: 'desc' },
@@ -107,7 +155,7 @@ export class StatsService {
           },
         }),
 
-        // Average Option-B metrics
+        // Aggregated Option-B metrics over all sessions that have them
         this.prisma.practiceSession.aggregate({
           where: {
             userId,
@@ -127,15 +175,17 @@ export class StatsService {
           },
         }),
 
-        // Last 3 sessions with Option-B metrics
+        // B6 + B8.2: last up to 5 sessions with Option-B metrics
         this.prisma.practiceSession.findMany({
           where: {
             userId,
             charismaIndex: { not: null },
           },
           orderBy: { createdAt: 'desc' },
-          take: 3,
+          take: 5,
           select: {
+            createdAt: true,
+            score: true,
             charismaIndex: true,
             confidenceScore: true,
             clarityScore: true,
@@ -154,7 +204,7 @@ export class StatsService {
       });
     }
 
-    // Safe defaults
+    // Defensive defaults – should normally be non-null
     const safeWallet = wallet ?? {
       xp: 0,
       level: 1,
@@ -176,16 +226,12 @@ export class StatsService {
       userId,
     };
 
-    // ======================================================
-    // ⭐ B5 — Latest Option-B Metrics
-    // ======================================================
+    // ---------- B5: Latest Option-B metrics ----------
 
-    // Fallback: if charismaIndex is null, fallback to score
+    // Fallback logic: if charismaIndex is null (old session), fall back to score.
     const latestCharismaIndex =
       latestSession?.charismaIndex ??
-      (typeof latestSession?.score === 'number'
-        ? latestSession.score
-        : null);
+      (typeof latestSession?.score === 'number' ? latestSession.score : null);
 
     const latest = {
       charismaIndex: latestCharismaIndex,
@@ -201,38 +247,37 @@ export class StatsService {
       aiCoreVersion: latestSession?.aiCoreVersion ?? null,
     };
 
-    // ======================================================
-    // ⭐ B5 — Averages across all sessions
-    // ======================================================
+    // ---------- B5: Average Option-B metrics ----------
+
+    const avg = aggregated._avg;
 
     const averages = {
-      avgCharismaIndex: aggregated._avg.charismaIndex ?? null,
-      avgConfidence: aggregated._avg.confidenceScore ?? null,
-      avgClarity: aggregated._avg.clarityScore ?? null,
-      avgHumor: aggregated._avg.humorScore ?? null,
-      avgTension: aggregated._avg.tensionScore ?? null,
-      avgWarmth: aggregated._avg.emotionalWarmth ?? null,
-      avgDominance: aggregated._avg.dominanceScore ?? null,
-      avgFillerWords: aggregated._avg.fillerWordsCount ?? null,
-      avgTotalWords: aggregated._avg.totalWords ?? null,
-      avgTotalMessages: aggregated._avg.totalMessages ?? null,
+      avgCharismaIndex: avg.charismaIndex ?? null,
+      avgConfidence: avg.confidenceScore ?? null,
+      avgClarity: avg.clarityScore ?? null,
+      avgHumor: avg.humorScore ?? null,
+      avgTension: avg.tensionScore ?? null,
+      avgWarmth: avg.emotionalWarmth ?? null,
+      avgDominance: avg.dominanceScore ?? null,
+      avgFillerWords: avg.fillerWordsCount ?? null,
+      avgTotalWords: avg.totalWords ?? null,
+      avgTotalMessages: avg.totalMessages ?? null,
     };
 
-    // ======================================================
-    // ⭐ B6 — Insights (latest + trait trends)
-    // ======================================================
+    // ---------- B6: Insights (latest + trends) ----------
 
+    // Latest single-session insight (from aiSummary on the latest session)
     const latestInsight = latestSession?.aiSummary ?? null;
 
+    // Trends: compare newest vs oldest of the lastSessions array
     const improvingTraits: string[] = [];
     const decliningTraits: string[] = [];
 
     if (lastSessions.length >= 2) {
       const newest = lastSessions[0];
-      const oldest =
-        lastSessions[lastSessions.length - 1];
+      const oldest = lastSessions[lastSessions.length - 1];
 
-      const traitMap = [
+      const traitDefs: { key: keyof typeof newest; label: string }[] = [
         { key: 'charismaIndex', label: 'charisma' },
         { key: 'confidenceScore', label: 'confidence' },
         { key: 'clarityScore', label: 'clarity' },
@@ -245,16 +290,19 @@ export class StatsService {
       const IMPROVE_THRESHOLD = 10;
       const DECLINE_THRESHOLD = -10;
 
-      for (const trait of traitMap) {
-        const newestVal = newest[trait.key];
-        const oldestVal = oldest[trait.key];
+      for (const t of traitDefs) {
+        const newestVal = newest[t.key];
+        const oldestVal = oldest[t.key];
 
         if (newestVal == null || oldestVal == null) continue;
 
-        const delta = newestVal - oldestVal;
+        const delta = (newestVal as number) - (oldestVal as number);
 
-        if (delta >= IMPROVE_THRESHOLD) improvingTraits.push(trait.label);
-        else if (delta <= DECLINE_THRESHOLD) decliningTraits.push(trait.label);
+        if (delta >= IMPROVE_THRESHOLD) {
+          improvingTraits.push(t.label);
+        } else if (delta <= DECLINE_THRESHOLD) {
+          decliningTraits.push(t.label);
+        }
       }
     }
 
@@ -266,9 +314,33 @@ export class StatsService {
       },
     };
 
-    // ======================================================
-    // Final return
-    // ======================================================
+    // ---------- B8.1: Social Score + Tier ----------
+
+    const socialScore = this.computeSocialScore(
+      latest.charismaIndex,
+      averages.avgCharismaIndex,
+    );
+
+    const socialTier = this.mapSocialTier(socialScore);
+
+    // ---------- B8.2: Recent sessions bundle (last 5) ----------
+
+    const recentSessions = lastSessions.map((session) => {
+      const charismaVal =
+        typeof session.charismaIndex === 'number'
+          ? session.charismaIndex
+          : null;
+
+      const scoreVal =
+        charismaVal ??
+        (typeof session.score === 'number' ? session.score : null);
+
+      return {
+        createdAt: session.createdAt.toISOString(),
+        charismaIndex: charismaVal,
+        score: scoreVal,
+      };
+    });
 
     return {
       ok: true,
@@ -278,7 +350,7 @@ export class StatsService {
         createdAt: user.createdAt,
       },
       streak: {
-        current: user.streakCurrent ?? 0,
+        current: user.streakCurrent ?? 0, // לוגיקת streak מלאה תבוא בפאזה מאוחרת יותר
       },
       wallet: {
         xp: safeWallet.xp,
@@ -294,10 +366,21 @@ export class StatsService {
         averageScore: safeStats.averageScore,
         averageMessageScore: safeStats.averageMessageScore,
         lastSessionAt: safeStats.lastSessionAt,
-
+ 
+ 
+        // B5 metrics:
         latest,
         averages,
+
+        // B6 insights:
         insights,
+
+        // B8.1 Social Score system:
+        socialScore,
+        socialTier,
+
+        // B8.2 recent sessions history:
+        recentSessions,
       },
     };
   }
