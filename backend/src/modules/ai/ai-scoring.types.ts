@@ -17,11 +17,9 @@ export interface MessageEvaluation {
 }
 
 export interface CoreMetrics {
-  // Master indices
   charismaIndex: number;
   overallScore: number;
 
-  // Per-trait averages
   confidence: number;
   clarity: number;
   humor: number;
@@ -29,7 +27,6 @@ export interface CoreMetrics {
   emotionalWarmth: number;
   dominance: number;
 
-  // Behavior counters
   fillerWordsCount: number;
   totalMessages: number;
   totalWords: number;
@@ -41,9 +38,8 @@ export interface AiSessionResult {
   version: string; // e.g. "v1"
 }
 
-// This is what the scoring service will receive from the loop:
 export interface TranscriptMessage {
   sentBy: 'user' | 'ai';
   text: string;
-  timestamp?: string; // optional-for-now
+  timestamp?: string;
 }

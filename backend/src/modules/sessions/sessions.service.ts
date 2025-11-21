@@ -2,7 +2,8 @@
 // as the primary reward engine, and additionally persists Option B AiCore
 // metrics + insights into PracticeSession when provided.
 
-// src/modules/sessions/sessions.service.ts
+// backend/src/modules/sessions/sessions.service.ts
+
 import {
   Injectable,
   UnauthorizedException,
@@ -20,10 +21,10 @@ import { MessageGrade, MessageRole } from '@prisma/client';
 import { AiSessionResult } from '../ai/ai-scoring.types';
 import { buildAiInsightSummary } from '../ai/ai-insights';
 
-// זמני: ציוני הודעות לסשן מדומה אחד (עד שה-AI יחזיר לנו ציונים אמיתיים)
+// Temporary: mock scores for the /sessions/mock endpoint
 const MOCK_MESSAGE_SCORES: number[] = [62, 74, 88, 96];
 
-// מיפוי rarity → grade בדשבורד
+// Mapping rarity → dashboard grade
 const RARITY_TO_GRADE: Record<MessageRarity, MessageGrade> = {
   C: MessageGrade.BAD,
   B: MessageGrade.WEAK,
@@ -74,8 +75,8 @@ export class SessionsService {
   }
 
   /**
-   * מנוע כללי לסשן עם ציונים – זה הלב של Phase 3.
-   * לא מחזיר dashboard – רק summary בסיסי + sessionId.
+   * General scored-session engine – heart of the loop.
+   * Does NOT return dashboard; only summary + sessionId.
    */
   private async runScoredSession(params: {
     userId: string;
@@ -89,7 +90,11 @@ export class SessionsService {
   }> {
     const { userId, topic, messageScores } = params;
 
-    if (!messageScores || !Array.isArray(messageScores) || messageScores.length === 0) {
+    if (
+      !messageScores ||
+      !Array.isArray(messageScores) ||
+      messageScores.length === 0
+    ) {
       throw new BadRequestException({
         code: 'SESSION_EMPTY',
         message: 'messageScores must contain at least one score',
@@ -98,30 +103,35 @@ export class SessionsService {
 
     const now = new Date();
 
-    // 1) חישוב rewards לסשן על בסיס ציוני הודעות
-    const inputs: MessageEvaluationInput[] = messageScores.map((score) => ({ score }));
+    // 1) Compute rewards from message scores
+    const inputs: MessageEvaluationInput[] = messageScores.map((score) => ({
+      score,
+    }));
 
     const summary: SessionRewardsSummary = computeSessionRewards(inputs);
     const finalScore = Math.round(summary.finalScore);
     const isSuccess = finalScore >= 60;
 
-    // ממוצע ציוני ההודעות בסשן הנוכחי (לא רק הציון הסופי)
+    // Average per-message score for this session
     const perMessageScores = summary.messages.map((m) => m.score);
     const sessionMessageAvg =
       perMessageScores.length > 0
-        ? perMessageScores.reduce((sum, s) => sum + s, 0) / perMessageScores.length
+        ? perMessageScores.reduce((sum, s) => sum + s, 0) /
+          perMessageScores.length
         : 0;
 
-    // 2) טרנזקציה: session + messages + stats + wallet
+    // 2) Transaction: PracticeSession + ChatMessages + stats + wallet
     const createdSession = await this.prisma.$transaction(async (tx) => {
       const stats = await tx.userStats.findUnique({ where: { userId } });
       const wallet = await tx.userWallet.findUnique({ where: { userId } });
 
       if (!stats || !wallet) {
-        throw new Error('UserStats or UserWallet missing after ensureUserProfilePrimitives');
+        throw new Error(
+          'UserStats or UserWallet missing after ensureUserProfilePrimitives',
+        );
       }
 
-      // 2.1) יצירת PracticeSession
+      // 2.1) Create PracticeSession
       const session = await tx.practiceSession.create({
         data: {
           userId,
@@ -146,13 +156,12 @@ export class SessionsService {
         },
       });
 
-      // 2.2) יצירת ChatMessage לכל הודעה
+      // 2.2) Create ChatMessage rows (currently mock content)
       const messagesData = summary.messages.map((m, index) => ({
         sessionId: session.id,
         userId,
         role: MessageRole.USER,
-        // בהמשך: נכניס כאן טקסט אמיתי של היוזר / ה-AI
-        content: `Mock message #${index + 1}`,
+        content: `Mock message #${index + 1}`, // later: real text from conversation
         grade: RARITY_TO_GRADE[m.rarity],
         xpDelta: m.xp,
         coinsDelta: m.coins,
@@ -170,7 +179,7 @@ export class SessionsService {
         await tx.chatMessage.createMany({ data: messagesData });
       }
 
-      // 2.3) עדכון סטטיסטיקות
+      // 2.3) Update UserStats
       const newSessionsCount = stats.sessionsCount + 1;
       const newSuccessCount = stats.successCount + (isSuccess ? 1 : 0);
       const newFailCount = stats.failCount + (isSuccess ? 0 : 1);
@@ -197,7 +206,7 @@ export class SessionsService {
         },
       });
 
-      // 2.4) עדכון Wallet
+      // 2.4) Update wallet
       await tx.userWallet.update({
         where: { userId },
         data: {
@@ -220,11 +229,13 @@ export class SessionsService {
   }
 
   /**
-   * API כללי – משומש ע"י /v1/sessions/mock וגם /v1/practice/session
+   * General API used by:
+   * - /v1/sessions/mock
+   * - /v1/practice/session
    *
-   * Option A: עדיין אחראי על rewards (xp/coins/gems + rarity/messages).
-   * Option B: אם aiCoreResult קיים, אנחנו גם מעדכנים את שדות ה-AiCore ב־PracticeSession
-   *           וגם aiSummary עם תובנות.
+   * Option A: still responsible for rewards (xp/coins/gems + rarity/messages).
+   * Option B: if aiCoreResult exists, we also update AiCore fields on PracticeSession
+   *           and aiSummary with insights.
    */
   async createScoredSessionFromScores(params: {
     userId: string;
@@ -246,7 +257,7 @@ export class SessionsService {
     const { summary, finalScore, isSuccess, sessionId } =
       await this.runScoredSession({ userId, topic, messageScores });
 
-    // 🔥 Option B: אם יש לנו תוצאה מ-AiCore, נשמור את המטריקות + תובנות בטבלת PracticeSession
+    // Option B: if we got AiCoreResult, persist metrics + insights to PracticeSession
     if (aiCoreResult?.metrics) {
       const m = aiCoreResult.metrics;
       const aiSummary = buildAiInsightSummary(aiCoreResult);
@@ -272,7 +283,7 @@ export class SessionsService {
           aiCoreVersion: aiCoreResult.version ?? null,
           aiCorePayload: aiCoreResult as any,
 
-          // Single-session insight summary (cast to JSON for Prisma)
+          // Single-session insight summary
           aiSummary: aiSummary ? (aiSummary as any) : null,
         },
       });
@@ -305,19 +316,19 @@ export class SessionsService {
   }
 
   /**
-   * Mock endpoint – פשוט משתמש ב־createScoredSessionFromScores עם מס’ים קבועים.
+   * Mock endpoint – uses createScoredSessionFromScores with static scores.
    */
   async createMockSession(userId: string) {
     return this.createScoredSessionFromScores({
       userId,
       topic: 'Mock practice session',
       messageScores: MOCK_MESSAGE_SCORES,
-      // אין לנו AiCore mock כאן, אז אנחנו לא מעבירים aiCoreResult
+      // No AiCore mock for now
     });
   }
 
   /**
-   * Alias: אם מישהו יקרא עדיין /v1/sessions/dashboard/summary – פשוט נשתמש באותו dashboard
+   * Alias: if someone still hits /v1/sessions/dashboard/summary.
    */
   async getDashboardSnapshot(userId: string) {
     if (!userId) {

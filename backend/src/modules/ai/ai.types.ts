@@ -18,11 +18,11 @@ export type MessageRarity = 'C' | 'B' | 'A' | 'S' | 'S+';
 
 // Base scoring for every message — returned in FREE + PREMIUM modes
 export interface AiMessageScoreBase {
-  index: number;              // index in conversation
-  score: number;              // 0–100
-  rarity: MessageRarity;      // C–S+
-  microFeedback: string;      // 1–2 sentence feedback
-  tags: string[];             // ['confident', 'playful', ...]
+  index: number; // index in conversation
+  score: number; // 0–100
+  rarity: MessageRarity; // C–S+
+  microFeedback: string; // 1–2 sentence feedback
+  tags: string[]; // ['confident', 'playful', ...]
   xpMultiplier: number;
   coinsMultiplier: number;
   safetyFlag?: 'OK' | 'RISKY' | 'BLOCK';
@@ -62,7 +62,7 @@ export interface AiSessionAnalysisPremium {
   overallAdvice: string[];
 }
 
-// Final result returned from AiService
+// Final result returned from AiScoringService (Option A)
 export interface AiScoringResult {
   mode: AiMode;
 

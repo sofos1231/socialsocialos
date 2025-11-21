@@ -3,7 +3,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -28,6 +27,12 @@ export default function PracticeHubScreen({ navigation }: Props) {
     runDebugPractice,
   } = useDashboardLoop();
 
+  const stats = summary?.stats;
+  const socialScore = stats?.socialScore ?? null;
+  const socialTier = stats?.socialTier ?? null;
+  const recentSessions = stats?.recentSessions ?? [];
+  const lastRecent = recentSessions.length > 0 ? recentSessions[0] : null;
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Dashboard</Text>
@@ -42,34 +47,75 @@ export default function PracticeHubScreen({ navigation }: Props) {
       )}
 
       {summary && !loadingSummary && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>User</Text>
-          <Text style={styles.value}>Email: {summary.user.email}</Text>
-          <Text style={styles.value}>
-            Streak: {summary.streak.current} day
-            {summary.streak.current === 1 ? '' : 's'}
-          </Text>
+        <>
+          {/* B8.4 – Social Score Card */}
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Social Score</Text>
 
-          <View style={styles.separator} />
+            {socialScore == null ? (
+              <>
+                <Text style={styles.socialScoreLockedText}>
+                  Do your first AI practice session to unlock your Social Score.
+                </Text>
+                <Text style={styles.socialScoreHint}>
+                  Your Social Score is calculated from your AI-evaluated practice sessions.
+                </Text>
+              </>
+            ) : (
+              <>
+                <View style={styles.socialScoreRow}>
+                  <Text style={styles.socialScoreValue}>{socialScore}</Text>
+                  {socialTier && (
+                    <View style={styles.socialTierBadge}>
+                      <Text style={styles.socialTierText}>{socialTier}</Text>
+                    </View>
+                  )}
+                </View>
 
-          <Text style={styles.sectionTitle}>Wallet</Text>
-          <Text style={styles.value}>XP: {summary.wallet.xp}</Text>
-          <Text style={styles.value}>Level: {summary.wallet.level}</Text>
-          <Text style={styles.value}>Coins: {summary.wallet.coins}</Text>
-          <Text style={styles.value}>Gems: {summary.wallet.gems}</Text>
+                <Text style={styles.socialScoreSubtitle}>
+                  Based on your latest AI practice sessions.
+                </Text>
 
-          <View style={styles.separator} />
+                {lastRecent && (
+                  <Text style={styles.socialScoreMeta}>
+                    Last session score:{' '}
+                    {lastRecent.charismaIndex ?? lastRecent.score ?? '—'}
+                  </Text>
+                )}
+              </>
+            )}
+          </View>
 
-          <Text style={styles.sectionTitle}>Practice Stats</Text>
-          <Text style={styles.value}>Sessions: {summary.stats.sessionsCount}</Text>
-          <Text style={styles.value}>Average Score: {summary.stats.averageScore}</Text>
-          <Text style={styles.value}>
-            Avg Message Score: {summary.stats.averageMessageScore}
-          </Text>
-          <Text style={styles.value}>
-            Last Session: {summary.stats.lastSessionAt || '—'}
-          </Text>
-        </View>
+          {/* Existing User / Wallet / Practice Stats card */}
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>User</Text>
+            <Text style={styles.value}>Email: {summary.user.email}</Text>
+            <Text style={styles.value}>
+              Streak: {summary.streak.current} day
+              {summary.streak.current === 1 ? '' : 's'}
+            </Text>
+
+            <View style={styles.separator} />
+
+            <Text style={styles.sectionTitle}>Wallet</Text>
+            <Text style={styles.value}>XP: {summary.wallet.xp}</Text>
+            <Text style={styles.value}>Level: {summary.wallet.level}</Text>
+            <Text style={styles.value}>Coins: {summary.wallet.coins}</Text>
+            <Text style={styles.value}>Gems: {summary.wallet.gems}</Text>
+
+            <View style={styles.separator} />
+
+            <Text style={styles.sectionTitle}>Practice Stats</Text>
+            <Text style={styles.value}>Sessions: {summary.stats.sessionsCount}</Text>
+            <Text style={styles.value}>Average Score: {summary.stats.averageScore}</Text>
+            <Text style={styles.value}>
+              Avg Message Score: {summary.stats.averageMessageScore}
+            </Text>
+            <Text style={styles.value}>
+              Last Session: {summary.stats.lastSessionAt || '—'}
+            </Text>
+          </View>
+        </>
       )}
 
       {!summary && !loadingSummary && (
@@ -173,6 +219,53 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 16,
   },
+
+  // --- B8.4 social score styles ---
+
+  socialScoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  socialScoreValue: {
+    fontSize: 40,
+    fontWeight: '800',
+    color: '#1DB954',
+    marginRight: 12,
+  },
+  socialTierBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#262626',
+    borderWidth: 1,
+    borderColor: '#1DB954',
+  },
+  socialTierText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  socialScoreSubtitle: {
+    fontSize: 13,
+    color: '#ccc',
+    marginBottom: 4,
+  },
+  socialScoreMeta: {
+    fontSize: 12,
+    color: '#999',
+  },
+  socialScoreLockedText: {
+    fontSize: 14,
+    color: '#eee',
+    marginBottom: 6,
+  },
+  socialScoreHint: {
+    fontSize: 12,
+    color: '#aaa',
+  },
+
   button: {
     paddingVertical: 14,
     borderRadius: 999,

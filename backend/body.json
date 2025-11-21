@@ -1,0 +1,19 @@
+{
+  "topic": "Dating practice – coffee date invite",
+  "personaId": null,
+  "templateId": null,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hey, how was your day? :)"
+    },
+    {
+      "role": "assistant",
+      "content": "Pretty good! Just finished a long shift haha."
+    },
+    {
+      "role": "user",
+      "content": "Nice, you survived haha. We should celebrate with coffee this week ;)"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
-// NOTE: This file currently uses Option A (rarity/xp-based) scoring/rewards. It will be migrated to Option B AiCore metrics later.
+// NOTE: This file currently uses Option A (rarity/xp-based) scoring/rewards,
+// plus Option B AiCore metrics (charismaIndex + traits) for every real session.
 
 // backend/src/modules/practice/practice.service.ts
 
@@ -39,7 +40,7 @@ export class PracticeService {
       }),
     );
 
-    // 🔍 Option B shadow: build transcript and call AiCoreScoringService
+    // Build transcript for Option B AiCore
     const transcript: TranscriptMessage[] = normalizedMessages.map((m) => ({
       sentBy: m.role === 'assistant' ? 'ai' : 'user',
       text: m.content,
@@ -47,8 +48,8 @@ export class PracticeService {
 
     const aiCoreResult = await this.aiCore.scoreSession(transcript);
 
-    // Shadow logging – useful while we’re still wiring things
-    console.log('[AiCore v1 shadow]', {
+    // Useful logging while wiring the loop
+    console.log('[AiCore v1]', {
       userId,
       topic,
       charismaIndex: aiCoreResult.metrics.charismaIndex,
@@ -56,7 +57,7 @@ export class PracticeService {
       totalMessages: aiCoreResult.metrics.totalMessages,
     });
 
-    // 1) 👉 Call our Option A AI scoring skeleton (rarity/xp engine)
+    // Option A AI scoring skeleton (rarity/xp engine)
     const aiResult = await this.aiScoring.scoreConversation({
       userId,
       personaId: dto.personaId ?? null,
@@ -64,22 +65,19 @@ export class PracticeService {
       messages: normalizedMessages,
     });
 
-    // 2) Convert AI result → SessionsService scoring format
+    // Convert AI result → SessionsService scoring format
     const messageScores = aiResult.perMessage.map((m) => m.score);
 
-    // 3) Let SessionsService handle DB writes + stats + wallet
+    // Let SessionsService handle DB writes + stats + wallet + AiCore persistence
     const sessionResult =
-    await this.sessionsService.createScoredSessionFromScores({
-      userId,
-      topic,
-      messageScores,
-      aiResult,
-      aiCoreResult, // 👈 NEW: Option B core metrics
-    } as any); // 👈 temporary: widen type so we can pass aiResult + aiCoreResult
-  
-    // 4) 🔥 Attach AI metadata
-    //    - ai     = existing Option A rarity/xp payload (unchanged)
-    //    - aiCore = new Option B core metrics payload (read-only for now)
+      await this.sessionsService.createScoredSessionFromScores({
+        userId,
+        topic,
+        messageScores,
+        aiCoreResult,
+      });
+
+    // Attach AI metadata to response
     return {
       ...sessionResult,
       ai: aiResult,

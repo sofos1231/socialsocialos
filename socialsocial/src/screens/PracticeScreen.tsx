@@ -1,3 +1,5 @@
+// NOTE: This file currently uses Option A (rarity/xp-based) scoring/rewards. It will be migrated to Option B AiCore metrics later.
+
 // socialsocial/src/screens/PracticeScreen.tsx
 
 import React, { useState } from 'react';

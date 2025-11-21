@@ -1,0 +1,326 @@
+{
+    "info": {
+      "_postman_id": "b7f9a3d2-0000-4000-9000-sgcollection",
+      "name": "SocialGym – Full Backend Check",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+      {
+        "name": "01 – Signup",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"email\": \"test_{{timestamp}}@example.com\",\n  \"password\": \"123456\"\n}"
+          },
+          "url": {
+            "raw": "{{base_url}}/v1/auth/signup",
+            "host": [
+              "{{base_url}}"
+            ],
+            "path": [
+              "v1",
+              "auth",
+              "signup"
+            ]
+          }
+        },
+        "event": [
+          {
+            "listen": "prerequest",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.collectionVariables.set('timestamp', Date.now());"
+              ]
+            }
+          },
+          {
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('Signup status is 200', function () {",
+                "  pm.response.to.have.status(200);",
+                "});",
+                "",
+                "const json = pm.response.json();",
+                "pm.collectionVariables.set('signup_email', json.email || ('test_' + pm.collectionVariables.get('timestamp') + '@example.com'));"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "02 – Login",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"email\": \"{{signup_email}}\",\n  \"password\": \"123456\"\n}"
+          },
+          "url": {
+            "raw": "{{base_url}}/v1/auth/login",
+            "host": [
+              "{{base_url}}"
+            ],
+            "path": [
+              "v1",
+              "auth",
+              "login"
+            ]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('Login status is 200', function () {",
+                "  pm.response.to.have.status(200);",
+                "});",
+                "",
+                "const json = pm.response.json();",
+                "pm.collectionVariables.set('accessToken', json.accessToken);",
+                "if (json.refreshToken) {",
+                "  pm.collectionVariables.set('refreshToken', json.refreshToken);",
+                "}",
+                "console.log('Logged in as:', pm.collectionVariables.get('signup_email'));"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "03 – Health",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{base_url}}/v1/health",
+            "host": [
+              "{{base_url}}"
+            ],
+            "path": [
+              "v1",
+              "health"
+            ]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('Health status is 200', function () {",
+                "  pm.response.to.have.status(200);",
+                "});"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "04 – Mock Session",
+        "request": {
+          "method": "GET",
+          "header": [
+            {
+              "key": "Authorization",
+              "value": "Bearer {{accessToken}}"
+            }
+          ],
+          "url": {
+            "raw": "{{base_url}}/v1/sessions/mock",
+            "host": [
+              "{{base_url}}"
+            ],
+            "path": [
+              "v1",
+              "sessions",
+              "mock"
+            ]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('Mock session status is 200', function () {",
+                "  pm.response.to.have.status(200);",
+                "});",
+                "console.log('Mock session:', pm.response.json());"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "05 – Practice Session",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Authorization",
+              "value": "Bearer {{accessToken}}"
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"topic\": \"Test AI Session\",\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"Hey, what's up?\" },\n    { \"role\": \"assistant\", \"content\": \"Not much, how are you?\" },\n    { \"role\": \"user\", \"content\": \"I'm practicing my game here.\" }\n  ]\n}"
+          },
+          "url": {
+            "raw": "{{base_url}}/v1/practice/session",
+            "host": [
+              "{{base_url}}"
+            ],
+            "path": [
+              "v1",
+              "practice",
+              "session"
+            ]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('Practice session status is 200', function () {",
+                "  pm.response.to.have.status(200);",
+                "});",
+                "",
+                "const json = pm.response.json();",
+                "console.log('Practice response:', json);",
+                "if (json.sessionId) {",
+                "  pm.collectionVariables.set('lastSessionId', json.sessionId);",
+                "}"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "06 – Dashboard Summary",
+        "request": {
+          "method": "GET",
+          "header": [
+            {
+              "key": "Authorization",
+              "value": "Bearer {{accessToken}}"
+            }
+          ],
+          "url": {
+            "raw": "{{base_url}}/v1/dashboard/summary",
+            "host": [
+              "{{base_url}}"
+            ],
+            "path": [
+              "v1",
+              "dashboard",
+              "summary"
+            ]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('Dashboard summary status is 200', function () {",
+                "  pm.response.to.have.status(200);",
+                "});",
+                "console.log('Dashboard summary:', pm.response.json());"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "07 – Stats Dashboard",
+        "request": {
+          "method": "GET",
+          "header": [
+            {
+              "key": "Authorization",
+              "value": "Bearer {{accessToken}}"
+            }
+          ],
+          "url": {
+            "raw": "{{base_url}}/v1/stats/dashboard",
+            "host": [
+              "{{base_url}}"
+            ],
+            "path": [
+              "v1",
+              "stats",
+              "dashboard"
+            ]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('Stats dashboard status is 200', function () {",
+                "  pm.response.to.have.status(200);",
+                "});",
+                "console.log('Stats dashboard:', pm.response.json());"
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "variable": [
+      {
+        "key": "base_url",
+        "value": "http://localhost:3000"
+      },
+      {
+        "key": "timestamp",
+        "value": ""
+      },
+      {
+        "key": "signup_email",
+        "value": ""
+      },
+      {
+        "key": "accessToken",
+        "value": ""
+      },
+      {
+        "key": "refreshToken",
+        "value": ""
+      },
+      {
+        "key": "lastSessionId",
+        "value": ""
+      }
+    ]
+  }
+  

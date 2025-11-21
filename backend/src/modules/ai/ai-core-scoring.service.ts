@@ -13,6 +13,13 @@ import {
 export class AiCoreScoringService {
   private readonly logger = new Logger(AiCoreScoringService.name);
 
+  /**
+   * Core Option B engine.
+   *
+   * For 6A this is fully deterministic (no external AI calls).
+   * Later, 6B+ can swap the internals to use a real LLM and keep
+   * the same public API + types.
+   */
   async scoreSession(transcript: TranscriptMessage[]): Promise<AiSessionResult> {
     if (!transcript || transcript.length === 0) {
       const empty: AiSessionResult = {
@@ -36,10 +43,12 @@ export class AiCoreScoringService {
       return empty;
     }
 
+    // 1) Evaluate each message into traits + label + flags
     const messagesEval: MessageEvaluation[] = transcript.map((msg) =>
       this.evaluateMessage(msg),
     );
 
+    // 2) Aggregate into CoreMetrics
     const metrics = this.computeCoreMetrics(messagesEval);
 
     const result: AiSessionResult = {
