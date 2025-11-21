@@ -1,4 +1,3 @@
-// backend/src/app.module.ts
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
@@ -14,6 +13,7 @@ import { HealthModule } from './health/health.module';
 // חדשים
 import { PracticeModule } from './modules/practice/practice.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { ProfileModule } from './modules/profile/profile.module';
 
 @Module({
   imports: [
@@ -30,6 +30,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     HealthModule,     // /v1/health/*
     PracticeModule,   // /v1/practice/*
     DashboardModule,  // /v1/dashboard/*
+    ProfileModule,    // /v1/profile/*
   ],
   controllers: [],
   providers: [

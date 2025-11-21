@@ -24,6 +24,11 @@ model User {
   refreshTokens      RefreshToken[]
   stats              UserStats?
   wallet             UserWallet?
+
+  /// 6B – Onboarding / Preference fields
+  gender         Gender               @default(UNKNOWN)
+  attractedTo    AttractionPreference @default(UNKNOWN)
+  preferencePath PreferencePath       @default(UNKNOWN_PATH)
 }
 
 model IdempotencyKey {
@@ -228,4 +233,28 @@ enum MessageGrade {
 enum AccountTier {
   FREE
   PREMIUM
+}
+
+/// 6B – preference modeling
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNKNOWN
+}
+
+enum AttractionPreference {
+  WOMEN
+  MEN
+  BOTH
+  OTHER
+  UNKNOWN
+}
+
+enum PreferencePath {
+  FEMALE_PATH
+  MALE_PATH
+  DUAL_PATH
+  OTHER_PATH
+  UNKNOWN_PATH
 }
