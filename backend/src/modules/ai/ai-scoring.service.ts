@@ -1,108 +1,598 @@
+/**
+ * IMPORTANT – OPTION A / PREMIUM EFFECTS ONLY
+ *
+ * This service is used for:
+ * - Per-message scoring (score 0–100, rarity S+/S/A/B/C)
+ * - Micro feedback per message
+ * - XP/coins multipliers
+ * - Premium deep analysis (emotion profile, strengths/weaknesses, advice)
+ *
+ * It is NOT the Option B core metrics engine.
+ * It must NOT:
+ * - Define DB schema for PracticeSession stats
+ * - Drive the main /stats or /dashboard summary responses
+ * - Be treated as the single source of truth for Charisma Index / traits
+ *
+ * Option B core lives in AiCoreScoringService, which returns
+ * AiSessionResult { metrics + messages + version }.
+ */
+
 // backend/src/modules/ai/ai-scoring.service.ts
-import { Injectable, BadRequestException } from '@nestjs/common';
+
+import { Injectable } from '@nestjs/common';
+import { AccountTier } from '@prisma/client';
 import {
-  computeSessionRewards,
-  MessageEvaluationInput,
+  AiMode,
+  AiScoringResult,
+  AiMessageScoreBase,
+  AiMessageDeepInsight,
+  AiSessionAnalysisPremium,
+  EmotionProfile,
   MessageRarity,
-} from '../sessions/scoring';
+  PracticeMessageInput,
+} from './ai.types';
 
 /**
- * Canonical AI scoring input shape.
- * This is what the practice domain sends to "the AI".
- */
-export interface AiScoringInput {
-  userId: string;
-  personaId?: string | null;
-  templateId?: string | null;
-  messages: {
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-  }[];
-}
-
-/**
- * Per-message score returned from the AI layer.
- */
-export interface AiMessageScore {
-  index: number;
-  score: number;          // 0–100
-  rarity: MessageRarity;  // 'C' | 'B' | 'A' | 'S' | 'S+'
-}
-
-/**
- * Overall scoring result for a conversation.
- */
-export interface AiScoringResult {
-  overallScore: number;         // 0–100 (rounded)
-  messageScores: AiMessageScore[];
-  notes?: string | null;        // optional AI comments / insight
-}
-
-/**
- * Phase 5.2.1–5.2.3 — AI scoring skeleton.
+ * AiScoringService
  *
- * Right now this service does NOT call any external LLM.
- * It just uses a deterministic score pattern + the existing
- * computeSessionRewards() logic to produce a realistic shape.
+ * Mock / deterministic AI scoring engine.
+ * No external calls, no randomness – only pure logic based on the messages.
  *
- * Later (Phase 5.3) we'll swap the implementation so that
- * it actually calls a real AI provider, without changing
- * the public method signatures.
+ * Later, you can replace the internals with real LLM calls while keeping:
+ *   - the public `scoreSession` API
+ *   - the AiScoringResult / Ai* types
  */
 @Injectable()
 export class AiScoringService {
-  // Temporary deterministic pattern (same spirit as Phase 3 mock)
-  private static readonly SCORE_PATTERN: number[] = [62, 74, 88, 96];
+  /**
+   * Main entry point for the rest of the backend.
+   *
+   * - Picks mode (FREE / PREMIUM) based on user tier.
+   * - Produces per-message scores.
+   * - If PREMIUM → also produces a deep session analysis.
+   */
+  async scoreSession(
+    userTier: AccountTier,
+    messages: PracticeMessageInput[],
+  ): Promise<AiScoringResult> {
+    const mode: AiMode =
+      userTier === AccountTier.PREMIUM ? 'PREMIUM' : 'FREE';
 
-  async scoreConversation(input: AiScoringInput): Promise<AiScoringResult> {
-    const { userId, messages, personaId, templateId } = input;
+    const perMessage = messages.map((msg, index) =>
+      this.buildBaseScore(msg, index),
+    );
 
-    if (!userId) {
-      throw new BadRequestException({
-        code: 'AI_SCORING_MISSING_USER',
-        message: 'AiScoringService.scoreConversation: userId is required',
-      });
+    let premiumSessionAnalysis: AiSessionAnalysisPremium | undefined;
+
+    if (mode === 'PREMIUM') {
+      premiumSessionAnalysis = this.buildPremiumAnalysis(messages, perMessage);
     }
-
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      throw new BadRequestException({
-        code: 'AI_SCORING_EMPTY_MESSAGES',
-        message: 'AiScoringService.scoreConversation: messages must contain at least one item',
-      });
-    }
-
-    // Phase 5.2.x: deterministic mock scoring.
-    // We completely ignore message content for now and just
-    // apply the SCORE_PATTERN repeatedly over the conversation length.
-    const rawScores: number[] = messages.map((_m, index) => {
-      const pattern = AiScoringService.SCORE_PATTERN;
-      return pattern[index % pattern.length];
-    });
-
-    const inputs: MessageEvaluationInput[] = rawScores.map((score) => ({ score }));
-    const summary = computeSessionRewards(inputs);
-
-    const overallScore = Math.round(summary.finalScore);
-
-    const messageScores: AiMessageScore[] = summary.messages.map((m, index) => ({
-      index,
-      score: m.score,
-      rarity: m.rarity as MessageRarity,
-    }));
-
-    // Simple mock insight — later real LLM will generate this.
-    const notes = [
-      'Mock AI (Phase 5.2): deterministic scoring used for this session.',
-      personaId ? `Persona attached: ${personaId}` : null,
-      templateId ? `Template attached: ${templateId}` : null,
-    ]
-      .filter(Boolean)
-      .join(' ');
 
     return {
-      overallScore,
-      messageScores,
-      notes: notes || null,
+      mode,
+      perMessage,
+      premiumSessionAnalysis,
     };
+  }
+
+  /**
+   * Temporary wrapper to match the shape used in PracticeService.runRealSession.
+   * For now we treat everyone as FREE; later we can fetch true tier from DB.
+   */
+  async scoreConversation(args: {
+    userId: string;
+    personaId: string | null;
+    templateId: string | null;
+    messages: PracticeMessageInput[];
+  }): Promise<AiScoringResult> {
+    // TODO: use real user tier based on userId
+    return this.scoreSession(AccountTier.FREE, args.messages);
+  }
+
+  /**
+   * Build base score + rarity + micro feedback for a single message.
+   * This function is fully deterministic and cheap.
+   */
+  private buildBaseScore(
+    msg: PracticeMessageInput,
+    index: number,
+  ): AiMessageScoreBase {
+    const normalizedText = msg.content.trim();
+    const lengthScore = this.computeLengthScore(normalizedText);
+    const punctuationScore = this.computePunctuationScore(normalizedText);
+    const positionBonus = this.computePositionBonus(index);
+
+    let score = lengthScore + punctuationScore + positionBonus;
+
+    // Clamp to 0–100
+    score = Math.max(0, Math.min(100, score));
+
+    const rarity = this.mapScoreToRarity(score);
+    const microFeedback = this.buildMicroFeedback(score, normalizedText);
+    const tags = this.buildTags(score, normalizedText);
+    const xpMultiplier = this.computeXpMultiplier(rarity);
+    const coinsMultiplier = this.computeCoinsMultiplier(rarity);
+    const safetyFlag = this.detectSafety(normalizedText);
+
+    return {
+      index: msg.index,
+      score,
+      rarity,
+      microFeedback,
+      tags,
+      xpMultiplier,
+      coinsMultiplier,
+      safetyFlag,
+    };
+  }
+
+  /**
+   * Score based mainly on message length:
+   * - very short messages are weak
+   * - mid-length messages are best
+   * - overly long messages get a small penalty
+   */
+  private computeLengthScore(text: string): number {
+    const len = text.length;
+
+    if (len === 0) return 10;
+    if (len < 5) return 35;
+    if (len < 15) return 55;
+    if (len < 40) return 75;
+    if (len < 80) return 82;
+
+    return 70; // too long → slightly penalized
+  }
+
+  /**
+   * Bonus based on punctuation:
+   * - question marks encourage curiosity
+   * - exclamation marks encourage energy
+   */
+  private computePunctuationScore(text: string): number {
+    const qCount = (text.match(/\?/g) || []).length;
+    const exCount = (text.match(/!/g) || []).length;
+
+    const questionBonus = Math.min(2 * qCount, 10);
+    const exclamationBonus = Math.min(3 * exCount, 12);
+
+    return questionBonus + exclamationBonus;
+  }
+
+  /**
+   * Slight bonus for later messages to avoid all early messages dominating.
+   */
+  private computePositionBonus(index: number): number {
+    if (index === 0) return 0;
+    if (index === 1) return 2;
+    if (index === 2) return 4;
+    return 5;
+  }
+
+  private mapScoreToRarity(score: number): MessageRarity {
+    if (score >= 92) return 'S+';
+    if (score >= 84) return 'S';
+    if (score >= 72) return 'A';
+    if (score >= 58) return 'B';
+    return 'C';
+  }
+
+  private buildMicroFeedback(score: number, text: string): string {
+    const trimmed = text.toLowerCase();
+
+    if (score >= 92) {
+      return 'Brilliant tension and clarity here. This is the kind of line that can shift the whole vibe.';
+    }
+    if (score >= 84) {
+      return 'Strong message with attractive energy. A tiny bit more specificity could make it killer.';
+    }
+    if (score >= 72) {
+      return 'Good message. You’re on the right track – a bit more playfulness or detail would level this up.';
+    }
+    if (score >= 58) {
+      return 'Decent but safe. You can afford to be slightly bolder or more personal here.';
+    }
+
+    if (trimmed.length < 5) {
+      return 'Feels too short and low-effort. Give the other side a bit more to work with.';
+    }
+
+    return 'This message is okay, but lacks a clear hook. Try adding a small tease or detail that invites a reply.';
+  }
+
+  private buildTags(score: number, text: string): string[] {
+    const tags: string[] = [];
+    const lower = text.toLowerCase();
+
+    if (/\?/.test(text)) tags.push('curious');
+    if (/haha|lol|😂|😅/.test(lower)) tags.push('playful');
+    if (/[!]{2,}/.test(text)) tags.push('high-energy');
+    if (lower.includes('maybe') || lower.includes('i think')) {
+      tags.push('soft');
+    }
+    if (lower.includes("let's") || lower.includes('lets ')) {
+      tags.push('leading');
+    }
+
+    if (score >= 84) tags.push('confident');
+    else if (score < 58) tags.push('low-impact');
+
+    if (tags.length === 0) tags.push('neutral');
+
+    return tags;
+  }
+
+  private computeXpMultiplier(rarity: MessageRarity): number {
+    switch (rarity) {
+      case 'S+':
+        return 1.8;
+      case 'S':
+        return 1.5;
+      case 'A':
+        return 1.25;
+      case 'B':
+        return 1.0;
+      case 'C':
+      default:
+        return 0.8;
+    }
+  }
+
+  private computeCoinsMultiplier(rarity: MessageRarity): number {
+    switch (rarity) {
+      case 'S+':
+        return 1.7;
+      case 'S':
+        return 1.4;
+      case 'A':
+        return 1.2;
+      case 'B':
+        return 1.0;
+      case 'C':
+      default:
+        return 0.7;
+    }
+  }
+
+  /**
+   * Very lightweight safety detector. This is intentionally simple and
+   * deterministic – real moderation can replace this later.
+   */
+  private detectSafety(text: string): 'OK' | 'RISKY' | 'BLOCK' {
+    const lower = text.toLowerCase();
+
+    const riskyPatterns = ['kill', 'suicide', 'self-harm', 'die myself'];
+    const blockPatterns = ['nazi', 'rape', 'kill you'];
+
+    if (blockPatterns.some((p) => lower.includes(p))) {
+      return 'BLOCK';
+    }
+    if (riskyPatterns.some((p) => lower.includes(p))) {
+      return 'RISKY';
+    }
+    return 'OK';
+  }
+
+  /**
+   * Build PREMIUM deep session analysis from the full conversation.
+   * Still deterministic & cheap – no external AI.
+   */
+  private buildPremiumAnalysis(
+    messages: PracticeMessageInput[],
+    perMessage: AiMessageScoreBase[],
+  ): AiSessionAnalysisPremium {
+    const scores = perMessage.map((m) => m.score);
+    const conversationScore =
+      scores.length === 0
+        ? 0
+        : Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+
+    const emotionProfile = this.buildEmotionProfile(messages, perMessage);
+    const topMessages = this.pickTopMessages(messages, perMessage, 3);
+    const bottomMessages = this.pickBottomMessages(messages, perMessage, 3);
+    const overallStrengths = this.deriveOverallStrengths(
+      conversationScore,
+      topMessages,
+    );
+    const overallWeaknesses = this.deriveOverallWeaknesses(
+      conversationScore,
+      bottomMessages,
+    );
+    const overallAdvice = this.deriveOverallAdvice(
+      conversationScore,
+      overallStrengths,
+      overallWeaknesses,
+    );
+
+    const conversationStyle = this.buildConversationStyleLabel(
+      conversationScore,
+      emotionProfile,
+    );
+
+    return {
+      conversationScore,
+      conversationStyle,
+      emotionProfile,
+      topMessages,
+      bottomMessages,
+      overallStrengths,
+      overallWeaknesses,
+      overallAdvice,
+    };
+  }
+
+  private buildEmotionProfile(
+    messages: PracticeMessageInput[],
+    perMessage: AiMessageScoreBase[],
+  ): EmotionProfile {
+    if (messages.length === 0) {
+      return {
+        tension: 40,
+        warmth: 40,
+        dominance: 40,
+        flirtEnergy: 40,
+      };
+    }
+
+    const allText = messages
+      .map((m) => m.content.toLowerCase())
+      .join(' ');
+
+    const questionRatio =
+      messages.length === 0
+        ? 0
+        : messages.filter((m) => m.content.includes('?')).length /
+          messages.length;
+
+    const exclamationRatio =
+      messages.length === 0
+        ? 0
+        : messages.filter((m) => m.content.includes('!')).length /
+          messages.length;
+
+    const avgScore =
+      perMessage.length === 0
+        ? 0
+        : perMessage.reduce((acc, m) => acc + m.score, 0) /
+          perMessage.length;
+
+    const flirtWords = ['date', 'drink', 'cute', 'hot', 'kiss', 'vibe'];
+    const dominanceWords = ["let's", "here's the plan", "we'll"];
+    const warmWords = ['love', 'nice', 'appreciate', 'glad'];
+
+    const flirtHits = flirtWords.filter((w) => allText.includes(w)).length;
+    const dominanceHits = dominanceWords.filter((w) =>
+      allText.includes(w),
+    ).length;
+    const warmHits = warmWords.filter((w) => allText.includes(w)).length;
+
+    const flirtEnergy = this.clamp(
+      30 + flirtHits * 10 + exclamationRatio * 30,
+      0,
+      100,
+    );
+    const dominance = this.clamp(35 + dominanceHits * 12, 0, 100);
+    const warmth = this.clamp(35 + warmHits * 10 + avgScore * 0.2, 0, 100);
+    const tension = this.clamp(
+      40 + questionRatio * 30 + flirtHits * 6,
+      0,
+      100,
+    );
+
+    return {
+      tension,
+      warmth,
+      dominance,
+      flirtEnergy,
+    };
+  }
+
+  private pickTopMessages(
+    messages: PracticeMessageInput[],
+    perMessage: AiMessageScoreBase[],
+    limit: number,
+  ): AiMessageDeepInsight[] {
+    const sorted = [...perMessage].sort((a, b) => b.score - a.score);
+    const top = sorted.slice(0, limit);
+
+    return top.map((entry) => {
+      const original = messages.find((m) => m.index === entry.index);
+      return {
+        index: entry.index,
+        userText: original?.content ?? '',
+        score: entry.score,
+        rarity: entry.rarity,
+        strengths: this.deriveMessageStrengths(entry),
+        weaknesses: [],
+        advice:
+          'Keep using this kind of structure – it carries clear intent and attractive energy. Next step is to mirror her vibe a bit more.',
+      };
+    });
+  }
+
+  private pickBottomMessages(
+    messages: PracticeMessageInput[],
+    perMessage: AiMessageScoreBase[],
+    limit: number,
+  ): AiMessageDeepInsight[] {
+    const sorted = [...perMessage].sort((a, b) => a.score - b.score);
+    const bottom = sorted.slice(0, limit);
+
+    return bottom.map((entry) => {
+      const original = messages.find((m) => m.index === entry.index);
+      return {
+        index: entry.index,
+        userText: original?.content ?? '',
+        score: entry.score,
+        rarity: entry.rarity,
+        strengths: [],
+        weaknesses: this.deriveMessageWeaknesses(entry),
+        advice:
+          'Trim the filler and add one clear, interesting detail or question. You want to make it easy and fun to respond.',
+      };
+    });
+  }
+
+  private deriveMessageStrengths(entry: AiMessageScoreBase): string[] {
+    const strengths: string[] = [];
+
+    if (entry.score >= 90) {
+      strengths.push('Very strong, high-impact message.');
+    } else if (entry.score >= 80) {
+      strengths.push('Clearly above-average impact.');
+    }
+
+    if (entry.tags.includes('playful')) {
+      strengths.push('Playful tone that keeps the vibe light.');
+    }
+    if (entry.tags.includes('confident')) {
+      strengths.push('Confident delivery without over-explaining.');
+    }
+    if (entry.tags.includes('leading')) {
+      strengths.push('You lead the interaction instead of waiting passively.');
+    }
+
+    if (strengths.length === 0) {
+      strengths.push('Solid, clear message that moves the chat forward.');
+    }
+
+    return strengths;
+  }
+
+  private deriveMessageWeaknesses(entry: AiMessageScoreBase): string[] {
+    const weaknesses: string[] = [];
+
+    if (entry.score < 50) {
+      weaknesses.push('Low perceived effort compared to your better messages.');
+    }
+
+    if (entry.tags.includes('low-impact')) {
+      weaknesses.push('Does not create enough curiosity or emotional hook.');
+    }
+
+    if (!/[!?]|\?/.test(entry.microFeedback)) {
+      weaknesses.push(
+        'Could benefit from a clearer question or playful twist.',
+      );
+    }
+
+    if (weaknesses.length === 0) {
+      weaknesses.push(
+        'Decent but forgettable – aim for a more vivid image or tease.',
+      );
+    }
+
+    return weaknesses;
+  }
+
+  private deriveOverallStrengths(
+    conversationScore: number,
+    topMessages: AiMessageDeepInsight[],
+  ): string[] {
+    const strengths: string[] = [];
+
+    if (conversationScore >= 80) {
+      strengths.push('Overall strong conversation flow with attractive energy.');
+    } else if (conversationScore >= 65) {
+      strengths.push('Solid baseline – your chats are generally engaging.');
+    }
+
+    if (topMessages.length > 0) {
+      strengths.push(
+        'You already have a few messages that are genuinely high-level. Re-using their structure will compound your results.',
+      );
+    }
+
+    if (strengths.length === 0) {
+      strengths.push(
+        'You have a workable foundation – nothing is broken, it just needs sharpening.',
+      );
+    }
+
+    return strengths;
+  }
+
+  private deriveOverallWeaknesses(
+    conversationScore: number,
+    bottomMessages: AiMessageDeepInsight[],
+  ): string[] {
+    const weaknesses: string[] = [];
+
+    if (conversationScore < 60) {
+      weaknesses.push(
+        'Your average message quality is holding you back – too many neutral or low-impact lines.',
+      );
+    }
+
+    if (bottomMessages.length > 0) {
+      weaknesses.push(
+        'A few specific messages significantly drop the vibe; trimming or rewriting them would lift the whole session.',
+      );
+    }
+
+    if (weaknesses.length === 0) {
+      weaknesses.push(
+        'Main opportunity is optimisation – turning “good” into “very good”.',
+      );
+    }
+
+    return weaknesses;
+  }
+
+  private deriveOverallAdvice(
+    conversationScore: number,
+    strengths: string[],
+    weaknesses: string[],
+  ): string[] {
+    const advice: string[] = [];
+
+    if (conversationScore < 60) {
+      advice.push(
+        'Start by upgrading your weakest 2–3 messages per chat. Replace them with something a bit more specific, bold, or playful.',
+      );
+    } else if (conversationScore < 80) {
+      advice.push(
+        'You’re close to a very strong baseline. Focus on adding one memorable line per conversation – a tease, a frame, or a vivid image.',
+      );
+    } else {
+      advice.push(
+        'You’re already playing at a high level. Now the game is consistency: repeat your best patterns on purpose.',
+      );
+    }
+
+    advice.push(
+      'Pick one of your top messages from this session and reuse its structure in your next chats – you will feel how much easier it gets.',
+    );
+
+    if (weaknesses.length > 0) {
+      advice.push(
+        'Take one weakness from the list and turn it into a micro-challenge for the next week (e.g. “no more one-word replies”).',
+      );
+    }
+
+    return advice;
+  }
+
+  private buildConversationStyleLabel(
+    conversationScore: number,
+    emotion: EmotionProfile,
+  ): string {
+    if (conversationScore >= 85 && emotion.flirtEnergy >= 70) {
+      return 'Playful, confident and high-energy flirt.';
+    }
+    if (conversationScore >= 75 && emotion.warmth >= 70) {
+      return 'Warm, engaging and emotionally safe vibe.';
+    }
+    if (emotion.dominance >= 70 && emotion.tension >= 60) {
+      return 'Direct, leading style with solid tension.';
+    }
+    if (conversationScore < 60 && emotion.tension < 50) {
+      return 'Too safe and low-tension – hard to feel a spark.';
+    }
+    return 'Balanced but a bit restrained – good base with room to turn the dial up.';
+  }
+
+  private clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
   }
 }
