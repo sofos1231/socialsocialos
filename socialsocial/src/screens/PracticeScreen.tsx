@@ -14,7 +14,11 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { PracticeStackParamList, PracticeSessionRequest, PracticeSessionResponse } from '../navigation/types';
+import {
+  PracticeStackParamList,
+  PracticeSessionRequest,
+  PracticeSessionResponse,
+} from '../navigation/types';
 import { createPracticeSession } from '../api/practice';
 
 type Props = NativeStackScreenProps<PracticeStackParamList, 'PracticeSession'>;
@@ -27,7 +31,6 @@ export default function PracticeScreen({ navigation }: Props) {
     try {
       setLoading(true);
 
-      // 🔑 Try to read token (support both possible keys just in case)
       const storedAccessToken =
         (await AsyncStorage.getItem('accessToken')) ||
         (await AsyncStorage.getItem('token'));

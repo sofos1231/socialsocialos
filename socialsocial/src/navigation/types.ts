@@ -44,7 +44,7 @@ export interface WalletSummary {
   lifetimeXp: number;
 }
 
-// --- B8: AiCore metrics, insights & social score ---
+// --- 6A/B8: AiCore metrics, insights & social score ---
 
 export interface LatestStats {
   charismaIndex: number | null;
@@ -79,8 +79,7 @@ export interface StatsInsightTrends {
 }
 
 export interface StatsInsights {
-  // Backend sends a structured AiSummary object here.
-  // For now we keep it loose; can be tightened later.
+  // backend currently returns AiInsightSummary for "latest"
   latest: any | null;
   trends: StatsInsightTrends;
 }
@@ -99,16 +98,13 @@ export interface StatsSummary {
   averageMessageScore: number;
   lastSessionAt: string | null;
 
-  // B5/B6/B8 metrics:
   latest: LatestStats;
   averages: AverageStats;
   insights: StatsInsights;
 
-  // B8.1 social score system:
   socialScore: number | null;
   socialTier: string | null;
 
-  // B8.2 recent sessions history:
   recentSessions: RecentSessionSummary[];
 }
 
@@ -147,25 +143,26 @@ export interface PracticeSessionResponse {
   rewards: SessionRewards;
   dashboard: DashboardSummaryResponse;
   sessionId: string;
+
+  // 6A: backend already returns these, keep them loosely typed for now
+  ai?: any;
+  aiCore?: any;
 }
 
 // ===== Navigation param lists =====
 
-// Root stack – Auth + main app host (Dashboard = tabs)
 export type RootStackParamList = {
   Auth: undefined;
-  Dashboard: undefined; // hosts the tab navigator
-  Practice: undefined; // legacy, can be unused for now
+  Dashboard: undefined;
+  Practice: undefined;
 };
 
-// Bottom tabs
 export type MainTabParamList = {
   PracticeTab: undefined;
   StatsTab: undefined;
   ProfileTab: undefined;
 };
 
-// Practice stack inside Practice tab
 export type PracticeStackParamList = {
   PracticeHub: undefined;
   PracticeSession: undefined;

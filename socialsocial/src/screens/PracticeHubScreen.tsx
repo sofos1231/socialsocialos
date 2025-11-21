@@ -1,5 +1,3 @@
-// socialsocial/src/screens/PracticeHubScreen.tsx
-
 import React from 'react';
 import {
   ActivityIndicator,
@@ -28,10 +26,15 @@ export default function PracticeHubScreen({ navigation }: Props) {
   } = useDashboardLoop();
 
   const stats = summary?.stats;
-  const socialScore = stats?.socialScore ?? null;
-  const socialTier = stats?.socialTier ?? null;
-  const recentSessions = stats?.recentSessions ?? [];
-  const lastRecent = recentSessions.length > 0 ? recentSessions[0] : null;
+  const latest = stats?.latest;
+  const insights = stats?.insights?.latest as
+    | {
+        charismaIndex: number;
+        strongestTraits?: { trait: string; score: number }[];
+        weakestTraits?: { trait: string; score: number }[];
+        flagsSample?: string[];
+      }
+    | undefined;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -48,45 +51,7 @@ export default function PracticeHubScreen({ navigation }: Props) {
 
       {summary && !loadingSummary && (
         <>
-          {/* B8.4 – Social Score Card */}
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Social Score</Text>
-
-            {socialScore == null ? (
-              <>
-                <Text style={styles.socialScoreLockedText}>
-                  Do your first AI practice session to unlock your Social Score.
-                </Text>
-                <Text style={styles.socialScoreHint}>
-                  Your Social Score is calculated from your AI-evaluated practice sessions.
-                </Text>
-              </>
-            ) : (
-              <>
-                <View style={styles.socialScoreRow}>
-                  <Text style={styles.socialScoreValue}>{socialScore}</Text>
-                  {socialTier && (
-                    <View style={styles.socialTierBadge}>
-                      <Text style={styles.socialTierText}>{socialTier}</Text>
-                    </View>
-                  )}
-                </View>
-
-                <Text style={styles.socialScoreSubtitle}>
-                  Based on your latest AI practice sessions.
-                </Text>
-
-                {lastRecent && (
-                  <Text style={styles.socialScoreMeta}>
-                    Last session score:{' '}
-                    {lastRecent.charismaIndex ?? lastRecent.score ?? '—'}
-                  </Text>
-                )}
-              </>
-            )}
-          </View>
-
-          {/* Existing User / Wallet / Practice Stats card */}
+          {/* User + wallet */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>User</Text>
             <Text style={styles.value}>Email: {summary.user.email}</Text>
@@ -102,19 +67,123 @@ export default function PracticeHubScreen({ navigation }: Props) {
             <Text style={styles.value}>Level: {summary.wallet.level}</Text>
             <Text style={styles.value}>Coins: {summary.wallet.coins}</Text>
             <Text style={styles.value}>Gems: {summary.wallet.gems}</Text>
-
-            <View style={styles.separator} />
-
-            <Text style={styles.sectionTitle}>Practice Stats</Text>
-            <Text style={styles.value}>Sessions: {summary.stats.sessionsCount}</Text>
-            <Text style={styles.value}>Average Score: {summary.stats.averageScore}</Text>
-            <Text style={styles.value}>
-              Avg Message Score: {summary.stats.averageMessageScore}
-            </Text>
-            <Text style={styles.value}>
-              Last Session: {summary.stats.lastSessionAt || '—'}
-            </Text>
           </View>
+
+          {/* Practice + social score */}
+          {stats && (
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Practice Stats</Text>
+              <Text style={styles.value}>
+                Sessions: {stats.sessionsCount} (success {stats.successCount} / fail{' '}
+                {stats.failCount})
+              </Text>
+              <Text style={styles.value}>
+                Average Score: {Math.round(stats.averageScore)}
+              </Text>
+              <Text style={styles.value}>
+                Avg Message Score: {Math.round(stats.averageMessageScore)}
+              </Text>
+              <Text style={styles.value}>
+                Last Session: {stats.lastSessionAt || '—'}
+              </Text>
+
+              <View style={styles.separator} />
+
+              <Text style={styles.sectionTitle}>Social Score</Text>
+              <Text style={styles.value}>
+                Social Score:{' '}
+                {stats.socialScore != null ? Math.round(stats.socialScore) : '—'}
+              </Text>
+              <Text style={styles.value}>
+                Tier: {stats.socialTier ?? '—'}
+              </Text>
+            </View>
+          )}
+
+          {/* AiCore snapshot */}
+          {latest && (
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Latest Charisma Snapshot</Text>
+              <Text style={styles.value}>
+                Charisma Index:{' '}
+                {latest.charismaIndex != null ? latest.charismaIndex : '—'}{' '}
+                {latest.aiCoreVersion ? `(v${latest.aiCoreVersion})` : ''}
+              </Text>
+              <Text style={styles.value}>
+                Confidence: {latest.confidenceScore ?? '—'}
+              </Text>
+              <Text style={styles.value}>
+                Clarity: {latest.clarityScore ?? '—'}
+              </Text>
+              <Text style={styles.value}>
+                Humor: {latest.humorScore ?? '—'}
+              </Text>
+              <Text style={styles.value}>
+                Tension: {latest.tensionScore ?? '—'}
+              </Text>
+              <Text style={styles.value}>
+                Warmth: {latest.emotionalWarmth ?? '—'}
+              </Text>
+              <Text style={styles.value}>
+                Dominance: {latest.dominanceScore ?? '—'}
+              </Text>
+              <Text style={styles.value}>
+                Messages: {latest.totalMessages ?? '—'} | Words:{' '}
+                {latest.totalWords ?? '—'}
+              </Text>
+              <Text style={styles.value}>
+                Filler words: {latest.fillerWordsCount ?? '—'}
+              </Text>
+            </View>
+          )}
+
+          {/* Strongest / weakest traits from insights */}
+          {insights && (
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>AI Insights (Latest)</Text>
+
+              {Array.isArray(insights.strongestTraits) &&
+                insights.strongestTraits.length > 0 && (
+                  <>
+                    <Text style={[styles.value, styles.subtitleStrong]}>
+                      Strongest traits
+                    </Text>
+                    {insights.strongestTraits.map((t) => (
+                      <Text key={`strong-${t.trait}`} style={styles.value}>
+                        • {t.trait}: {t.score}
+                      </Text>
+                    ))}
+                  </>
+                )}
+
+              {Array.isArray(insights.weakestTraits) &&
+                insights.weakestTraits.length > 0 && (
+                  <>
+                    <Text style={[styles.value, styles.subtitleWeak]}>
+                      Weakest traits
+                    </Text>
+                    {insights.weakestTraits.map((t) => (
+                      <Text key={`weak-${t.trait}`} style={styles.value}>
+                        • {t.trait}: {t.score}
+                      </Text>
+                    ))}
+                  </>
+                )}
+
+              {Array.isArray(insights.flagsSample) &&
+                insights.flagsSample.length > 0 && (
+                  <>
+                    <View style={styles.separator} />
+                    <Text style={[styles.value, styles.subtitleNeutral]}>
+                      Flags noticed
+                    </Text>
+                    <Text style={styles.value}>
+                      {insights.flagsSample.join(', ')}
+                    </Text>
+                  </>
+                )}
+            </View>
+          )}
         </>
       )}
 
@@ -204,6 +273,21 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     color: '#fff',
   },
+  subtitleStrong: {
+    marginTop: 6,
+    fontWeight: '600',
+    color: '#bbf7d0',
+  },
+  subtitleWeak: {
+    marginTop: 6,
+    fontWeight: '600',
+    color: '#fecaca',
+  },
+  subtitleNeutral: {
+    marginTop: 6,
+    fontWeight: '600',
+    color: '#e5e7eb',
+  },
   value: {
     fontSize: 14,
     color: '#eee',
@@ -219,53 +303,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 16,
   },
-
-  // --- B8.4 social score styles ---
-
-  socialScoreRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  socialScoreValue: {
-    fontSize: 40,
-    fontWeight: '800',
-    color: '#1DB954',
-    marginRight: 12,
-  },
-  socialTierBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: '#262626',
-    borderWidth: 1,
-    borderColor: '#1DB954',
-  },
-  socialTierText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
-  socialScoreSubtitle: {
-    fontSize: 13,
-    color: '#ccc',
-    marginBottom: 4,
-  },
-  socialScoreMeta: {
-    fontSize: 12,
-    color: '#999',
-  },
-  socialScoreLockedText: {
-    fontSize: 14,
-    color: '#eee',
-    marginBottom: 6,
-  },
-  socialScoreHint: {
-    fontSize: 12,
-    color: '#aaa',
-  },
-
   button: {
     paddingVertical: 14,
     borderRadius: 999,

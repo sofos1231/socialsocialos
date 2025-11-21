@@ -16,7 +16,6 @@ async function readAccessToken(): Promise<string | null> {
     const legacy = await AsyncStorage.getItem('token');
     return legacy;
   } catch (e) {
-    // eslint-disable-next-line no-console
     console.log('[useDashboardLoop] failed to read token', e);
     return null;
   }
@@ -44,7 +43,6 @@ export function useDashboardLoop() {
       setError(null);
     } catch (err: any) {
       const payload = err?.response?.data || err?.payload || String(err);
-      // eslint-disable-next-line no-console
       console.log('[useDashboardLoop][loadSummary] error', payload);
       setError('Failed to load dashboard summary.');
     } finally {
@@ -72,11 +70,10 @@ export function useDashboardLoop() {
       const res = await createPracticeSession(token, payload);
       setLastSession(res);
       setLastRewards(res.rewards);
-      setSummary(res.dashboard); // use returned dashboard; no extra fetch
+      setSummary(res.dashboard);
       setError(null);
     } catch (err: any) {
       const payload = err?.response?.data || err?.payload || String(err);
-      // eslint-disable-next-line no-console
       console.log('[useDashboardLoop][runDebugPractice] error', payload);
       setError('Failed to run practice session.');
     } finally {
@@ -99,5 +96,3 @@ export function useDashboardLoop() {
     runDebugPractice,
   };
 }
-
-
