@@ -1,6 +1,3 @@
-// NOTE: This file currently uses Option A (rarity/xp-based) scoring/rewards.
-// Backend stats now also expose Option B AiCore metrics for dashboard visuals.
-
 // socialsocial/src/navigation/types.ts
 
 // ===== Practice session & rewards =====
@@ -149,12 +146,43 @@ export interface PracticeSessionResponse {
   aiCore?: any;
 }
 
+// ===== Voice practice contracts =====
+
+export interface VoicePracticeSessionRequest {
+  topic: string;
+  transcript: string;
+}
+
+export interface VoicePracticeSessionResponse extends PracticeSessionResponse {
+  mode?: 'voice';
+  transcript?: string;
+}
+
+// ===== A/B practice contracts =====
+
+export interface ABOptionResult {
+  text: string;
+  score: number;
+  details?: any;
+}
+
+export interface ABPracticeAbPayload {
+  prompt: string | null;
+  optionA: ABOptionResult;
+  optionB: ABOptionResult;
+  winner: 'A' | 'B';
+}
+
+export interface ABPracticeSessionResponse extends PracticeSessionResponse {
+  mode?: 'ab';
+  ab?: ABPracticeAbPayload;
+}
+
 // ===== Navigation param lists =====
 
 export type RootStackParamList = {
   Auth: undefined;
   Dashboard: undefined;
-  Practice: undefined;
 };
 
 export type MainTabParamList = {
@@ -166,4 +194,6 @@ export type MainTabParamList = {
 export type PracticeStackParamList = {
   PracticeHub: undefined;
   PracticeSession: undefined;
+  VoicePracticeSession: undefined;
+  ABPracticeSession: undefined;
 };

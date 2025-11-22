@@ -9,9 +9,10 @@ import { Text } from 'react-native';
 import AuthScreen from '../screens/AuthScreen';
 import PracticeHubScreen from '../screens/PracticeHubScreen';
 import PracticeScreen from '../screens/PracticeScreen';
+import VoicePracticeScreen from '../screens/VoicePracticeScreen';
+import ABPracticeScreen from '../screens/ABPracticeScreen';
 import StatsScreen from '../screens/StatsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-
 
 import {
   RootStackParamList,
@@ -30,13 +31,18 @@ function PracticeStackNavigator() {
         headerShown: false,
       }}
     >
-      <PracticeStack.Screen
-        name="PracticeHub"
-        component={PracticeHubScreen}
-      />
+      <PracticeStack.Screen name="PracticeHub" component={PracticeHubScreen} />
       <PracticeStack.Screen
         name="PracticeSession"
         component={PracticeScreen}
+      />
+      <PracticeStack.Screen
+        name="VoicePracticeSession"
+        component={VoicePracticeScreen}
+      />
+      <PracticeStack.Screen
+        name="ABPracticeSession"
+        component={ABPracticeScreen}
       />
     </PracticeStack.Navigator>
   );

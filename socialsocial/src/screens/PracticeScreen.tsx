@@ -1,6 +1,5 @@
-// NOTE: This file currently uses Option A (rarity/xp-based) scoring/rewards. It will be migrated to Option B AiCore metrics later.
-
 // socialsocial/src/screens/PracticeScreen.tsx
+// Text-based mission calling POST /v1/practice/session
 
 import React, { useState } from 'react';
 import {
@@ -78,9 +77,9 @@ export default function PracticeScreen({ navigation }: Props) {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Real Practice Session</Text>
+      <Text style={styles.title}>Text Mission</Text>
       <Text style={styles.subtitle}>
-        This screen calls POST <Text style={styles.mono}>/v1/practice/session</Text> with your real user,
+        This calls POST <Text style={styles.mono}>/v1/practice/session</Text> with your real user,
         updates XP / coins / stats in the DB, and returns an updated dashboard snapshot.
       </Text>
 

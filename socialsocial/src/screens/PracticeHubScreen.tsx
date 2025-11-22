@@ -1,3 +1,5 @@
+// socialsocial/src/screens/PracticeHubScreen.tsx
+
 import React from 'react';
 import {
   ActivityIndicator,
@@ -74,8 +76,8 @@ export default function PracticeHubScreen({ navigation }: Props) {
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Practice Stats</Text>
               <Text style={styles.value}>
-                Sessions: {stats.sessionsCount} (success {stats.successCount} / fail{' '}
-                {stats.failCount})
+                Sessions: {stats.sessionsCount} (success {stats.successCount} /
+                fail {stats.failCount})
               </Text>
               <Text style={styles.value}>
                 Average Score: {Math.round(stats.averageScore)}
@@ -94,9 +96,7 @@ export default function PracticeHubScreen({ navigation }: Props) {
                 Social Score:{' '}
                 {stats.socialScore != null ? Math.round(stats.socialScore) : '—'}
               </Text>
-              <Text style={styles.value}>
-                Tier: {stats.socialTier ?? '—'}
-              </Text>
+              <Text style={styles.value}>Tier: {stats.socialTier ?? '—'}</Text>
             </View>
           )}
 
@@ -137,7 +137,7 @@ export default function PracticeHubScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* Strongest / weakest traits from insights */}
+          {/* AI insights */}
           {insights && (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>AI Insights (Latest)</Text>
@@ -193,8 +193,42 @@ export default function PracticeHubScreen({ navigation }: Props) {
         </Text>
       )}
 
+      {/* Mission type buttons */}
+      <View style={styles.missionsBlock}>
+        <Text style={styles.missionsTitle}>Choose a mission type</Text>
+
+        {/* Text mission (existing session) */}
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
+          onPress={() => navigation.navigate('PracticeSession')}
+        >
+          <Text style={styles.buttonText}>Text Mission</Text>
+        </TouchableOpacity>
+
+        {/* Voice mission */}
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton]}
+          onPress={() => navigation.navigate('VoicePracticeSession')}
+        >
+          <Text style={styles.buttonText}>Voice Mission</Text>
+        </TouchableOpacity>
+
+        {/* A/B mission */}
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton]}
+          onPress={() => navigation.navigate('ABPracticeSession')}
+        >
+          <Text style={styles.buttonText}>A/B Mission</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Debug button */}
       <TouchableOpacity
-        style={[styles.button, styles.primaryButton, loadingPractice && styles.buttonDisabled]}
+        style={[
+          styles.button,
+          styles.primaryButton,
+          loadingPractice && styles.buttonDisabled,
+        ]}
         onPress={runDebugPractice}
         disabled={loadingPractice}
       >
@@ -212,13 +246,6 @@ export default function PracticeHubScreen({ navigation }: Props) {
           <Text style={styles.value}>Gems: {lastRewards.gemsGained}</Text>
         </View>
       )}
-
-      <TouchableOpacity
-        style={[styles.button, styles.primaryButton]}
-        onPress={() => navigation.navigate('PracticeSession')}
-      >
-        <Text style={styles.buttonText}>Go to Practice</Text>
-      </TouchableOpacity>
 
       <TouchableOpacity
         style={[
@@ -322,5 +349,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     fontSize: 16,
+  },
+  missionsBlock: {
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  missionsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 8,
   },
 });
