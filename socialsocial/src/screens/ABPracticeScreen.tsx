@@ -17,41 +17,27 @@ import {
   PracticeStackParamList,
   PracticeSessionResponse,
 } from '../navigation/types';
+import { createABPracticeSession } from '../api/practice';
 
-// ---------- Types specific to A/B mode ----------
+type Props = NativeStackScreenProps<PracticeStackParamList, 'ABPracticeSession'>;
 
-type ABPracticeBody = {
-  topic: string;
-  optionA: string;
-  optionB: string;
-};
-
-type ABMeta = {
-  prompt: string | null;
-  optionA: {
-    text: string;
-    score: number;
-    details?: any;
-  };
-  optionB: {
-    text: string;
-    score: number;
-    details?: any;
-  };
-  winner: 'A' | 'B';
-};
-
-type ABPracticeResponse = PracticeSessionResponse & {
+type ABSessionResponse = PracticeSessionResponse & {
   mode?: string;
-  ab?: ABMeta;
+  ab?: {
+    prompt: string | null;
+    optionA: {
+      text: string;
+      score: number;
+      details?: any;
+    };
+    optionB: {
+      text: string;
+      score: number;
+      details?: any;
+    };
+    winner: 'A' | 'B';
+  };
 };
-
-type Props = NativeStackScreenProps<
-  PracticeStackParamList,
-  'ABPracticeSession'
->;
-
-// ---------- Helpers ----------
 
 async function readAccessToken(): Promise<string | null> {
   try {
@@ -65,42 +51,6 @@ async function readAccessToken(): Promise<string | null> {
   }
 }
 
-/**
- * Local helper – calls POST /v1/practice/ab-session with bearer token.
- * We keep this local so we don’t have to modify ../api/practice.ts.
- */
-async function createABPracticeSession(
-  token: string,
-  body: ABPracticeBody,
-): Promise<ABPracticeResponse> {
-  const baseUrl =
-    process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
-
-  const res = await fetch(`${baseUrl}/v1/practice/ab-session`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  const data = (await res.json()) as any;
-
-  if (!res.ok || data?.ok === false) {
-    const msg =
-      data?.error?.message ||
-      data?.message ||
-      `Request failed with status ${res.status} (${res.statusText})`;
-    console.log('[UI][AB] error payload', data);
-    throw new Error(msg);
-  }
-
-  return data as ABPracticeResponse;
-}
-
-// ---------- Screen ----------
-
 export default function ABPracticeScreen({ navigation }: Props) {
   const [topic, setTopic] = useState('First message on dating app');
   const [optionA, setOptionA] = useState(
@@ -109,244 +59,241 @@ export default function ABPracticeScreen({ navigation }: Props) {
   const [optionB, setOptionB] = useState(
     "Your profile gave me a very specific question: are you more 'sunset walk' or '3am deep talk'?",
   );
-
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastResponse, setLastResponse] = useState<ABPracticeResponse | null>(
-    null,
-  );
+  const [loading, setLoading] = useState(false);
+  const [lastResponse, setLastResponse] = useState<ABSessionResponse | null>(null);
 
   const runABSession = async () => {
     try {
-      setBusy(true);
-      setError(null);
+      setLoading(true);
 
       const token = await readAccessToken();
       if (!token) {
         Alert.alert(
           'Not logged in',
-          'No access token found. Please log in again.',
+          'No access token found. Please log in again before running an A/B mission.',
         );
         return;
       }
 
-      const body: ABPracticeBody = {
+      const payload = {
         topic: topic.trim() || 'First message on dating app',
         optionA: optionA.trim(),
         optionB: optionB.trim(),
       };
 
-      console.log('[UI][AB] sending body', body);
-      const data = await createABPracticeSession(token, body);
+      console.log('[UI][AB] sending payload', payload);
+
+      const data = await createABPracticeSession(token, payload);
       console.log('[UI][AB] response', data);
 
-      setLastResponse(data);
-
-      const winner = data.ab?.winner ?? 'A';
-      const winnerText =
-        winner === 'A' ? 'Option A won 🎯' : 'Option B won 🎯';
+      setLastResponse(data as ABSessionResponse);
 
       Alert.alert(
-        'A/B session complete',
-        `${winnerText}\n\nScore: ${data.rewards.score}\nXP: ${data.rewards.xpGained}\nCoins: ${data.rewards.coinsGained}`,
+        'A/B mission complete',
+        `Winner: ${
+          data.ab?.winner === 'A' ? 'Option A' : data.ab?.winner === 'B' ? 'Option B' : 'N/A'
+        }\nScore: ${data.rewards.score}\nXP: ${data.rewards.xpGained}\nCoins: ${
+          data.rewards.coinsGained
+        }`,
       );
-    } catch (e: any) {
-      console.log('[UI][AB] error', e);
-      const msg = e?.message || 'Failed to run A/B session.';
-      setError(msg);
-      Alert.alert('Error', msg);
+    } catch (err: any) {
+      const payload = err?.response?.data || String(err);
+      console.log('[ABPracticeScreen][Error]', payload);
+      Alert.alert('Error', 'Failed to run A/B mission');
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   };
 
   const goBack = () => navigation.goBack();
 
-  const winnerLabel = (() => {
-    if (!lastResponse?.ab) return null;
-    const w = lastResponse.ab.winner;
-    if (w === 'A') return 'Winner: Option A';
-    if (w === 'B') return 'Winner: Option B';
-    return 'Winner: –';
-  })();
+  const rewards = lastResponse?.rewards;
+  const ab = lastResponse?.ab;
 
   return (
-    <ScrollView contentContainerStyle={s.wrap}>
-      <Text style={s.h1}>A/B Mission</Text>
-      <Text style={s.sub}>
-        This screen calls{' '}
-        <Text style={s.code}>POST /v1/practice/ab-session</Text> and compares
-        two openers. The backend updates XP, coins, gems, dashboard and returns
-        which opener won.
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.title}>A/B Mission</Text>
+      <Text style={styles.subtitle}>
+        Test two different openers on the same topic. The backend scores both, gives you XP / coins,
+        and tells you which one is stronger.
       </Text>
 
-      {error && <Text style={s.error}>{error}</Text>}
-
-      <Text style={s.label}>Topic</Text>
+      <Text style={styles.label}>Topic</Text>
       <TextInput
-        style={s.input}
+        style={styles.input}
         value={topic}
         onChangeText={setTopic}
         placeholder="Topic (e.g. First message on dating app)"
+        placeholderTextColor="#6b7280"
       />
 
-      <Text style={s.label}>Option A</Text>
+      <Text style={styles.label}>Option A</Text>
       <TextInput
-        style={[s.input, s.multi]}
+        style={styles.input}
         value={optionA}
         onChangeText={setOptionA}
         multiline
+        placeholder="First opener"
+        placeholderTextColor="#6b7280"
       />
 
-      <Text style={s.label}>Option B</Text>
+      <Text style={styles.label}>Option B</Text>
       <TextInput
-        style={[s.input, s.multi]}
+        style={styles.input}
         value={optionB}
         onChangeText={setOptionB}
         multiline
+        placeholder="Second opener"
+        placeholderTextColor="#6b7280"
       />
 
       <TouchableOpacity
-        style={[s.btn, busy && s.btnDisabled]}
-        disabled={busy}
+        style={[styles.button, styles.primaryButton, loading && styles.buttonDisabled]}
         onPress={runABSession}
+        disabled={loading}
       >
-        <Text style={s.btnText}>
-          {busy ? 'Running…' : 'Run A/B Mission'}
+        <Text style={styles.buttonText}>
+          {loading ? 'Running…' : 'Run A/B Mission'}
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={s.secondaryBtn} onPress={goBack}>
-        <Text style={s.secondaryBtnText}>Back to Hub</Text>
+      <TouchableOpacity
+        style={[styles.button, styles.secondaryButton]}
+        onPress={goBack}
+      >
+        <Text style={styles.buttonText}>Back to Hub</Text>
       </TouchableOpacity>
 
-      {lastResponse && (
-        <View style={s.card}>
-          <Text style={s.cardTitle}>Last A/B Result</Text>
-          {winnerLabel && <Text style={s.cardLine}>{winnerLabel}</Text>}
-          <Text style={s.cardLine}>
-            Session score: {lastResponse.rewards.score}
-          </Text>
-          <Text style={s.cardLine}>
-            XP gained: {lastResponse.rewards.xpGained}
-          </Text>
-          <Text style={s.cardLine}>
-            Coins gained: {lastResponse.rewards.coinsGained}
-          </Text>
+      {rewards && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Last A/B Rewards</Text>
+          <Text style={styles.value}>Score: {rewards.score}</Text>
+          <Text style={styles.value}>Message Score: {rewards.messageScore}</Text>
+          <Text style={styles.value}>XP gained: {rewards.xpGained}</Text>
+          <Text style={styles.value}>Coins gained: {rewards.coinsGained}</Text>
+          <Text style={styles.value}>Gems gained: {rewards.gemsGained}</Text>
 
-          {lastResponse.ab && (
-            <>
-              <Text style={s.cardSubtitle}>Option A</Text>
-              <Text style={s.cardLine}>
-                {lastResponse.ab.optionA.text} (score {lastResponse.ab.optionA.score})
-              </Text>
+          <View style={styles.separator} />
 
-              <Text style={s.cardSubtitle}>Option B</Text>
-              <Text style={s.cardLine}>
-                {lastResponse.ab.optionB.text} (score {lastResponse.ab.optionB.score})
-              </Text>
-            </>
-          )}
+          <Text style={styles.sectionTitle}>Per-message</Text>
+          {rewards.messages.map((m) => (
+            <Text key={m.index} style={styles.messageRow}>
+              #{m.index} – {m.rarity} – score {m.score} – XP {m.xp} – coins {m.coins}
+            </Text>
+          ))}
+        </View>
+      )}
+
+      {ab && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>A/B Result</Text>
+          {ab.prompt ? (
+            <Text style={styles.value}>Prompt: {ab.prompt}</Text>
+          ) : null}
+          <Text style={styles.value}>
+            Option A ({ab.optionA.score}): {ab.optionA.text}
+          </Text>
+          <Text style={styles.value}>
+            Option B ({ab.optionB.score}): {ab.optionB.text}
+          </Text>
+          <Text style={[styles.value, styles.winnerText]}>
+            Winner:{' '}
+            {ab.winner === 'A'
+              ? 'Option A'
+              : ab.winner === 'B'
+              ? 'Option B'
+              : 'No clear winner'}
+          </Text>
         </View>
       )}
     </ScrollView>
   );
 }
 
-// ---------- Styles ----------
-
-const s = StyleSheet.create({
-  wrap: {
-    flexGrow: 1,
+const styles = StyleSheet.create({
+  container: {
     padding: 16,
     paddingBottom: 40,
-    backgroundColor: '#111',
+    backgroundColor: '#111827',
+    flexGrow: 1,
   },
-  h1: {
+  title: {
     fontSize: 26,
     fontWeight: '700',
     marginBottom: 8,
-    color: '#fff',
+    color: '#f9fafb',
   },
-  sub: {
+  subtitle: {
     fontSize: 14,
-    color: '#ccc',
-    marginBottom: 16,
-  },
-  code: {
-    fontFamily: 'monospace',
-    color: '#4ade80',
+    color: '#9ca3af',
+    marginBottom: 20,
   },
   label: {
-    marginTop: 8,
+    fontSize: 14,
+    color: '#e5e7eb',
     marginBottom: 4,
-    color: '#e5e5e5',
-    fontWeight: '600',
+    marginTop: 10,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#374151',
     borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    color: '#fff',
-    backgroundColor: '#18181b',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#f9fafb',
+    backgroundColor: '#111827',
+    marginBottom: 4,
   },
-  multi: {
-    minHeight: 60,
-    textAlignVertical: 'top',
-  },
-  btn: {
-    marginTop: 16,
-    backgroundColor: '#22c55e',
+  button: {
     paddingVertical: 14,
     borderRadius: 999,
     alignItems: 'center',
+    marginTop: 16,
   },
-  btnDisabled: {
+  primaryButton: {
+    backgroundColor: '#22c55e',
+  },
+  secondaryButton: {
+    backgroundColor: '#374151',
+  },
+  buttonDisabled: {
     opacity: 0.6,
   },
-  btnText: {
-    color: '#fff',
+  buttonText: {
+    color: '#f9fafb',
     fontWeight: '600',
     fontSize: 16,
   },
-  secondaryBtn: {
-    marginTop: 10,
-    paddingVertical: 12,
-    borderRadius: 999,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#4b5563',
-  },
-  secondaryBtnText: {
-    color: '#e5e7eb',
-    fontWeight: '500',
-  },
-  error: {
-    color: '#f87171',
-    marginBottom: 8,
-  },
   card: {
-    marginTop: 18,
-    backgroundColor: '#1f2933',
+    backgroundColor: '#020617',
+    padding: 16,
     borderRadius: 12,
-    padding: 14,
+    marginTop: 18,
   },
-  cardTitle: {
+  sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 6,
-    color: '#fff',
+    marginBottom: 8,
+    color: '#f9fafb',
   },
-  cardSubtitle: {
-    marginTop: 8,
-    fontWeight: '600',
-    color: '#bfdbfe',
-  },
-  cardLine: {
+  value: {
     fontSize: 14,
     color: '#e5e7eb',
-    marginBottom: 2,
+    marginBottom: 4,
+  },
+  winnerText: {
+    marginTop: 6,
+    fontWeight: '700',
+    color: '#fde68a',
+  },
+  separator: {
+    height: 1,
+    backgroundColor: '#1f2937',
+    marginVertical: 10,
+  },
+  messageRow: {
+    fontSize: 13,
+    color: '#e5e7eb',
+    marginBottom: 4,
   },
 });

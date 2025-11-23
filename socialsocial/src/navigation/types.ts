@@ -121,7 +121,7 @@ export interface DashboardSummaryResponse {
   stats: StatsSummary;
 }
 
-// ===== Practice session contracts =====
+// ===== Practice session contracts (text mission) =====
 
 export type PracticeMessageRole = 'USER' | 'AI';
 
@@ -146,43 +146,61 @@ export interface PracticeSessionResponse {
   aiCore?: any;
 }
 
-// ===== Voice practice contracts =====
+// ===== Voice mission contracts =====
 
-export interface VoicePracticeSessionRequest {
+export interface VoicePracticeRequest {
   topic: string;
   transcript: string;
 }
 
-export interface VoicePracticeSessionResponse extends PracticeSessionResponse {
-  mode?: 'voice';
+export type VoicePracticeResponse = PracticeSessionResponse & {
+  mode?: string;
   transcript?: string;
+};
+
+// ===== A/B mission contracts =====
+
+export interface AbOptionDetails {
+  index?: number;
+  score?: number;
+  rarity?: MessageRarity;
+  microFeedback?: string;
+  tags?: string[];
+  xpMultiplier?: number;
+  coinsMultiplier?: number;
+  safetyFlag?: string;
 }
 
-// ===== A/B practice contracts =====
-
-export interface ABOptionResult {
+export interface AbOption {
   text: string;
   score: number;
-  details?: any;
+  details?: AbOptionDetails;
 }
 
-export interface ABPracticeAbPayload {
+export interface AbResult {
   prompt: string | null;
-  optionA: ABOptionResult;
-  optionB: ABOptionResult;
-  winner: 'A' | 'B';
+  optionA: AbOption;
+  optionB: AbOption;
+  winner: 'A' | 'B' | null;
 }
 
-export interface ABPracticeSessionResponse extends PracticeSessionResponse {
-  mode?: 'ab';
-  ab?: ABPracticeAbPayload;
+export interface ABPracticeRequest {
+  topic: string;
+  optionA: string;
+  optionB: string;
 }
+
+export type ABPracticeResponse = PracticeSessionResponse & {
+  mode?: string;
+  ab?: AbResult;
+};
 
 // ===== Navigation param lists =====
 
 export type RootStackParamList = {
   Auth: undefined;
   Dashboard: undefined;
+  Practice: undefined;
 };
 
 export type MainTabParamList = {

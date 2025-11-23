@@ -1,12 +1,15 @@
 // socialsocial/src/screens/PracticeScreen.tsx
-// Text-based mission calling POST /v1/practice/session
+// Chat-style mission screen calling POST /v1/practice/session
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -15,6 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   PracticeStackParamList,
+  PracticeMessageInput,
   PracticeSessionRequest,
   PracticeSessionResponse,
 } from '../navigation/types';
@@ -22,168 +26,286 @@ import { createPracticeSession } from '../api/practice';
 
 type Props = NativeStackScreenProps<PracticeStackParamList, 'PracticeSession'>;
 
+async function readAccessToken(): Promise<string | null> {
+  try {
+    const direct = await AsyncStorage.getItem('accessToken');
+    if (direct) return direct;
+    const legacy = await AsyncStorage.getItem('token');
+    return legacy;
+  } catch (e) {
+    console.log('[PracticeScreen] failed to read token', e);
+    return null;
+  }
+}
+
 export default function PracticeScreen({ navigation }: Props) {
-  const [loading, setLoading] = useState(false);
+  const [messages, setMessages] = useState<PracticeMessageInput[]>([
+    {
+      role: 'AI',
+      content:
+        "Welcome to a real practice mission. Type your opener below and I'll score it – plus give you micro-feedback.",
+    },
+  ]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
   const [lastResponse, setLastResponse] = useState<PracticeSessionResponse | null>(null);
 
-  const runPractice = async () => {
+  const scrollRef = useRef<ScrollView | null>(null);
+
+  const scrollToBottom = () => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+  };
+
+  const handleSend = async () => {
+    const trimmed = input.trim();
+    if (!trimmed || sending) return;
+
     try {
-      setLoading(true);
+      setSending(true);
 
-      const storedAccessToken =
-        (await AsyncStorage.getItem('accessToken')) ||
-        (await AsyncStorage.getItem('token'));
-
-      if (!storedAccessToken) {
-        Alert.alert(
-          'Not logged in',
-          'No access token found. Please log in again before running a practice session.',
-        );
-        setLoading(false);
+      const token = await readAccessToken();
+      if (!token) {
+        Alert.alert('Not logged in', 'Please log in again to run a mission.');
+        setSending(false);
         return;
       }
 
-      const body: PracticeSessionRequest = {
-        topic: 'First real practice',
-        messages: [
-          { role: 'USER', content: 'Hey :)' },
-          { role: 'AI', content: 'Hi!' },
-          { role: 'USER', content: 'How are you?' },
-          { role: 'AI', content: 'Great!' },
-        ],
+      // Build full history including the new USER message
+      const payloadMessages: PracticeMessageInput[] = [
+        ...messages,
+        { role: 'USER', content: trimmed },
+      ];
+
+      const payload: PracticeSessionRequest = {
+        topic: 'Free text mission – chat opener',
+        messages: payloadMessages,
       };
 
-      console.log('[UI][PRACTICE] sending body', body);
+      console.log('[UI][PRACTICE] sending payload', payload);
 
-      const res = await createPracticeSession(storedAccessToken, body);
-
+      const res = await createPracticeSession(token, payload);
       console.log('[UI][PRACTICE] response', res);
-      setLastResponse(res);
 
-      Alert.alert(
-        'Practice session complete',
-        `Score: ${res.rewards.score}\nXP: ${res.rewards.xpGained}\nCoins: ${res.rewards.coinsGained}`,
-      );
+      // Build coach feedback bubble from ai.perMessage[0].microFeedback if present
+      const rawFeedback = res?.ai?.perMessage?.[0]?.microFeedback;
+      const coachFeedback: string =
+        typeof rawFeedback === 'string' && rawFeedback.trim().length > 0
+          ? rawFeedback
+          : 'Nice rep. Check the mission summary below for full breakdown.';
+
+      // Append USER message + AI feedback bubble to local chat
+      setMessages((prev) => [
+        ...prev,
+        { role: 'USER', content: trimmed },
+        { role: 'AI', content: coachFeedback },
+      ]);
+
+      setLastResponse(res);
+      setInput('');
+      scrollToBottom();
     } catch (err: any) {
       const payload = err?.response?.data || String(err);
-      console.log('[Practice Error]', payload);
-      Alert.alert('Error', 'Failed to run practice session');
+      console.log('[PracticeScreen error]', payload);
+      Alert.alert('Error', 'Failed to run practice mission.');
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   };
 
-  const goBack = () => navigation.goBack();
+  const handleBack = () => {
+    navigation.goBack();
+  };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Text Mission</Text>
-      <Text style={styles.subtitle}>
-        This calls POST <Text style={styles.mono}>/v1/practice/session</Text> with your real user,
-        updates XP / coins / stats in the DB, and returns an updated dashboard snapshot.
-      </Text>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={80}
+    >
+      <View style={styles.header}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
+          <Text style={styles.backText}>‹ Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Text Mission</Text>
+      </View>
 
-      <TouchableOpacity
-        style={[styles.button, styles.primaryButton, loading && styles.buttonDisabled]}
-        onPress={runPractice}
-        disabled={loading}
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.chatContainer}
+        onContentSizeChange={scrollToBottom}
       >
-        <Text style={styles.buttonText}>
-          {loading ? 'Running…' : 'Run Practice Session'}
-        </Text>
-      </TouchableOpacity>
+        {messages.map((m, idx) => {
+          const isUser = m.role === 'USER';
+          return (
+            <View
+              key={`${m.role}-${idx}-${m.content.slice(0, 10)}`}
+              style={[
+                styles.bubble,
+                isUser ? styles.userBubble : styles.aiBubble,
+              ]}
+            >
+              <Text style={styles.bubbleRole}>{isUser ? 'You' : 'Coach'}</Text>
+              <Text style={styles.bubbleText}>{m.content}</Text>
+            </View>
+          );
+        })}
 
-      <TouchableOpacity
-        style={[styles.button, styles.secondaryButton]}
-        onPress={goBack}
-      >
-        <Text style={styles.buttonText}>Back to Hub</Text>
-      </TouchableOpacity>
-
-      {lastResponse && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Last Practice Rewards</Text>
-          <Text>Score: {lastResponse.rewards.score}</Text>
-          <Text>Message Score: {lastResponse.rewards.messageScore}</Text>
-          <Text>XP gained: {lastResponse.rewards.xpGained}</Text>
-          <Text>Coins gained: {lastResponse.rewards.coinsGained}</Text>
-          <Text>Gems gained: {lastResponse.rewards.gemsGained}</Text>
-
-          <View style={styles.separator} />
-
-          <Text style={styles.sectionTitle}>Per-message</Text>
-          {lastResponse.rewards.messages.map((m) => (
-            <Text key={m.index} style={styles.messageRow}>
-              #{m.index} – {m.rarity} – score {m.score} – XP {m.xp} – coins {m.coins}
+        {lastResponse && (
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>Last Mission Summary</Text>
+            <Text style={styles.summaryLine}>
+              Score: {lastResponse.rewards.score} (msg score{' '}
+              {lastResponse.rewards.messageScore})
             </Text>
-          ))}
-        </View>
-      )}
-    </ScrollView>
+            <Text style={styles.summaryLine}>
+              XP: {lastResponse.rewards.xpGained} • Coins:{' '}
+              {lastResponse.rewards.coinsGained} • Gems:{' '}
+              {lastResponse.rewards.gemsGained}
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+
+      <View style={styles.inputRow}>
+        <TextInput
+          style={styles.input}
+          placeholder="Type your opener here…"
+          placeholderTextColor="#888"
+          value={input}
+          onChangeText={setInput}
+          multiline
+        />
+        <TouchableOpacity
+          style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
+          onPress={handleSend}
+          disabled={sending || !input.trim()}
+        >
+          <Text style={styles.sendText}>{sending ? '...' : 'Send'}</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 24,
-    paddingBottom: 48,
-    backgroundColor: '#111',
-    flexGrow: 1,
+  root: {
+    flex: 1,
+    backgroundColor: '#050505',
   },
-  title: {
-    fontSize: 26,
-    fontWeight: '700',
-    marginBottom: 8,
-    color: '#fff',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#ccc',
-    marginBottom: 24,
-  },
-  button: {
-    paddingVertical: 14,
-    borderRadius: 999,
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#222',
   },
-  primaryButton: {
-    backgroundColor: '#1DB954',
+  backBtn: {
+    paddingVertical: 6,
+    paddingRight: 12,
+    paddingLeft: 0,
   },
-  secondaryButton: {
-    backgroundColor: '#333',
+  backText: {
+    color: '#9ca3af',
+    fontSize: 16,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  card: {
-    backgroundColor: '#1f1f1f',
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 16,
-  },
-  sectionTitle: {
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    marginRight: 32,
     fontSize: 18,
     fontWeight: '700',
+    color: '#f9fafb',
+  },
+  chatContainer: {
+    padding: 16,
+    paddingBottom: 24,
+  },
+  bubble: {
+    maxWidth: '85%',
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     marginBottom: 8,
-    color: '#fff',
   },
-  separator: {
-    height: 1,
-    backgroundColor: '#333',
-    marginVertical: 8,
+  userBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#16a34a',
   },
-  messageRow: {
-    fontSize: 13,
-    color: '#eee',
+  aiBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#1f2937',
+  },
+  bubbleRole: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 2,
+    color: '#d1d5db',
+  },
+  bubbleText: {
+    fontSize: 14,
+    color: '#f9fafb',
+  },
+  summaryCard: {
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#1f2937',
+  },
+  summaryTitle: {
+    fontSize: 14,
+    fontWeight: '700',
     marginBottom: 4,
+    color: '#e5e7eb',
   },
-  mono: {
-    fontFamily: 'monospace',
-    color: '#0af',
+  summaryLine: {
+    fontSize: 13,
+    color: '#d1d5db',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#1f2937',
+    backgroundColor: '#020617',
+  },
+  input: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 100,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#020617',
+    borderWidth: 1,
+    borderColor: '#1f2937',
+    color: '#f9fafb',
+    fontSize: 14,
+  },
+  sendBtn: {
+    marginLeft: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#22c55e',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendBtnDisabled: {
+    opacity: 0.6,
+  },
+  sendText: {
+    color: '#f9fafb',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

@@ -1,13 +1,10 @@
 // socialsocial/src/screens/VoicePracticeScreen.tsx
-//
-// Voice practice test screen:
-// - Lets you type a "transcript" (simulating speech-to-text)
-// - Calls POST /v1/practice/voice-session
-// - Shows rewards + per-message breakdown
 
 import React, { useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,21 +17,21 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import {
   PracticeStackParamList,
-  PracticeSessionResponse,
+  VoicePracticeRequest,
+  VoicePracticeResponse,
+  SessionRewards,
 } from '../navigation/types';
+import { createVoicePracticeSession } from '../api/practice';
 
 type Props = NativeStackScreenProps<
   PracticeStackParamList,
   'VoicePracticeSession'
 >;
 
-const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
-
 async function readAccessToken(): Promise<string | null> {
   try {
-    const a = await AsyncStorage.getItem('accessToken');
-    if (a) return a;
+    const direct = await AsyncStorage.getItem('accessToken');
+    if (direct) return direct;
     const legacy = await AsyncStorage.getItem('token');
     return legacy;
   } catch (e) {
@@ -43,234 +40,325 @@ async function readAccessToken(): Promise<string | null> {
   }
 }
 
+const SAMPLE_TRANSCRIPT =
+  "So, I have a fun question: if we could teleport anywhere for coffee right now, where would we go?";
+
 export default function VoicePracticeScreen({ navigation }: Props) {
   const [topic, setTopic] = useState('First date opener – voice');
-  const [transcript, setTranscript] = useState(
-    'So, I have a fun question: if we could teleport anywhere for coffee right now, where would we go?',
-  );
+  const [transcript, setTranscript] = useState('');
   const [loading, setLoading] = useState(false);
   const [lastResponse, setLastResponse] =
-    useState<PracticeSessionResponse | null>(null);
+    useState<VoicePracticeResponse | null>(null);
 
-  const runVoiceSession = async () => {
+  const runMission = async () => {
+    const trimmed = transcript.trim();
+    if (!trimmed) {
+      Alert.alert('Missing transcript', 'Paste or type a short transcript first.');
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      setLoading(true);
-
       const token = await readAccessToken();
       if (!token) {
-        Alert.alert(
-          'Not logged in',
-          'No access token found. Please log in again before running a voice session.',
-        );
+        Alert.alert('Not logged in', 'Please log in again first.');
+        setLoading(false);
         return;
       }
 
-      const body = {
-        topic: topic.trim(),
-        transcript: transcript.trim(),
+      const payload: VoicePracticeRequest = {
+        topic,
+        transcript: trimmed,
       };
 
-      console.log('[UI][VOICE] sending body', body);
+      console.log('[UI][VOICE] sending payload', payload);
 
-      const res = await fetch(`${API_BASE_URL}/v1/practice/voice-session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
+      const res = await createVoicePracticeSession(token, payload);
+      console.log('[UI][VOICE] response', res);
 
-      const data: PracticeSessionResponse & any = await res.json();
-
-      if (!res.ok || !data?.ok) {
-        const msg =
-          data?.error?.message ||
-          `Request failed with status ${res.status} (${res.statusText})`;
-        console.log('[UI][VOICE] error payload', data);
-        throw new Error(msg);
-      }
-
-      console.log('[UI][VOICE] response', data);
-      setLastResponse(data);
-
-      Alert.alert(
-        'Voice session complete',
-        `Score: ${data.rewards.score}\nXP: ${data.rewards.xpGained}\nCoins: ${data.rewards.coinsGained}`,
-      );
+      setLastResponse(res);
     } catch (err: any) {
-      console.log('[VoicePractice Error]', err?.message ?? err);
-      Alert.alert('Error', 'Failed to run voice practice session');
+      const payload = err?.response?.data || String(err);
+      console.log('[VoicePracticeScreen] error', payload);
+      Alert.alert('Error', 'Failed to run voice mission.');
     } finally {
       setLoading(false);
     }
   };
 
-  const goBack = () => navigation.goBack();
+  const handleUseSample = () => {
+    setTranscript(SAMPLE_TRANSCRIPT);
+  };
+
+  const handleViewStats = () => {
+    const parent = navigation.getParent();
+    parent?.navigate('StatsTab');
+  };
+
+  const handleBackToMissions = () => {
+    navigation.navigate('PracticeHub');
+  };
+
+  const rewards: SessionRewards | null = lastResponse?.rewards ?? null;
+
+  const microFeedback: string | undefined =
+    lastResponse?.ai?.perMessage?.[0]?.microFeedback ??
+    'Transcript scored. Check the mission summary below.';
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Voice Practice Session</Text>
-      <Text style={styles.subtitle}>
-        This screen simulates a speech-to-text flow. It sends your "transcript" to
-        <Text style={styles.mono}> /v1/practice/voice-session</Text> and shows the
-        rewards and updated stats.
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={styles.container}>
+        <Text style={styles.title}>Voice Mission</Text>
+        <Text style={styles.subtitle}>
+          Imagine you just recorded a voice note. Paste the transcript here and
+          we’ll score it like a real opener.
+        </Text>
+
+        <View style={styles.topicCard}>
+          <Text style={styles.label}>Topic</Text>
+          <TextInput
+            style={styles.topicInput}
+            value={topic}
+            onChangeText={setTopic}
+            placeholder="Mission topic"
+            placeholderTextColor="#777"
+          />
+        </View>
+
+        <View style={styles.transcriptCard}>
+          <View style={styles.transcriptHeader}>
+            <Text style={styles.label}>Transcript</Text>
+            <TouchableOpacity
+              style={styles.sampleButton}
+              onPress={handleUseSample}
+            >
+              <Text style={styles.sampleText}>Use sample</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.transcriptScroll}>
+            <TextInput
+              style={styles.transcriptInput}
+              value={transcript}
+              onChangeText={setTranscript}
+              placeholder="Paste the speech-to-text output here…"
+              placeholderTextColor="#777"
+              multiline
+            />
+          </ScrollView>
+        </View>
+
+        {!!lastResponse && (
+          <View style={styles.feedbackBubble}>
+            <Text style={styles.feedbackMeta}>Coach</Text>
+            <Text style={styles.feedbackText}>{microFeedback}</Text>
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={[
+            styles.runButton,
+            loading && styles.buttonDisabled,
+          ]}
+          onPress={runMission}
+          disabled={loading}
+        >
+          <Text style={styles.runButtonText}>
+            {loading ? 'Scoring…' : 'Run voice mission'}
+          </Text>
+        </TouchableOpacity>
+
+        {rewards && (
+          <MissionCompleteCard
+            rewards={rewards}
+            onViewStats={handleViewStats}
+            onBackToHub={handleBackToMissions}
+          />
+        )}
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+function MissionCompleteCard(props: {
+  rewards: SessionRewards;
+  onViewStats: () => void;
+  onBackToHub: () => void;
+}) {
+  const { rewards, onViewStats, onBackToHub } = props;
+
+  return (
+    <View style={styles.missionCard}>
+      <Text style={styles.missionTitle}>Mission complete</Text>
+      <Text style={styles.missionLine}>
+        Score: <Text style={styles.highlight}>{rewards.score}</Text> · Message
+        score: <Text style={styles.highlight}>{rewards.messageScore}</Text>
+      </Text>
+      <Text style={styles.missionLine}>
+        XP: <Text style={styles.highlight}>{rewards.xpGained}</Text> · Coins:{' '}
+        <Text style={styles.highlight}>{rewards.coinsGained}</Text> · Gems:{' '}
+        <Text style={styles.highlight}>{rewards.gemsGained}</Text>
       </Text>
 
-      <Text style={styles.label}>Topic</Text>
-      <TextInput
-        style={styles.input}
-        value={topic}
-        onChangeText={setTopic}
-        placeholder="Topic (e.g. first date opener – voice)"
-        placeholderTextColor="#666"
-      />
-
-      <Text style={styles.label}>Transcript</Text>
-      <TextInput
-        style={[styles.input, styles.textarea]}
-        value={transcript}
-        onChangeText={setTranscript}
-        placeholder="What you said out loud…"
-        placeholderTextColor="#666"
-        multiline
-      />
-
-      <TouchableOpacity
-        style={[styles.button, styles.primaryButton, loading && styles.buttonDisabled]}
-        onPress={runVoiceSession}
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>
-          {loading ? 'Running…' : 'Run Voice Session'}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.button, styles.secondaryButton]}
-        onPress={goBack}
-      >
-        <Text style={styles.buttonText}>Back to Hub</Text>
-      </TouchableOpacity>
-
-      {lastResponse && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Session Rewards</Text>
-          <Text style={styles.value}>Score: {lastResponse.rewards.score}</Text>
-          <Text style={styles.value}>
-            Message Score: {lastResponse.rewards.messageScore}
-          </Text>
-          <Text style={styles.value}>
-            XP gained: {lastResponse.rewards.xpGained}
-          </Text>
-          <Text style={styles.value}>
-            Coins gained: {lastResponse.rewards.coinsGained}
-          </Text>
-          <Text style={styles.value}>
-            Gems gained: {lastResponse.rewards.gemsGained}
-          </Text>
-
-          <View style={styles.separator} />
-          <Text style={styles.sectionTitle}>Per-message</Text>
-          {lastResponse.rewards.messages.map((m) => (
-            <Text key={m.index} style={styles.messageRow}>
-              #{m.index} – {m.rarity} – score {m.score} – XP {m.xp} – coins{' '}
-              {m.coins}
-            </Text>
-          ))}
-        </View>
-      )}
-    </ScrollView>
+      <View style={styles.missionButtonsRow}>
+        <TouchableOpacity
+          style={[styles.missionButton, styles.primaryButton]}
+          onPress={onViewStats}
+        >
+          <Text style={styles.missionButtonText}>View updated stats</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.missionButton, styles.secondaryButton]}
+          onPress={onBackToHub}
+        >
+          <Text style={styles.missionButtonText}>Back to missions</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 24,
-    paddingBottom: 48,
+  flex: {
+    flex: 1,
     backgroundColor: '#111',
-    flexGrow: 1,
+  },
+  container: {
+    flex: 1,
+    padding: 16,
+    paddingBottom: 24,
   },
   title: {
     fontSize: 26,
     fontWeight: '700',
-    marginBottom: 8,
+    marginBottom: 4,
     color: '#fff',
   },
   subtitle: {
-    fontSize: 14,
-    color: '#ccc',
-    marginBottom: 24,
+    fontSize: 13,
+    color: '#bbb',
+    marginBottom: 16,
+  },
+  topicCard: {
+    backgroundColor: '#1b1b1b',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
   },
   label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#e5e7eb',
+    color: '#aaa',
+    fontSize: 12,
     marginBottom: 4,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#333',
-    backgroundColor: '#181818',
+  topicInput: {
     color: '#fff',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginBottom: 12,
     fontSize: 14,
   },
-  textarea: {
-    minHeight: 90,
-    textAlignVertical: 'top',
+  transcriptCard: {
+    flex: 1,
+    backgroundColor: '#1b1b1b',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
   },
-  button: {
-    paddingVertical: 14,
-    borderRadius: 999,
+  transcriptHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 6,
   },
-  primaryButton: {
+  sampleButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#555',
+  },
+  sampleText: {
+    color: '#e5e5e5',
+    fontSize: 11,
+  },
+  transcriptScroll: {
+    flex: 1,
+  },
+  transcriptInput: {
+    minHeight: 80,
+    color: '#fff',
+    fontSize: 14,
+  },
+  feedbackBubble: {
+    marginBottom: 10,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: '#222',
+  },
+  feedbackMeta: {
+    fontSize: 11,
+    color: '#ddd',
+    marginBottom: 2,
+  },
+  feedbackText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  runButton: {
+    paddingVertical: 12,
+    borderRadius: 999,
     backgroundColor: '#1DB954',
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  secondaryButton: {
-    backgroundColor: '#333',
+  runButtonText: {
+    color: '#fff',
+    fontWeight: '600',
   },
   buttonDisabled: {
     opacity: 0.6,
   },
-  buttonText: {
+  missionCard: {
+    marginTop: 4,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#18181b',
+  },
+  missionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#fff',
+    marginBottom: 6,
+  },
+  missionLine: {
+    fontSize: 13,
+    color: '#ddd',
+    marginBottom: 2,
+  },
+  highlight: {
+    color: '#4ade80',
     fontWeight: '600',
   },
-  card: {
-    backgroundColor: '#1f1f1f',
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 16,
+  missionButtonsRow: {
+    flexDirection: 'row',
+    marginTop: 10,
+    gap: 8,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 8,
-    color: '#fff',
+  missionButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 999,
+    alignItems: 'center',
   },
-  value: {
-    fontSize: 14,
-    color: '#eee',
-    marginBottom: 4,
+  primaryButton: {
+    backgroundColor: '#22c55e',
   },
-  separator: {
-    height: 1,
+  secondaryButton: {
     backgroundColor: '#333',
-    marginVertical: 8,
   },
-  messageRow: {
+  missionButtonText: {
+    color: '#fff',
     fontSize: 13,
-    color: '#eee',
-    marginBottom: 4,
-  },
-  mono: {
-    fontFamily: 'monospace',
-    color: '#0af',
+    fontWeight: '600',
   },
 });
