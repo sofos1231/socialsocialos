@@ -1,3 +1,5 @@
+// socialsocial/src/hooks/useDashboardLoop.ts
+
 import { useCallback, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
@@ -11,19 +13,24 @@ import { createPracticeSession } from '../api/practice';
 
 async function readAccessToken(): Promise<string | null> {
   try {
-    const a = await AsyncStorage.getItem('accessToken');
-    if (a) return a;
+    const access = await AsyncStorage.getItem('accessToken');
+    if (access) return access;
+
+    // Legacy key fallback – keeps old installs working
     const legacy = await AsyncStorage.getItem('token');
-    return legacy;
-  } catch (e) {
-    console.log('[useDashboardLoop] failed to read token', e);
+    if (legacy) return legacy;
+
+    return null;
+  } catch (err) {
+    console.log('[useDashboardLoop][readAccessToken] error', err);
     return null;
   }
 }
 
 export function useDashboardLoop() {
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
-  const [lastSession, setLastSession] = useState<PracticeSessionResponse | null>(null);
+  const [lastSession, setLastSession] =
+    useState<PracticeSessionResponse | null>(null);
   const [lastRewards, setLastRewards] = useState<SessionRewards | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [loadingPractice, setLoadingPractice] = useState(false);
@@ -38,6 +45,7 @@ export function useDashboardLoop() {
         setSummary(null);
         return;
       }
+
       const data = await fetchDashboardSummary(token);
       setSummary(data);
       setError(null);
@@ -58,6 +66,7 @@ export function useDashboardLoop() {
         setError('Not authenticated. Please log in.');
         return;
       }
+
       const payload: PracticeSessionRequest = {
         topic: 'Loop debug run',
         messages: [
@@ -67,7 +76,12 @@ export function useDashboardLoop() {
           { role: 'AI', content: 'Great, everything looks good!' },
         ],
       };
+
+      console.log('[useDashboardLoop][runDebugPractice] payload', payload);
+
       const res = await createPracticeSession(token, payload);
+      console.log('[useDashboardLoop][runDebugPractice] response', res);
+
       setLastSession(res);
       setLastRewards(res.rewards);
       setSummary(res.dashboard);

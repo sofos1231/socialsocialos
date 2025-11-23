@@ -1,10 +1,10 @@
 // socialsocial/src/navigation/index.tsx
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 
 import AuthScreen from '../screens/AuthScreen';
 import PracticeHubScreen from '../screens/PracticeHubScreen';
@@ -19,6 +19,10 @@ import {
   MainTabParamList,
   PracticeStackParamList,
 } from './types';
+import {
+  getAccessToken,
+  hydrateFromStorage,
+} from '../store/tokens';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -59,9 +63,6 @@ function MainTabsNavigator() {
           backgroundColor: '#000',
           borderTopColor: '#222',
         },
-        tabBarLabelStyle: {
-          fontSize: 12,
-        },
       }}
     >
       <Tab.Screen
@@ -69,8 +70,9 @@ function MainTabsNavigator() {
         component={PracticeStackNavigator}
         options={{
           title: 'Practice',
-          tabBarLabel: 'Practice',
-          tabBarIcon: () => <Text>💬</Text>,
+          tabBarLabel: ({ color }) => (
+            <Text style={{ color, fontSize: 12 }}>Practice</Text>
+          ),
         }}
       />
       <Tab.Screen
@@ -78,8 +80,9 @@ function MainTabsNavigator() {
         component={StatsScreen}
         options={{
           title: 'Stats',
-          tabBarLabel: 'Stats',
-          tabBarIcon: () => <Text>📊</Text>,
+          tabBarLabel: ({ color }) => (
+            <Text style={{ color, fontSize: 12 }}>Stats</Text>
+          ),
         }}
       />
       <Tab.Screen
@@ -87,8 +90,9 @@ function MainTabsNavigator() {
         component={ProfileScreen}
         options={{
           title: 'Profile',
-          tabBarLabel: 'Profile',
-          tabBarIcon: () => <Text>👤</Text>,
+          tabBarLabel: ({ color }) => (
+            <Text style={{ color, fontSize: 12 }}>Profile</Text>
+          ),
         }}
       />
     </Tab.Navigator>
@@ -96,10 +100,59 @@ function MainTabsNavigator() {
 }
 
 export default function NavigationRoot() {
+  const [initialRoute, setInitialRoute] =
+    useState<keyof RootStackParamList | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function bootstrap() {
+      try {
+        console.log('[NavigationRoot] hydrating tokens…');
+        await hydrateFromStorage();
+        const token = getAccessToken();
+        console.log('[NavigationRoot] token present?', !!token);
+
+        if (!cancelled) {
+          setInitialRoute(token ? 'Dashboard' : 'Auth');
+        }
+      } catch (e) {
+        console.log('[NavigationRoot] bootstrap error', e);
+        if (!cancelled) {
+          // אם משהו נשבר בטעינה – ננחת פשוט על Auth
+          setInitialRoute('Auth');
+        }
+      }
+    }
+
+    bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // בזמן הבוטסטרפינג – מסך לודינג קטן
+  if (!initialRoute) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: '#000',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <ActivityIndicator />
+        <Text style={{ marginTop: 12, color: '#fff' }}>Loading session…</Text>
+      </View>
+    );
+  }
+
   return (
     <NavigationContainer>
       <RootStack.Navigator
-        initialRouteName="Auth"
+        initialRouteName={initialRoute}
         screenOptions={{
           headerShown: false,
         }}

@@ -1,4 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+// socialsocial/src/screens/StatsScreen.tsx
+
+import React from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -6,58 +8,31 @@ import {
   Text,
   View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { fetchDashboardSummary } from '../api/dashboard';
-import type { DashboardSummaryResponse } from '../navigation/types';
-
-async function readAccessToken(): Promise<string | null> {
-  try {
-    const a = await AsyncStorage.getItem('accessToken');
-    if (a) return a;
-    const legacy = await AsyncStorage.getItem('token');
-    return legacy;
-  } catch (e) {
-    console.log('[StatsScreen] failed to read token', e);
-    return null;
-  }
-}
+import { useDashboardLoop } from '../hooks/useDashboardLoop';
 
 export default function StatsScreen() {
-  const [loading, setLoading] = useState(false);
-  const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchSummary = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const token = await readAccessToken();
-      if (!token) {
-        setError('Not authenticated. Please log in.');
-        setSummary(null);
-        return;
-      }
-
-      const data = await fetchDashboardSummary(token);
-      console.log('[UI][STATS] summary', data);
-      setSummary(data);
-    } catch (err: any) {
-      const payload = err?.response?.data || String(err);
-      console.log('[Stats Error]', payload);
-      setError('Failed to load stats.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchSummary();
-  }, [fetchSummary]);
+  const {
+    summary,
+    loadingSummary,
+    error,
+    reloadSummary,
+  } = useDashboardLoop();
 
   const stats = summary?.stats;
   const latest = stats?.latest;
+  const insights = stats?.insights?.latest as
+    | {
+        charismaIndex: number;
+        strongestTraits?: { trait: string; score: number }[];
+        weakestTraits?: { trait: string; score: number }[];
+        flagsSample?: string[];
+      }
+    | undefined;
+
+  const recentSessions = Array.isArray(stats?.recentSessions)
+    ? (stats!.recentSessions as any[])
+    : [];
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -65,104 +40,161 @@ export default function StatsScreen() {
 
       {error && <Text style={styles.errorText}>{error}</Text>}
 
-      {loading && (
+      {loadingSummary && (
         <View style={styles.loadingRow}>
           <ActivityIndicator />
-          <Text style={styles.loadingText}>Loading…</Text>
+          <Text style={styles.loadingText}>Loading stats…</Text>
         </View>
       )}
 
-      {summary && stats && !loading && !error && (
-        <>
-          {/* Overall & social score */}
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Overall</Text>
-            <Text style={styles.value}>
-              Sessions: {stats.sessionsCount} (success {stats.successCount} / fail{' '}
-              {stats.failCount})
-            </Text>
-            <Text style={styles.value}>
-              Avg Score: {Math.round(stats.averageScore)}
-            </Text>
-            <Text style={styles.value}>
-              Avg Message Score: {Math.round(stats.averageMessageScore)}
-            </Text>
-            <Text style={styles.value}>
-              Streak: {summary.streak.current} days
-            </Text>
-            <Text style={styles.value}>XP: {summary.wallet.xp}</Text>
-            <Text style={styles.value}>
-              Lifetime XP: {summary.wallet.lifetimeXp}
-            </Text>
+      {/* High-level practice stats */}
+      {stats && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Practice Overview</Text>
+          <Text style={styles.value}>
+            Sessions: {stats.sessionsCount} (success {stats.successCount} / fail{' '}
+            {stats.failCount})
+          </Text>
+          <Text style={styles.value}>
+            Average Score: {Math.round(stats.averageScore)}
+          </Text>
+          <Text style={styles.value}>
+            Avg Message Score: {Math.round(stats.averageMessageScore)}
+          </Text>
+          <Text style={styles.value}>
+            Last Session: {stats.lastSessionAt || '—'}
+          </Text>
 
-            <View style={styles.separator} />
+          <View style={styles.separator} />
 
-            <Text style={styles.sectionTitle}>Social Score</Text>
-            <Text style={styles.value}>
-              Social Score:{' '}
-              {stats.socialScore != null ? Math.round(stats.socialScore) : '—'}
-            </Text>
-            <Text style={styles.value}>
-              Tier: {stats.socialTier ?? '—'}
-            </Text>
-          </View>
+          <Text style={styles.sectionTitle}>Social Score</Text>
+          <Text style={[styles.value, styles.subtitleStrong]}>
+            {stats.socialScore ?? '—'}{' '}
+            {stats.socialTier ? `(${stats.socialTier})` : ''}
+          </Text>
+        </View>
+      )}
 
-          {/* AiCore snapshot */}
-          {latest && (
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Latest Charisma Snapshot</Text>
-              <Text style={styles.value}>
-                Charisma Index:{' '}
-                {latest.charismaIndex != null ? latest.charismaIndex : '—'}{' '}
-                {latest.aiCoreVersion ? `(v${latest.aiCoreVersion})` : ''}
-              </Text>
-              <Text style={styles.value}>
-                Confidence: {latest.confidenceScore ?? '—'}
-              </Text>
-              <Text style={styles.value}>
-                Clarity: {latest.clarityScore ?? '—'}
-              </Text>
-              <Text style={styles.value}>Humor: {latest.humorScore ?? '—'}</Text>
-              <Text style={styles.value}>
-                Tension: {latest.tensionScore ?? '—'}
-              </Text>
-              <Text style={styles.value}>
-                Warmth: {latest.emotionalWarmth ?? '—'}
-              </Text>
-              <Text style={styles.value}>
-                Dominance: {latest.dominanceScore ?? '—'}
-              </Text>
-              <Text style={styles.value}>
-                Messages: {latest.totalMessages ?? '—'} | Words:{' '}
-                {latest.totalWords ?? '—'}
-              </Text>
-              <Text style={styles.value}>
-                Filler words: {latest.fillerWordsCount ?? '—'}
-              </Text>
-            </View>
-          )}
+      {/* Latest charisma metrics */}
+      {latest && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Latest Session – Charisma</Text>
+          <Text style={styles.value}>
+            Charisma Index: {latest.charismaIndex ?? '—'}
+          </Text>
+          <Text style={styles.value}>
+            Confidence: {latest.confidenceScore ?? '—'}
+          </Text>
+          <Text style={styles.value}>
+            Clarity: {latest.clarityScore ?? '—'}
+          </Text>
+          <Text style={styles.value}>
+            Humor: {latest.humorScore ?? '—'}
+          </Text>
+          <Text style={styles.value}>
+            Tension: {latest.tensionScore ?? '—'}
+          </Text>
+          <Text style={styles.value}>
+            Warmth: {latest.emotionalWarmth ?? '—'}
+          </Text>
+          <Text style={styles.value}>
+            Dominance: {latest.dominanceScore ?? '—'}
+          </Text>
+          <Text style={styles.value}>
+            Messages: {latest.totalMessages ?? '—'} | Words:{' '}
+            {latest.totalWords ?? '—'}
+          </Text>
+          <Text style={styles.value}>
+            Filler words: {latest.fillerWordsCount ?? '—'}
+          </Text>
+        </View>
+      )}
 
-          {/* Recent sessions */}
-          {Array.isArray(stats.recentSessions) &&
-            stats.recentSessions.length > 0 && (
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Recent Sessions</Text>
-                {stats.recentSessions.map((s, idx) => (
-                  <Text key={`${s.createdAt}-${idx}`} style={styles.value}>
-                    • {new Date(s.createdAt).toLocaleString()} – score {s.score ?? '—'}
-                    , charisma {s.charismaIndex ?? '—'}
+      {/* AI insights – narrative */}
+      {insights && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>AI Insights</Text>
+
+          {Array.isArray(insights.strongestTraits) &&
+            insights.strongestTraits.length > 0 && (
+              <>
+                <Text style={[styles.value, styles.subtitleStrong]}>
+                  Strongest traits
+                </Text>
+                {insights.strongestTraits.map((t) => (
+                  <Text key={`strong-${t.trait}`} style={styles.value}>
+                    • {t.trait}: {t.score}
                   </Text>
                 ))}
-              </View>
+              </>
             )}
-        </>
+
+          {Array.isArray(insights.weakestTraits) &&
+            insights.weakestTraits.length > 0 && (
+              <>
+                <Text style={[styles.value, styles.subtitleWeak]}>
+                  Traits to improve
+                </Text>
+                {insights.weakestTraits.map((t) => (
+                  <Text key={`weak-${t.trait}`} style={styles.value}>
+                    • {t.trait}: {t.score}
+                  </Text>
+                ))}
+              </>
+            )}
+
+          {Array.isArray(insights.flagsSample) &&
+            insights.flagsSample.length > 0 && (
+              <>
+                <Text style={[styles.value, styles.subtitleNeutral]}>
+                  Notable moments
+                </Text>
+                {insights.flagsSample.map((f, idx) => (
+                  <Text key={`flag-${idx}`} style={styles.value}>
+                    • {f}
+                  </Text>
+                ))}
+              </>
+            )}
+        </View>
       )}
 
-      {!summary && !loading && !error && (
-        <Text style={styles.emptyText}>
-          No stats yet. Complete a practice session to generate data.
+      {/* Recent sessions list */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Recent Sessions</Text>
+        {recentSessions.length === 0 && (
+          <Text style={styles.emptyText}>No sessions yet.</Text>
+        )}
+
+        {recentSessions.map((s: any) => (
+          <View key={s.id} style={styles.sessionRow}>
+            <View style={styles.sessionLeft}>
+              <Text style={styles.value}>
+                {s.createdAt ? String(s.createdAt) : '—'}
+              </Text>
+              <Text style={styles.valueSmall}>
+                Topic: {s.topic || '—'}
+              </Text>
+            </View>
+            <View style={styles.sessionRight}>
+              <Text style={styles.valueSmall}>Score: {s.score}</Text>
+              {s.charismaIndex != null && (
+                <Text style={styles.valueSmall}>
+                  Charisma: {s.charismaIndex}
+                </Text>
+              )}
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Manual refresh */}
+      <View style={styles.footerRow}>
+        <Text style={styles.footerLabel}>Pull fresh stats:</Text>
+        <Text style={styles.footerLink} onPress={reloadSummary}>
+          Refresh
         </Text>
-      )}
+      </View>
     </ScrollView>
   );
 }
@@ -171,8 +203,7 @@ const styles = StyleSheet.create({
   container: {
     padding: 16,
     paddingBottom: 32,
-    backgroundColor: '#111',
-    flexGrow: 1,
+    backgroundColor: '#000',
   },
   title: {
     fontSize: 28,
@@ -182,7 +213,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#f87171',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   loadingRow: {
     flexDirection: 'row',
@@ -191,33 +222,80 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginLeft: 8,
-    color: '#ccc',
+    color: '#e5e7eb',
   },
   card: {
-    backgroundColor: '#1f1f1f',
+    backgroundColor: '#111827',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    padding: 14,
+    marginBottom: 14,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '600',
+    color: '#e5e7eb',
     marginBottom: 8,
-    color: '#fff',
   },
   value: {
     fontSize: 14,
     color: '#eee',
-    marginBottom: 4,
+    marginBottom: 2,
+  },
+  valueSmall: {
+    fontSize: 12,
+    color: '#d1d5db',
+  },
+  subtitleStrong: {
+    marginTop: 6,
+    fontWeight: '600',
+    color: '#bbf7d0',
+  },
+  subtitleWeak: {
+    marginTop: 6,
+    fontWeight: '600',
+    color: '#fecaca',
+  },
+  subtitleNeutral: {
+    marginTop: 6,
+    fontWeight: '600',
+    color: '#e5e7eb',
   },
   separator: {
     height: 1,
-    backgroundColor: '#333',
-    marginVertical: 10,
+    backgroundColor: '#1f2937',
+    marginVertical: 8,
   },
   emptyText: {
-    color: '#aaa',
+    color: '#9ca3af',
     fontSize: 14,
     marginTop: 8,
+  },
+  sessionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#1f2937',
+  },
+  sessionLeft: {
+    flex: 1,
+    paddingRight: 6,
+  },
+  sessionRight: {
+    alignItems: 'flex-end',
+  },
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  footerLabel: {
+    color: '#9ca3af',
+    marginRight: 4,
+  },
+  footerLink: {
+    color: '#22c55e',
+    fontWeight: '600',
   },
 });
