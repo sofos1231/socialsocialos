@@ -1,112 +1,99 @@
-// socialsocial/src/hooks/useDashboardLoop.ts
+// FILE: socialsocial/src/hooks/useDashboardLoop.ts
 
 import { useCallback, useEffect, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import type {
-  DashboardSummaryResponse,
-  PracticeSessionRequest,
-  PracticeSessionResponse,
-  SessionRewards,
-} from '../navigation/types';
-import { fetchDashboardSummary } from '../api/dashboard';
-import { createPracticeSession } from '../api/practice';
+import { fetchDashboardSummary, DashboardSummary } from '../api/dashboard';
 
-async function readAccessToken(): Promise<string | null> {
-  try {
-    const access = await AsyncStorage.getItem('accessToken');
-    if (access) return access;
+type Status = 'idle' | 'loading' | 'ready' | 'error';
 
-    // Legacy key fallback – keeps old installs working
-    const legacy = await AsyncStorage.getItem('token');
-    if (legacy) return legacy;
+export interface UseDashboardLoopResult {
+  // API החדש
+  status: Status;
+  isLoading: boolean;
+  summary: DashboardSummary | null;
+  error: string | null;
+  reload: () => Promise<void>;
 
-    return null;
-  } catch (err) {
-    console.log('[useDashboardLoop][readAccessToken] error', err);
-    return null;
-  }
+  // שדות Legacy שהמסכים עדיין משתמשים בהם
+  loadingSummary: boolean;
+  loadingPractice: boolean;
+  lastRewards: any;
+  reloadSummary: () => Promise<void>;
+  runDebugPractice: () => Promise<void>;
 }
 
-export function useDashboardLoop() {
-  const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
-  const [lastSession, setLastSession] =
-    useState<PracticeSessionResponse | null>(null);
-  const [lastRewards, setLastRewards] = useState<SessionRewards | null>(null);
-  const [loadingSummary, setLoadingSummary] = useState(false);
-  const [loadingPractice, setLoadingPractice] = useState(false);
+/**
+ * הוק שאחראי לטעינת ה-dashboard summary מצד הפרונט.
+ * משתמש ב-fetchDashboardSummary ששולח JWT ב-Authorization header.
+ *
+ * בנוסף, מחזיר שדות legacy כדי לא לשבור PracticeHubScreen / StatsScreen:
+ * - loadingSummary
+ * - loadingPractice
+ * - lastRewards
+ * - reloadSummary
+ * - runDebugPractice
+ */
+export function useDashboardLoop(): UseDashboardLoopResult {
+  const [status, setStatus] = useState<Status>('idle');
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadSummary = useCallback(async () => {
-    setLoadingSummary(true);
-    try {
-      const token = await readAccessToken();
-      if (!token) {
-        setError('Not authenticated. Please log in.');
-        setSummary(null);
-        return;
-      }
+    console.log('[useDashboardLoop][loadSummary] start');
 
-      const data = await fetchDashboardSummary(token);
+    setStatus('loading');
+    setError(null);
+
+    try {
+      const data = await fetchDashboardSummary();
       setSummary(data);
-      setError(null);
+      setStatus('ready');
+      console.log('[useDashboardLoop][loadSummary] success');
     } catch (err: any) {
-      const payload = err?.response?.data || err?.payload || String(err);
-      console.log('[useDashboardLoop][loadSummary] error', payload);
-      setError('Failed to load dashboard summary.');
-    } finally {
-      setLoadingSummary(false);
+      const message =
+        err?.code === 'NO_TOKEN'
+          ? 'NO_TOKEN'
+          : err?.message || 'UNKNOWN_ERROR';
+
+      console.log('[useDashboardLoop][loadSummary] error', {
+        message,
+        raw: err,
+      });
+
+      setError(message);
+      setStatus('error');
     }
   }, []);
 
-  const runDebugPractice = useCallback(async () => {
-    setLoadingPractice(true);
-    try {
-      const token = await readAccessToken();
-      if (!token) {
-        setError('Not authenticated. Please log in.');
-        return;
-      }
-
-      const payload: PracticeSessionRequest = {
-        topic: 'Loop debug run',
-        messages: [
-          { role: 'USER', content: 'Hey there!' },
-          { role: 'AI', content: 'Hello! How can I help?' },
-          { role: 'USER', content: 'Just testing the loop.' },
-          { role: 'AI', content: 'Great, everything looks good!' },
-        ],
-      };
-
-      console.log('[useDashboardLoop][runDebugPractice] payload', payload);
-
-      const res = await createPracticeSession(token, payload);
-      console.log('[useDashboardLoop][runDebugPractice] response', res);
-
-      setLastSession(res);
-      setLastRewards(res.rewards);
-      setSummary(res.dashboard);
-      setError(null);
-    } catch (err: any) {
-      const payload = err?.response?.data || err?.payload || String(err);
-      console.log('[useDashboardLoop][runDebugPractice] error', payload);
-      setError('Failed to run practice session.');
-    } finally {
-      setLoadingPractice(false);
-    }
-  }, []);
-
+  // טוען פעם אחת כשמונט
   useEffect(() => {
     loadSummary();
   }, [loadSummary]);
 
+  // גזירה לשדות ה"ישנים"
+  const loadingSummary = status === 'loading';
+  const loadingPractice = false; // אין לנו לוגיקת practice פה – זה רק כדי לשמור תאימות
+  const lastRewards = (summary as any)?.lastRewards ?? null;
+
+  const reloadSummary = loadSummary;
+
+  const runDebugPractice = async () => {
+    // זה היה חלק ממצב debug ישן; משאירים כ-no-op כדי לא לשבור את המסך
+    console.log('[useDashboardLoop][runDebugPractice] legacy no-op');
+  };
+
   return {
+    // מודל חדש
+    status,
+    isLoading: status === 'loading',
     summary,
-    lastSession,
-    lastRewards,
+    error,
+    reload: loadSummary,
+
+    // תאימות למסכים הקיימים
     loadingSummary,
     loadingPractice,
-    error,
-    reloadSummary: loadSummary,
+    lastRewards,
+    reloadSummary,
     runDebugPractice,
   };
 }
