@@ -2,22 +2,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { getMiniStats } from '../../api/dashboardService';
+import { fetchDashboardSummary, DashboardSummary } from '../../api/dashboard';
 
-
-type Props = {
-  /**
-   * השארתי accessToken כתאימות לאחור.
-   * אם מעבירים אותו – נשתמש בו.
-   * אם לא – getMiniStats כבר יודע לשלוף מה-AsyncStorage.
-   */
-  accessToken?: string | null;
-};
-
-const DashboardMiniStatsCard: React.FC<Props> = ({ accessToken }) => {
+const DashboardMiniStatsCard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState<any | null>(null);
+  const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -27,11 +17,11 @@ const DashboardMiniStatsCard: React.FC<Props> = ({ accessToken }) => {
       setError(null);
 
       try {
-        const dashboard = await getMiniStats(accessToken ?? undefined);
+        const data = await fetchDashboardSummary();
 
         if (!isMounted) return;
 
-        setStats(dashboard);
+        setDashboard(data);
         setLoading(false);
       } catch (err: any) {
         if (!isMounted) return;
@@ -47,18 +37,22 @@ const DashboardMiniStatsCard: React.FC<Props> = ({ accessToken }) => {
     return () => {
       isMounted = false;
     };
-  }, [accessToken]);
+  }, []);
 
-  // לוגיקה גמישה להוצאת שדות – כי המבנה המדויק של dashboard נמצא בבקאנד
-  const wallet = stats?.wallet ?? {};
-  const progression = stats?.progression ?? {};
-  const lastSession = stats?.lastSession ?? stats?.latestSession ?? {};
+  const wallet = (dashboard as any)?.wallet ?? {};
+  const progression = (dashboard as any)?.streak ?? (dashboard as any)?.progression ?? {};
+  const stats = (dashboard as any)?.stats ?? {};
+  const latest = stats.latest ?? null;
 
-  const xp = wallet.xp ?? wallet.totalXp ?? 0;
-  const coins = wallet.coins ?? wallet.totalCoins ?? 0;
-  const gems = wallet.gems ?? wallet.totalGems ?? 0;
-  const streak = progression.streakCurrent ?? stats?.streakCurrent ?? 0;
-  const lastScore = lastSession.score ?? lastSession.finalScore ?? null;
+  const xp = wallet.xp ?? wallet.lifetimeXp ?? 0;
+  const coins = wallet.coins ?? 0;
+  const gems = wallet.gems ?? 0;
+  const streak =
+    progression.current ??
+    progression.streakCurrent ??
+    0;
+
+  const lastScore = latest?.charismaIndex ?? latest?.score ?? null;
 
   return (
     <View style={styles.card}>
