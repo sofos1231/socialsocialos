@@ -1,5 +1,4 @@
-// socialsocial/src/navigation/index.tsx
-
+// FILE: socialsocial/src/navigation/index.tsx
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -13,16 +12,14 @@ import VoicePracticeScreen from '../screens/VoicePracticeScreen';
 import ABPracticeScreen from '../screens/ABPracticeScreen';
 import StatsScreen from '../screens/StatsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import MissionRoadScreen from '../screens/MissionRoadScreen';
 
 import {
   RootStackParamList,
   MainTabParamList,
   PracticeStackParamList,
 } from './types';
-import {
-  getAccessToken,
-  hydrateFromStorage,
-} from '../store/tokens';
+import { getAccessToken, hydrateFromStorage } from '../store/tokens';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -36,6 +33,7 @@ function PracticeStackNavigator() {
       }}
     >
       <PracticeStack.Screen name="PracticeHub" component={PracticeHubScreen} />
+      <PracticeStack.Screen name="MissionRoad" component={MissionRoadScreen} />
       <PracticeStack.Screen
         name="PracticeSession"
         component={PracticeScreen}
@@ -119,20 +117,19 @@ export default function NavigationRoot() {
       } catch (e) {
         console.log('[NavigationRoot] bootstrap error', e);
         if (!cancelled) {
-          // אם משהו נשבר בטעינה – ננחת פשוט על Auth
+          // fallback to Auth on any bootstrap error
           setInitialRoute('Auth');
         }
       }
     }
 
     bootstrap();
-
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // בזמן הבוטסטרפינג – מסך לודינג קטן
+  // Bootstrap loading state
   if (!initialRoute) {
     return (
       <View

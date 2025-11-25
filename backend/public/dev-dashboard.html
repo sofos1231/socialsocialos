@@ -1,0 +1,1371 @@
+mkdir -p backend/public
+cat > backend/public/dev-dashboard.html <<'EOF'
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SocialGym – Mission Road Builder</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --bg: #020617;
+        --bg-alt: #02091b;
+        --card: #020617;
+        --border-subtle: #1f2937;
+        --border-strong: #4b5563;
+        --text-main: #f9fafb;
+        --text-muted: #9ca3af;
+        --accent: #22c55e;
+        --accent-soft: rgba(34, 197, 94, 0.16);
+        --accent-strong: #16a34a;
+        --danger: #ef4444;
+        --danger-soft: rgba(239, 68, 68, 0.16);
+        --warning: #f59e0b;
+        --warning-soft: rgba(245, 158, 11, 0.12);
+        --pill-bg: #0b1120;
+        --muted-pill: #111827;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        padding: 24px;
+        background: radial-gradient(circle at top left, #0f172a, #020617 60%);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+        color: var(--text-main);
+      }
+
+      h1 { margin: 0 0 6px 0; font-size: 28px; letter-spacing: 0.02em; }
+
+      .subtitle {
+        margin: 0 0 18px 0;
+        font-size: 13px;
+        color: var(--text-muted);
+        max-width: 720px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: #0b1120;
+        border: 1px solid #1f2937;
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .badge-dot { width: 6px; height: 6px; border-radius: 999px; background: #22c55e; }
+
+      .layout {
+        margin-top: 20px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.6fr) minmax(0, 1.3fr);
+        gap: 16px;
+      }
+
+      .card {
+        background: radial-gradient(circle at top, #020617, #020617 55%, #020617);
+        border-radius: 18px;
+        border: 1px solid var(--border-subtle);
+        padding: 14px 16px 16px 16px;
+        box-shadow: 0 18px 35px rgba(15, 23, 42, 0.65);
+      }
+
+      .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .card-title { font-size: 15px; font-weight: 600; }
+
+      .card-subtitle {
+        margin-top: 2px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+
+      .small-pill {
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: var(--pill-bg);
+        border: 1px solid var(--border-subtle);
+        font-size: 10px;
+        color: var(--text-muted);
+      }
+
+      .field-group { margin-bottom: 10px; }
+
+      .field-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+      }
+
+      .field-row { display: flex; gap: 8px; }
+
+      input[type='text'], input[type='number'], textarea, select {
+        width: 100%;
+        padding: 7px 9px;
+        border-radius: 10px;
+        border: 1px solid #111827;
+        background: #020617;
+        color: var(--text-main);
+        font-size: 13px;
+        outline: none;
+      }
+
+      textarea { resize: vertical; min-height: 54px; max-height: 160px; }
+
+      input[type='text']:focus,
+      input[type='number']:focus,
+      textarea:focus,
+      select:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent-soft);
+      }
+
+      button {
+        border-radius: 999px;
+        border: none;
+        cursor: pointer;
+        font-size: 13px;
+        padding: 7px 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: transform 0.05s ease-out, box-shadow 0.1s ease-out, background 0.12s ease-out;
+        user-select: none;
+      }
+
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+        color: #022c22;
+        font-weight: 600;
+        box-shadow: 0 12px 24px rgba(34, 197, 94, 0.35);
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 18px 34px rgba(34, 197, 94, 0.48);
+      }
+
+      .btn-ghost {
+        background: #020617;
+        color: var(--text-muted);
+        border: 1px solid var(--border-subtle);
+      }
+
+      .btn-ghost:hover:not(:disabled) {
+        background: #020617;
+        border-color: #374151;
+      }
+
+      .btn-small { padding: 4px 9px; font-size: 11px; }
+
+      .btn-danger {
+        background: var(--danger-soft);
+        color: #fecaca;
+        border: 1px solid rgba(248, 113, 113, 0.35);
+      }
+
+      .btn-icon { width: 24px; height: 24px; padding: 0; }
+
+      .connection-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: flex-end;
+      }
+
+      .connection-status {
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .status-dot { width: 9px; height: 9px; border-radius: 999px; }
+      .status-idle { background: #374151; }
+      .status-ok { background: #22c55e; }
+      .status-error { background: #ef4444; }
+      .status-warning { background: #f59e0b; }
+
+      .error-box {
+        margin-top: 6px;
+        padding: 6px 8px;
+        border-radius: 10px;
+        background: var(--danger-soft);
+        border: 1px solid rgba(239, 68, 68, 0.5);
+        font-size: 12px;
+        color: #fecaca;
+        white-space: pre-wrap;
+      }
+
+      .success-box {
+        margin-top: 6px;
+        padding: 6px 8px;
+        border-radius: 10px;
+        background: var(--accent-soft);
+        border: 1px solid rgba(34, 197, 94, 0.5);
+        font-size: 12px;
+        color: #bbf7d0;
+        white-space: pre-wrap;
+      }
+
+      .category-list { max-height: 230px; overflow-y: auto; margin-top: 6px; }
+
+      .category-pill {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 8px;
+        border-radius: 10px;
+        background: #020617;
+        border: 1px solid #111827;
+        margin-bottom: 4px;
+        cursor: pointer;
+      }
+
+      .category-pill.active {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent-soft);
+      }
+
+      .category-pill-main { display: flex; flex-direction: column; gap: 2px; }
+      .category-pill-name { font-size: 12px; font-weight: 500; }
+      .category-pill-meta { font-size: 11px; color: var(--text-muted); }
+
+      .missions-list { max-height: 520px; overflow-y: auto; padding-right: 4px; }
+
+      .mission-row {
+        border-radius: 14px;
+        padding: 8px 10px;
+        background: #020617;
+        border: 1px solid #111827;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 6px;
+        cursor: pointer;
+      }
+
+      .mission-row.active {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent-soft);
+      }
+
+      .mission-index { font-size: 11px; color: var(--text-muted); padding-right: 6px; }
+
+      .mission-main { min-width: 0; }
+      .mission-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+      .mission-meta {
+        font-size: 11px;
+        color: var(--text-muted);
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 2px;
+      }
+
+      .mission-meta span {
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: #020617;
+        border: 1px solid #111827;
+      }
+
+      .mission-controls { display: flex; flex-direction: column; gap: 4px; }
+
+      .preview-box {
+        margin-top: 8px;
+        padding: 7px 9px;
+        border-radius: 12px;
+        background: #020617;
+        border: 1px dashed #1f2937;
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .preview-tag {
+        display: inline-flex;
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: #0b1120;
+        border: 1px solid #1f2937;
+        font-size: 10px;
+        margin-right: 4px;
+        margin-bottom: 3px;
+      }
+
+      .footer-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 8px;
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .hint {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-top: 6px;
+        line-height: 1.35;
+      }
+
+      .muted {
+        color: var(--text-muted);
+      }
+
+      .kbd {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1px 6px;
+        border-radius: 6px;
+        border: 1px solid #1f2937;
+        background: #0b1120;
+        font-size: 10px;
+        color: var(--text-muted);
+      }
+    </style>
+  </head>
+
+  <body>
+    <header>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h1>SocialGym – Mission Road Builder</h1>
+          <p class="subtitle">
+            Internal low-code tool for defining Mission Road. Use your backend base
+            URL + JWT, then manage categories and missions. Saving here should
+            reflect directly in the app’s Mission Road.
+          </p>
+        </div>
+        <div class="badge">
+          <span class="badge-dot" id="statusDot"></span>
+          <span id="statusText">Idle – not connected</span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:10px;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">1. Connection</div>
+            <div class="card-subtitle">
+              Base URL + bearer token. Same user and token you test with in Postman.
+            </div>
+          </div>
+          <div class="small-pill">/v1/admin/missions • /v1/admin/personas</div>
+        </div>
+
+        <div class="connection-grid">
+          <div class="field-group">
+            <div class="field-label">Base URL</div>
+            <input id="baseUrlInput" type="text" placeholder="http://localhost:3000" />
+          </div>
+          <div class="field-group">
+            <div class="field-label">Access token (Bearer)</div>
+            <textarea id="tokenInput" rows="2" placeholder="Paste JWT access token here…"></textarea>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <button id="connectBtn" class="btn-primary">Load missions</button>
+            <button id="clearBtn" class="btn-ghost btn-small">Clear state</button>
+          </div>
+        </div>
+
+        <div class="connection-status" id="connectionStatus">
+          <span class="status-dot status-idle" id="connDot"></span>
+          <span id="connText">Idle – not connected yet.</span>
+        </div>
+        <div id="connectionMessage"></div>
+
+        <div class="hint">
+          Tip: you can paste a token that starts with <span class="kbd">eyJ</span>.
+          Base URL can be <span class="kbd">http://localhost:3000</span> or your LAN IP.
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <!-- LEFT: Category editor -->
+      <section class="card" id="categoryCard">
+        <div class="card-header">
+          <div>
+            <div class="card-title">2. Categories</div>
+            <div class="card-subtitle">
+              Define logical segments of the road (Basics, Flows, Tension…). Missions attach to these categories.
+            </div>
+          </div>
+          <button id="newCategoryBtn" class="btn-ghost btn-small">+ New category</button>
+        </div>
+
+        <div class="field-group">
+          <div class="field-label">Category name</div>
+          <input id="catNameInput" type="text" placeholder="Basics – First Openers" />
+        </div>
+
+        <div class="field-group field-row">
+          <div style="flex:1;">
+            <div class="field-label">Code / tag</div>
+            <input id="catCodeInput" type="text" placeholder="OPENERS" />
+          </div>
+          <div style="width:110px;">
+            <div class="field-label">Min level</div>
+            <input id="catMinLevelInput" type="number" min="1" value="1" />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <div class="field-label">Subtitle</div>
+          <input id="catSubtitleInput" type="text" placeholder="Start with simple, confident openers." />
+        </div>
+
+        <div class="field-group">
+          <button id="saveCategoryBtn" class="btn-primary">Save category</button>
+          <button id="deleteCategoryBtn" class="btn-danger btn-small" style="margin-left:8px;">Delete</button>
+        </div>
+
+        <div class="field-label" style="margin-top:8px;">Existing categories</div>
+        <div class="category-list" id="categoryList"></div>
+      </section>
+
+      <!-- CENTER: Mission editor -->
+      <section class="card" id="missionCard">
+        <div class="card-header">
+          <div>
+            <div class="card-title">3. Mission editor</div>
+            <div class="card-subtitle">
+              Create / edit a mission. It will appear on the right list and in the app’s Mission Road.
+            </div>
+          </div>
+          <button id="newMissionBtn" class="btn-ghost btn-small">+ New mission</button>
+        </div>
+
+        <div class="field-group">
+          <div class="field-label">Code</div>
+          <input id="missionCodeInput" type="text" placeholder="OPENERS_L1_M1" />
+        </div>
+
+        <div class="field-group">
+          <div class="field-label">Title</div>
+          <input id="missionTitleInput" type="text" placeholder="First Hello" />
+        </div>
+
+        <div class="field-group">
+          <div class="field-label">Description</div>
+          <textarea id="missionDescInput" placeholder="Send a simple, confident opener."></textarea>
+        </div>
+
+        <div class="field-group field-row">
+          <div style="flex:1;">
+            <div class="field-label">Category</div>
+            <select id="missionCategorySelect">
+              <option value="">– choose category –</option>
+            </select>
+          </div>
+          <div style="width:140px;">
+            <div class="field-label">Goal type</div>
+            <select id="missionGoalTypeSelect">
+              <option value="OPENING">OPENING</option>
+              <option value="FLIRTING">FLIRTING</option>
+              <option value="RECOVERY">RECOVERY</option>
+              <option value="BOUNDARY">BOUNDARY</option>
+              <option value="LOGISTICS">LOGISTICS</option>
+              <option value="SOCIAL">SOCIAL</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-group field-row">
+          <div style="flex:1;">
+            <div class="field-label">AI persona</div>
+            <select id="missionPersonaSelect">
+              <option value="">– choose persona –</option>
+            </select>
+          </div>
+          <div style="width:140px;">
+            <div class="field-label">Difficulty</div>
+            <select id="missionDifficultySelect">
+              <option value="EASY">EASY</option>
+              <option value="MEDIUM">MEDIUM</option>
+              <option value="HARD">HARD</option>
+              <option value="ELITE">ELITE</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-group field-row">
+          <div style="width:120px;">
+            <div class="field-label">Lane</div>
+            <input id="missionLaneInput" type="number" min="0" value="0" />
+          </div>
+          <div style="width:120px;">
+            <div class="field-label">Order</div>
+            <input id="missionOrderInput" type="number" min="0" value="0" />
+          </div>
+          <div style="flex:1;">
+            <div class="field-label">Active</div>
+            <select id="missionActiveSelect">
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-group field-row">
+          <div style="width:140px;">
+            <div class="field-label">Time limit (sec)</div>
+            <input id="missionTimeLimitInput" type="number" min="0" value="30" />
+          </div>
+          <div style="width:140px;">
+            <div class="field-label">Max messages</div>
+            <input id="missionMaxMessagesInput" type="number" min="0" placeholder="(optional)" />
+          </div>
+          <div style="width:140px;">
+            <div class="field-label">Word limit</div>
+            <input id="missionWordLimitInput" type="number" min="0" placeholder="(optional)" />
+          </div>
+        </div>
+
+        <div class="field-group field-row">
+          <div style="width:140px;">
+            <div class="field-label">Reward XP</div>
+            <input id="missionXpInput" type="number" min="0" value="60" />
+          </div>
+          <div style="width:140px;">
+            <div class="field-label">Reward coins</div>
+            <input id="missionCoinsInput" type="number" min="0" value="10" />
+          </div>
+          <div style="width:140px;">
+            <div class="field-label">Reward gems</div>
+            <input id="missionGemsInput" type="number" min="0" value="0" />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <button id="saveMissionBtn" class="btn-primary">Save mission</button>
+          <button id="deleteMissionBtn" class="btn-danger btn-small" style="margin-left:8px;">Delete</button>
+        </div>
+
+        <div class="preview-box" id="missionPreview">
+          <div style="margin-bottom:4px;">Preview:</div>
+          <div id="missionPreviewText" style="margin-bottom:4px;">No mission selected.</div>
+          <div id="missionPreviewTags"></div>
+        </div>
+      </section>
+
+      <!-- RIGHT: Mission list + ordering -->
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">4. Mission Road ordering</div>
+            <div class="card-subtitle">Global order across all categories. Index is what the app respects.</div>
+          </div>
+          <button id="saveOrderingBtn" class="btn-primary btn-small">Save ordering</button>
+        </div>
+
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;" id="orderingHint">
+          Drag not supported – use ↑ / ↓ buttons to move missions, then press "Save ordering".
+        </div>
+
+        <div class="missions-list" id="missionsList"></div>
+
+        <div class="footer-row">
+          <span id="missionsSummary">No missions loaded.</span>
+          <button id="reloadAllBtn" class="btn-ghost btn-small">Reload from backend</button>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const API_ROUTES = {
+        listCategories: '/v1/admin/missions/categories',
+        createCategory: '/v1/admin/missions/categories',
+        updateCategory: (id) => '/v1/admin/missions/categories/' + id,
+        deleteCategory: (id) => '/v1/admin/missions/categories/' + id,
+
+        listMissions: '/v1/admin/missions',
+        createMission: '/v1/admin/missions',
+        updateMission: (id) => '/v1/admin/missions/' + id,
+        deleteMission: (id) => '/v1/admin/missions/' + id,
+        reorderMissions: '/v1/admin/missions/reorder',
+
+        listPersonas: '/v1/admin/personas',
+        meta: '/v1/admin/missions/meta',
+      };
+
+      const state = {
+        baseUrl: '',
+        token: '',
+        connected: false,
+        categories: [],
+        missions: [],
+        personas: [],
+        selectedCategoryId: null,
+        selectedMissionId: null,
+        orderingDirty: false,
+      };
+
+      const el = (id) => document.getElementById(id);
+
+      const ui = {
+        baseUrlInput: el('baseUrlInput'),
+        tokenInput: el('tokenInput'),
+        connectBtn: el('connectBtn'),
+        clearBtn: el('clearBtn'),
+
+        statusDot: el('statusDot'),
+        statusText: el('statusText'),
+        connDot: el('connDot'),
+        connText: el('connText'),
+        connectionMessage: el('connectionMessage'),
+
+        // category
+        newCategoryBtn: el('newCategoryBtn'),
+        catNameInput: el('catNameInput'),
+        catCodeInput: el('catCodeInput'),
+        catSubtitleInput: el('catSubtitleInput'),
+        catMinLevelInput: el('catMinLevelInput'),
+        saveCategoryBtn: el('saveCategoryBtn'),
+        deleteCategoryBtn: el('deleteCategoryBtn'),
+        categoryList: el('categoryList'),
+
+        // mission
+        newMissionBtn: el('newMissionBtn'),
+        missionCodeInput: el('missionCodeInput'),
+        missionTitleInput: el('missionTitleInput'),
+        missionDescInput: el('missionDescInput'),
+        missionCategorySelect: el('missionCategorySelect'),
+        missionPersonaSelect: el('missionPersonaSelect'),
+        missionDifficultySelect: el('missionDifficultySelect'),
+        missionGoalTypeSelect: el('missionGoalTypeSelect'),
+        missionLaneInput: el('missionLaneInput'),
+        missionOrderInput: el('missionOrderInput'),
+        missionActiveSelect: el('missionActiveSelect'),
+        missionTimeLimitInput: el('missionTimeLimitInput'),
+        missionMaxMessagesInput: el('missionMaxMessagesInput'),
+        missionWordLimitInput: el('missionWordLimitInput'),
+        missionXpInput: el('missionXpInput'),
+        missionCoinsInput: el('missionCoinsInput'),
+        missionGemsInput: el('missionGemsInput'),
+        saveMissionBtn: el('saveMissionBtn'),
+        deleteMissionBtn: el('deleteMissionBtn'),
+
+        // preview
+        missionPreviewText: el('missionPreviewText'),
+        missionPreviewTags: el('missionPreviewTags'),
+
+        // ordering
+        missionsList: el('missionsList'),
+        missionsSummary: el('missionsSummary'),
+        saveOrderingBtn: el('saveOrderingBtn'),
+        reloadAllBtn: el('reloadAllBtn'),
+      };
+
+      function setBadge(stateName, text) {
+        ui.statusText.textContent = text;
+        ui.connText.textContent = text;
+
+        ui.statusDot.style.background =
+          stateName === 'ok' ? '#22c55e' :
+          stateName === 'warn' ? '#f59e0b' :
+          stateName === 'error' ? '#ef4444' : '#374151';
+
+        ui.connDot.className = 'status-dot ' + (
+          stateName === 'ok' ? 'status-ok' :
+          stateName === 'warn' ? 'status-warning' :
+          stateName === 'error' ? 'status-error' : 'status-idle'
+        );
+      }
+
+      function showMessage(kind, msg) {
+        ui.connectionMessage.innerHTML = '';
+        if (!msg) return;
+        const div = document.createElement('div');
+        div.className = kind === 'success' ? 'success-box' : 'error-box';
+        div.textContent = msg;
+        ui.connectionMessage.appendChild(div);
+      }
+
+      function normalizeBaseUrl(s) {
+        const raw = (s || '').trim();
+        if (!raw) return '';
+        return raw.endsWith('/') ? raw.slice(0, -1) : raw;
+      }
+
+      function normalizeBearer(token) {
+        const t = (token || '').trim();
+        if (!t) return '';
+        return t.toLowerCase().startsWith('bearer ') ? t.slice(7).trim() : t;
+      }
+
+      async function apiFetch(path, options = {}) {
+        if (!state.baseUrl) throw new Error('Base URL is missing');
+        const url = state.baseUrl + path;
+        const headers = Object.assign(
+          { 'Content-Type': 'application/json' },
+          options.headers || {}
+        );
+
+        const token = state.token;
+        if (token) headers.Authorization = 'Bearer ' + token;
+
+        const res = await fetch(url, Object.assign({}, options, { headers }));
+
+        const text = await res.text();
+        let json = null;
+        try { json = text ? JSON.parse(text) : null; } catch (_) {}
+
+        if (!res.ok) {
+          const errMsg =
+            (json && (json.message || json.error?.message)) ||
+            text ||
+            ('HTTP ' + res.status);
+          const details = json?.error?.details ? JSON.stringify(json.error.details, null, 2) : null;
+          throw new Error(details ? (errMsg + '\n' + details) : errMsg);
+        }
+
+        return json;
+      }
+
+      function resetCategoryForm() {
+        state.selectedCategoryId = null;
+        ui.catNameInput.value = '';
+        ui.catCodeInput.value = '';
+        ui.catSubtitleInput.value = '';
+        ui.catMinLevelInput.value = '1';
+        renderCategories();
+      }
+
+      function resetMissionForm() {
+        state.selectedMissionId = null;
+        ui.missionCodeInput.value = '';
+        ui.missionTitleInput.value = '';
+        ui.missionDescInput.value = '';
+        ui.missionCategorySelect.value = '';
+        ui.missionPersonaSelect.value = '';
+        ui.missionDifficultySelect.value = 'EASY';
+        ui.missionGoalTypeSelect.value = 'OPENING';
+        ui.missionLaneInput.value = '0';
+        ui.missionOrderInput.value = '0';
+        ui.missionActiveSelect.value = 'true';
+        ui.missionTimeLimitInput.value = '30';
+        ui.missionMaxMessagesInput.value = '';
+        ui.missionWordLimitInput.value = '';
+        ui.missionXpInput.value = '60';
+        ui.missionCoinsInput.value = '10';
+        ui.missionGemsInput.value = '0';
+        updatePreview(null);
+        renderMissionsList();
+      }
+
+      function renderSelectOptions() {
+        // categories
+        ui.missionCategorySelect.innerHTML = '<option value="">– choose category –</option>';
+        state.categories.forEach((c) => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = `${c.code} — ${c.label}`;
+          ui.missionCategorySelect.appendChild(opt);
+        });
+
+        // personas
+        ui.missionPersonaSelect.innerHTML = '<option value="">– choose persona –</option>';
+        state.personas.forEach((p) => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = `${p.code} — ${p.name}`;
+          ui.missionPersonaSelect.appendChild(opt);
+        });
+      }
+
+      function renderCategories() {
+        ui.categoryList.innerHTML = '';
+        const cats = [...state.categories].sort((a, b) => String(a.code).localeCompare(String(b.code)));
+
+        cats.forEach((c) => {
+          const pill = document.createElement('div');
+          pill.className = 'category-pill' + (state.selectedCategoryId === c.id ? ' active' : '');
+          pill.onclick = () => selectCategory(c.id);
+
+          const main = document.createElement('div');
+          main.className = 'category-pill-main';
+
+          const name = document.createElement('div');
+          name.className = 'category-pill-name';
+          name.textContent = `${c.label}`;
+
+          const meta = document.createElement('div');
+          meta.className = 'category-pill-meta';
+          meta.textContent = `${c.code}` + (c.description ? ` • ${c.description}` : '');
+
+          main.appendChild(name);
+          main.appendChild(meta);
+
+          const right = document.createElement('div');
+          right.className = 'small-pill';
+          right.textContent = 'id';
+
+          pill.appendChild(main);
+          pill.appendChild(right);
+
+          ui.categoryList.appendChild(pill);
+        });
+
+        renderSelectOptions();
+      }
+
+      function selectCategory(id) {
+        state.selectedCategoryId = id;
+        const c = state.categories.find((x) => x.id === id);
+        if (!c) return;
+
+        ui.catNameInput.value = c.label || '';
+        ui.catCodeInput.value = c.code || '';
+        ui.catSubtitleInput.value = c.description || '';
+        ui.catMinLevelInput.value = '1'; // not persisted
+        renderCategories();
+      }
+
+      function missionMetaTags(m) {
+        const cat = m.category?.code || 'No category';
+        const persona = m.persona?.code || 'No persona';
+        const difficulty = m.difficulty || 'EASY';
+        const goalType = m.goalType || 'OPENING';
+        return [
+          `#${m.orderIndex}`,
+          `Lane ${m.laneIndex}`,
+          cat,
+          persona,
+          difficulty,
+          goalType,
+          `${m.baseXpReward ?? 0} XP`,
+        ];
+      }
+
+      function renderMissionsList() {
+        ui.missionsList.innerHTML = '';
+
+        const missions = [...state.missions].sort((a, b) => {
+          if ((a.laneIndex ?? 0) !== (b.laneIndex ?? 0)) return (a.laneIndex ?? 0) - (b.laneIndex ?? 0);
+          if ((a.orderIndex ?? 0) !== (b.orderIndex ?? 0)) return (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
+          return String(a.title || '').localeCompare(String(b.title || ''));
+        });
+
+        ui.missionsSummary.textContent = missions.length ? `${missions.length} missions loaded.` : 'No missions loaded.';
+
+        missions.forEach((m, idx) => {
+          const row = document.createElement('div');
+          row.className = 'mission-row' + (state.selectedMissionId === m.id ? ' active' : '');
+          row.onclick = () => selectMission(m.id);
+
+          const left = document.createElement('div');
+          left.className = 'mission-index';
+          left.textContent = String(idx + 1);
+
+          const main = document.createElement('div');
+          main.className = 'mission-main';
+
+          const title = document.createElement('div');
+          title.className = 'mission-title';
+          title.textContent = m.title || '(untitled)';
+
+          const meta = document.createElement('div');
+          meta.className = 'mission-meta';
+          missionMetaTags(m).forEach((t) => {
+            const span = document.createElement('span');
+            span.textContent = t;
+            meta.appendChild(span);
+          });
+
+          main.appendChild(title);
+          main.appendChild(meta);
+
+          const controls = document.createElement('div');
+          controls.className = 'mission-controls';
+
+          const up = document.createElement('button');
+          up.className = 'btn-ghost btn-small btn-icon';
+          up.textContent = '↑';
+          up.title = 'Move up';
+          up.onclick = (e) => { e.stopPropagation(); moveMission(m.id, -1); };
+
+          const down = document.createElement('button');
+          down.className = 'btn-ghost btn-small btn-icon';
+          down.textContent = '↓';
+          down.title = 'Move down';
+          down.onclick = (e) => { e.stopPropagation(); moveMission(m.id, +1); };
+
+          controls.appendChild(up);
+          controls.appendChild(down);
+
+          row.appendChild(left);
+          row.appendChild(main);
+          row.appendChild(controls);
+
+          ui.missionsList.appendChild(row);
+        });
+      }
+
+      function selectMission(id) {
+        state.selectedMissionId = id;
+        const m = state.missions.find((x) => x.id === id);
+        if (!m) return;
+
+        ui.missionCodeInput.value = m.code || '';
+        ui.missionTitleInput.value = m.title || '';
+        ui.missionDescInput.value = m.description || '';
+        ui.missionCategorySelect.value = m.categoryId || '';
+        ui.missionPersonaSelect.value = m.personaId || '';
+        ui.missionDifficultySelect.value = m.difficulty || 'EASY';
+        ui.missionGoalTypeSelect.value = m.goalType || 'OPENING';
+        ui.missionLaneInput.value = String(m.laneIndex ?? 0);
+        ui.missionOrderInput.value = String(m.orderIndex ?? 0);
+        ui.missionActiveSelect.value = String(!!m.active);
+        ui.missionTimeLimitInput.value = String(m.timeLimitSec ?? 30);
+        ui.missionMaxMessagesInput.value = (m.maxMessages ?? '') === null ? '' : String(m.maxMessages ?? '');
+        ui.missionWordLimitInput.value = (m.wordLimit ?? '') === null ? '' : String(m.wordLimit ?? '');
+        ui.missionXpInput.value = String(m.baseXpReward ?? 0);
+        ui.missionCoinsInput.value = String(m.baseCoinsReward ?? 0);
+        ui.missionGemsInput.value = String(m.baseGemsReward ?? 0);
+
+        updatePreview(m);
+        renderMissionsList();
+      }
+
+      function updatePreview(m) {
+        if (!m) {
+          ui.missionPreviewText.textContent = 'No mission selected.';
+          ui.missionPreviewTags.innerHTML = '';
+          return;
+        }
+        ui.missionPreviewText.textContent =
+          `${m.title || '(untitled)'} — ${m.description || ''}`.trim();
+
+        ui.missionPreviewTags.innerHTML = '';
+        missionMetaTags(m).forEach((t) => {
+          const tag = document.createElement('span');
+          tag.className = 'preview-tag';
+          tag.textContent = t;
+          ui.missionPreviewTags.appendChild(tag);
+        });
+      }
+
+      function moveMission(id, delta) {
+        const sorted = [...state.missions].sort((a, b) => {
+          if ((a.laneIndex ?? 0) !== (b.laneIndex ?? 0)) return (a.laneIndex ?? 0) - (b.laneIndex ?? 0);
+          if ((a.orderIndex ?? 0) !== (b.orderIndex ?? 0)) return (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
+          return String(a.title || '').localeCompare(String(b.title || ''));
+        });
+
+        const idx = sorted.findIndex((m) => m.id === id);
+        if (idx < 0) return;
+
+        const j = idx + delta;
+        if (j < 0 || j >= sorted.length) return;
+
+        // Swap orderIndex values (global ordering)
+        const a = sorted[idx];
+        const b = sorted[j];
+
+        const tmp = a.orderIndex;
+        a.orderIndex = b.orderIndex;
+        b.orderIndex = tmp;
+
+        // Keep array state in sync
+        state.missions = state.missions.map((m) => (m.id === a.id ? a : m.id === b.id ? b : m));
+        state.orderingDirty = true;
+
+        setBadge('warn', 'Ordering changed (not saved)');
+        renderMissionsList();
+      }
+
+      function readNumber(value, { allowNull = false } = {}) {
+        const v = (value ?? '').toString().trim();
+        if (!v) return allowNull ? null : 0;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : (allowNull ? null : 0);
+      }
+
+      function buildCategoryPayload() {
+        const name = ui.catNameInput.value.trim();
+        const code = ui.catCodeInput.value.trim();
+        const subtitle = ui.catSubtitleInput.value.trim();
+        const minLevel = readNumber(ui.catMinLevelInput.value, { allowNull: true }) ?? 1;
+
+        return {
+          name,
+          label: name,
+          code,
+          subtitle,
+          description: subtitle,
+          minLevel,
+        };
+      }
+
+      function buildMissionPayload() {
+        const code = ui.missionCodeInput.value.trim();
+        const title = ui.missionTitleInput.value.trim();
+        const description = ui.missionDescInput.value.trim();
+
+        const missionCategoryId = ui.missionCategorySelect.value;
+        const aiPersonaId = ui.missionPersonaSelect.value;
+
+        return {
+          code,
+          title,
+          description: description || null,
+
+          missionCategoryId,
+          aiPersonaId,
+
+          laneIndex: readNumber(ui.missionLaneInput.value),
+          orderIndex: readNumber(ui.missionOrderInput.value),
+
+          difficulty: ui.missionDifficultySelect.value,
+          goalType: ui.missionGoalTypeSelect.value,
+
+          timeLimitSec: readNumber(ui.missionTimeLimitInput.value, { allowNull: true }),
+          maxMessages: readNumber(ui.missionMaxMessagesInput.value, { allowNull: true }),
+          wordLimit: readNumber(ui.missionWordLimitInput.value, { allowNull: true }),
+
+          rewardXp: readNumber(ui.missionXpInput.value),
+          rewardCoins: readNumber(ui.missionCoinsInput.value, { allowNull: true }),
+          rewardGems: readNumber(ui.missionGemsInput.value, { allowNull: true }),
+
+          active: ui.missionActiveSelect.value === 'true',
+        };
+      }
+
+      async function loadAll() {
+        const [cats, missions, personas] = await Promise.all([
+          apiFetch(API_ROUTES.listCategories),
+          apiFetch(API_ROUTES.listMissions),
+          apiFetch(API_ROUTES.listPersonas),
+        ]);
+
+        state.categories = Array.isArray(cats) ? cats : [];
+        state.missions = Array.isArray(missions) ? missions : [];
+        state.personas = Array.isArray(personas) ? personas : [];
+      }
+
+      async function connect() {
+        showMessage(null, null);
+
+        state.baseUrl = normalizeBaseUrl(ui.baseUrlInput.value);
+        state.token = normalizeBearer(ui.tokenInput.value);
+
+        if (!state.baseUrl) {
+          setBadge('error', 'Missing Base URL');
+          showMessage('error', 'Please enter Base URL (e.g. http://localhost:3000)');
+          return;
+        }
+        if (!state.token) {
+          setBadge('warn', 'Missing token');
+          showMessage('error', 'Please paste a JWT token (Bearer not required).');
+          return;
+        }
+
+        try {
+          setBadge('warn', 'Connecting…');
+          ui.connectBtn.disabled = true;
+
+          await loadAll();
+
+          state.connected = true;
+          state.orderingDirty = false;
+
+          renderCategories();
+          renderMissionsList();
+          resetCategoryForm();
+          resetMissionForm();
+
+          setBadge('ok', 'Connected — missions loaded');
+          showMessage('success', `Loaded: ${state.categories.length} categories, ${state.missions.length} missions, ${state.personas.length} personas.`);
+        } catch (err) {
+          state.connected = false;
+          setBadge('error', 'Connection error');
+          showMessage('error', String(err?.message || err));
+        } finally {
+          ui.connectBtn.disabled = false;
+        }
+      }
+
+      async function reloadFromBackend() {
+        if (!state.connected) return;
+        try {
+          setBadge('warn', 'Reloading…');
+          await loadAll();
+          renderCategories();
+          renderMissionsList();
+          setBadge('ok', 'Reloaded');
+          showMessage('success', 'Reloaded fresh data from backend.');
+        } catch (err) {
+          setBadge('error', 'Reload failed');
+          showMessage('error', String(err?.message || err));
+        }
+      }
+
+      async function saveCategory() {
+        if (!state.connected) return;
+        const payload = buildCategoryPayload();
+
+        if (!payload.code || !payload.name) {
+          showMessage('error', 'Category requires: name + code');
+          return;
+        }
+
+        try {
+          setBadge('warn', 'Saving category…');
+          showMessage(null, null);
+          const isUpdate = !!state.selectedCategoryId;
+
+          if (isUpdate) {
+            await apiFetch(API_ROUTES.updateCategory(state.selectedCategoryId), {
+              method: 'PATCH',
+              body: JSON.stringify(payload),
+            });
+          } else {
+            await apiFetch(API_ROUTES.createCategory, {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            });
+          }
+
+          await loadAll();
+          renderCategories();
+          setBadge('ok', 'Category saved');
+          showMessage('success', 'Category saved successfully.');
+        } catch (err) {
+          setBadge('error', 'Category save error');
+          showMessage('error', String(err?.message || err));
+        }
+      }
+
+      async function deleteCategory() {
+        if (!state.connected) return;
+        if (!state.selectedCategoryId) {
+          showMessage('error', 'Select a category first.');
+          return;
+        }
+        const c = state.categories.find((x) => x.id === state.selectedCategoryId);
+        const ok = confirm(`Delete category "${c?.label || c?.code}" ? This hard-deletes it.`);
+        if (!ok) return;
+
+        try {
+          setBadge('warn', 'Deleting category…');
+          showMessage(null, null);
+
+          await apiFetch(API_ROUTES.deleteCategory(state.selectedCategoryId), { method: 'DELETE' });
+
+          await loadAll();
+          resetCategoryForm();
+          renderCategories();
+          setBadge('ok', 'Category deleted');
+          showMessage('success', 'Category deleted.');
+        } catch (err) {
+          setBadge('error', 'Category delete error');
+          showMessage('error', String(err?.message || err));
+        }
+      }
+
+      async function saveMission() {
+        if (!state.connected) return;
+
+        const payload = buildMissionPayload();
+
+        if (!payload.code || !payload.title) {
+          showMessage('error', 'Mission requires: code + title');
+          return;
+        }
+        if (!payload.missionCategoryId) {
+          showMessage('error', 'Mission requires: category');
+          return;
+        }
+        if (!payload.aiPersonaId) {
+          showMessage('error', 'Mission requires: persona');
+          return;
+        }
+
+        try {
+          setBadge('warn', 'Saving mission…');
+          showMessage(null, null);
+
+          const isUpdate = !!state.selectedMissionId;
+          if (isUpdate) {
+            await apiFetch(API_ROUTES.updateMission(state.selectedMissionId), {
+              method: 'PATCH',
+              body: JSON.stringify(payload),
+            });
+          } else {
+            await apiFetch(API_ROUTES.createMission, {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            });
+          }
+
+          await loadAll();
+          renderMissionsList();
+
+          // keep selection
+          const created = state.missions.find((m) => m.code === payload.code) || null;
+          if (created) selectMission(created.id);
+
+          setBadge('ok', 'Mission saved');
+          showMessage('success', 'Mission saved successfully.');
+        } catch (err) {
+          setBadge('error', 'Mission save error');
+          showMessage('error', String(err?.message || err));
+        }
+      }
+
+      async function deleteMission() {
+        if (!state.connected) return;
+        if (!state.selectedMissionId) {
+          showMessage('error', 'Select a mission first.');
+          return;
+        }
+        const m = state.missions.find((x) => x.id === state.selectedMissionId);
+        const ok = confirm(`Delete mission "${m?.title || m?.code}" ? This soft-deletes (active=false).`);
+        if (!ok) return;
+
+        try {
+          setBadge('warn', 'Deleting mission…');
+          showMessage(null, null);
+
+          await apiFetch(API_ROUTES.deleteMission(state.selectedMissionId), { method: 'DELETE' });
+
+          await loadAll();
+          resetMissionForm();
+          renderMissionsList();
+
+          setBadge('ok', 'Mission deleted');
+          showMessage('success', 'Mission deleted (active=false).');
+        } catch (err) {
+          setBadge('error', 'Mission delete error');
+          showMessage('error', String(err?.message || err));
+        }
+      }
+
+      async function saveOrdering() {
+        if (!state.connected) return;
+
+        const missionsSorted = [...state.missions].sort((a, b) => {
+          // Use current rendered order:
+          if ((a.laneIndex ?? 0) !== (b.laneIndex ?? 0)) return (a.laneIndex ?? 0) - (b.laneIndex ?? 0);
+          if ((a.orderIndex ?? 0) !== (b.orderIndex ?? 0)) return (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
+          return String(a.title || '').localeCompare(String(b.title || ''));
+        });
+
+        const orderedIds = missionsSorted.map((m) => m.id);
+
+        try {
+          setBadge('warn', 'Saving ordering…');
+          showMessage(null, null);
+
+          await apiFetch(API_ROUTES.reorderMissions, {
+            method: 'POST',
+            body: JSON.stringify({ orderedIds }),
+          });
+
+          state.orderingDirty = false;
+          await loadAll();
+          renderMissionsList();
+
+          setBadge('ok', 'Ordering saved');
+          showMessage('success', 'Ordering saved.');
+        } catch (err) {
+          setBadge('error', 'Ordering save error');
+          showMessage('error', String(err?.message || err));
+        }
+      }
+
+      function clearState() {
+        state.baseUrl = '';
+        state.token = '';
+        state.connected = false;
+        state.categories = [];
+        state.missions = [];
+        state.personas = [];
+        state.selectedCategoryId = null;
+        state.selectedMissionId = null;
+        state.orderingDirty = false;
+
+        ui.baseUrlInput.value = '';
+        ui.tokenInput.value = '';
+
+        ui.categoryList.innerHTML = '';
+        ui.missionsList.innerHTML = '';
+        ui.missionsSummary.textContent = 'No missions loaded.';
+        resetCategoryForm();
+        resetMissionForm();
+
+        setBadge('idle', 'Idle – not connected');
+        showMessage(null, null);
+      }
+
+      // ------------------ events ------------------
+
+      ui.connectBtn.addEventListener('click', connect);
+      ui.clearBtn.addEventListener('click', clearState);
+      ui.reloadAllBtn.addEventListener('click', reloadFromBackend);
+
+      ui.newCategoryBtn.addEventListener('click', () => {
+        resetCategoryForm();
+        showMessage('success', 'Creating new category. Fill fields then Save.');
+      });
+      ui.saveCategoryBtn.addEventListener('click', saveCategory);
+      ui.deleteCategoryBtn.addEventListener('click', deleteCategory);
+
+      ui.newMissionBtn.addEventListener('click', () => {
+        resetMissionForm();
+        showMessage('success', 'Creating new mission. Fill fields then Save.');
+      });
+      ui.saveMissionBtn.addEventListener('click', saveMission);
+      ui.deleteMissionBtn.addEventListener('click', deleteMission);
+
+      ui.saveOrderingBtn.addEventListener('click', saveOrdering);
+
+      // live preview updates
+      ['missionTitleInput', 'missionDescInput', 'missionLaneInput', 'missionOrderInput', 'missionXpInput'].forEach((id) => {
+        el(id).addEventListener('input', () => {
+          const m = state.missions.find((x) => x.id === state.selectedMissionId);
+          if (!m) return;
+          // mirror edits into preview only (not saved)
+          const temp = Object.assign({}, m, {
+            title: ui.missionTitleInput.value,
+            description: ui.missionDescInput.value,
+            laneIndex: readNumber(ui.missionLaneInput.value),
+            orderIndex: readNumber(ui.missionOrderInput.value),
+            baseXpReward: readNumber(ui.missionXpInput.value),
+          });
+          updatePreview(temp);
+        });
+      });
+
+      // initial UI
+      setBadge('idle', 'Idle – not connected');
+    </script>
+  </body>
+</html>
+EOF

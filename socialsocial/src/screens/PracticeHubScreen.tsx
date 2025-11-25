@@ -1,5 +1,4 @@
 // FILE: socialsocial/src/screens/PracticeHubScreen.tsx
-
 import React from 'react';
 import {
   ScrollView,
@@ -10,84 +9,63 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PracticeStackParamList } from '../navigation/types';
-import { useDashboardLoop } from '../hooks/useDashboardLoop';
-import DashboardMiniStatsCard from '../app/components/DashboardMiniStatsCard';
 
 type Props = NativeStackScreenProps<PracticeStackParamList, 'PracticeHub'>;
 
 export default function PracticeHubScreen({ navigation }: Props) {
-  const { summary, isLoading, error, reload } = useDashboardLoop();
+  const handleFreePlay = () => {
+    navigation.navigate('PracticeSession', undefined);
+  };
 
-  const stats: any = (summary as any)?.stats ?? {};
-  const latest = stats.latest ?? null;
+  const handleABPractice = () => {
+    navigation.navigate('ABPracticeSession');
+  };
 
-  const handleTextPractice = () =>
-    navigation.navigate('TextPractice' as never);
-  const handleVoicePractice = () =>
-    navigation.navigate('VoicePractice' as never);
-  const handleABPractice = () =>
-    navigation.navigate('ABPractice' as never);
+  const handleMissionRoad = () => {
+    navigation.navigate('MissionRoad');
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Practice Hub</Text>
+      <Text style={styles.title}>Practice</Text>
+      <Text style={styles.subtitle}>Choose how you want to train today.</Text>
 
-      {/* Top mini dashboard – XP, streak, coins, gems, last session score */}
-      <DashboardMiniStatsCard />
-
-      {isLoading && (
-        <Text style={styles.muted}>Loading dashboard…</Text>
-      )}
-
-      {error && !isLoading && (
-        <Text style={styles.errorText} onPress={reload}>
-          Failed to load dashboard – tap to retry
-        </Text>
-      )}
-
-      {latest && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Last session</Text>
-          <Text style={styles.cardText}>Score: {latest.score ?? '-'}</Text>
-          <Text style={styles.cardText}>
-            XP gained: {latest.totalXp ?? '-'}
-          </Text>
-        </View>
-      )}
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Choose a practice mode</Text>
-
-        <TouchableOpacity
-          style={styles.button}
-          onPress={handleTextPractice}
-        >
-          <Text style={styles.buttonTitle}>Text mission</Text>
-          <Text style={styles.buttonSubtitle}>
-            Chat-based practice with AI
+      <View style={styles.grid}>
+        {/* Free play – chat freely with AI */}
+        <TouchableOpacity style={styles.card} onPress={handleFreePlay}>
+          <Text style={styles.cardTag}>FREE PLAY</Text>
+          <Text style={styles.cardTitle}>Chat Freely</Text>
+          <Text style={styles.cardBody}>
+            Practice any opener or conversation with AI in a free mode.
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.button}
-          onPress={handleVoicePractice}
-        >
-          <Text style={styles.buttonTitle}>Voice mission</Text>
-          <Text style={styles.buttonSubtitle}>
-            Speak and get instant feedback
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.button}
-          onPress={handleABPractice}
-        >
-          <Text style={styles.buttonTitle}>A/B mission</Text>
-          <Text style={styles.buttonSubtitle}>
-            Compare two different approaches
+        {/* Tinder game – A/B */}
+        <TouchableOpacity style={styles.card} onPress={handleABPractice}>
+          <Text style={styles.cardTag}>TINDER GAME</Text>
+          <Text style={styles.cardTitle}>Swipe &amp; Pick</Text>
+          <Text style={styles.cardBody}>
+            A/B style missions – choose the better line and learn what works.
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Mission road – main story mode */}
+      <TouchableOpacity style={styles.storyCard} onPress={handleMissionRoad}>
+        <Text style={styles.cardTag}>MISSION ROAD</Text>
+        <Text style={styles.storyTitle}>Main Story Mode</Text>
+        <Text style={styles.cardBody}>
+          Follow a long progression of missions. Start from the basics and
+          climb through advanced scenarios.
+        </Text>
+
+        {/* Simple progress bar – real progression later from backend */}
+        <View style={styles.progressBarOuter}>
+          <View style={styles.progressBarInner} />
+        </View>
+
+        <Text style={styles.progressText}>Your journey starts here.</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -95,61 +73,80 @@ export default function PracticeHubScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     padding: 16,
+    paddingBottom: 32,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '700',
-    marginBottom: 16,
+    marginBottom: 4,
+    color: '#020617',
   },
-  muted: {
-    fontSize: 13,
-    color: '#9CA3AF',
-    marginBottom: 8,
+  subtitle: {
+    fontSize: 15,
+    color: '#4b5563',
+    marginBottom: 24,
   },
-  errorText: {
-    fontSize: 13,
-    color: '#FCA5A5',
-    marginBottom: 8,
+  grid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
   },
   card: {
-    borderRadius: 12,
-    backgroundColor: '#111827',
-    padding: 12,
-    marginBottom: 16,
+    flex: 1,
+    marginRight: 12,
+    borderRadius: 20,
+    backgroundColor: '#020617',
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+  },
+  cardTag: {
+    fontSize: 11,
+    letterSpacing: 1,
+    color: '#6ee7b7',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 6,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#f9fafb',
+    marginBottom: 6,
   },
-  cardText: {
-    fontSize: 14,
-    color: '#E5E7EB',
-    marginBottom: 2,
-  },
-  section: {
-    marginTop: 8,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  button: {
-    borderRadius: 12,
-    backgroundColor: '#1F2937',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 10,
-  },
-  buttonTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#F9FAFB',
-    marginBottom: 2,
-  },
-  buttonSubtitle: {
+  cardBody: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: '#9ca3af',
+  },
+  storyCard: {
+    marginTop: 8,
+    borderRadius: 22,
+    backgroundColor: '#020617',
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+  },
+  storyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#f9fafb',
+    marginBottom: 6,
+  },
+  progressBarOuter: {
+    marginTop: 12,
+    borderRadius: 999,
+    backgroundColor: '#111827',
+    height: 8,
+    overflow: 'hidden',
+  },
+  progressBarInner: {
+    width: '30%',
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#22c55e',
+  },
+  progressText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#9ca3af',
   },
 });
+

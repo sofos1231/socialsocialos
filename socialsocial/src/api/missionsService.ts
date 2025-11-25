@@ -1,37 +1,80 @@
-// src/api/missionsService.ts
-// Stubs used by src/hooks/queries.ts and src/hooks/mutations.ts
+// FILE: socialsocial/src/api/missionsService.ts
+import api from './apiClient';
 
-export interface MissionSummary {
+export type MissionVisualState = 'completed' | 'current' | 'locked';
+
+export interface MissionRoadMission {
   id: string;
+  code: string;
   title: string;
-  completed: boolean;
+  description: string | null;
+
+  laneIndex: number;
+  orderIndex: number;
+
+  difficulty: string;
+  goalType: string | null;
+
+  timeLimitSec: number;
+  maxMessages: number | null;
+  wordLimit: number | null;
+  isVoiceSupported: boolean;
+
+  rewards: { xp: number; coins: number; gems: number };
+
+  category: { id: string; code: string; label: string; description: string | null } | null;
+  persona:
+    | {
+        id: string;
+        code: string;
+        name: string;
+        shortLabel: string | null;
+        description: string | null;
+        style: string | null;
+        avatarUrl: string | null;
+        difficulty: number | null;
+      }
+    | null;
+
+  aiContract: any | null;
+
+  isCompleted: boolean;
+  isUnlocked: boolean;
+  visualState: MissionVisualState;
+  bestScore: number | null;
 }
 
-/**
- * Return a fake mission list (empty for now).
- */
-export async function list(): Promise<MissionSummary[]> {
-  console.warn(
-    '[missionsService] list() stub called – returning empty mission list',
-  );
-
-  return [];
+export interface MissionLane {
+  laneIndex: number;
+  title: string;
+  missions: MissionRoadMission[];
 }
 
-/**
- * Claim a mission reward.
- * Signature matches usage: claim(id, { score }, { idempotencyKey })
- */
-export async function claim(
-  missionId: string,
-  payload?: any,
-  options?: any,
-): Promise<{ ok: boolean }> {
-  console.warn('[missionsService] claim() stub called', {
-    missionId,
-    payload,
-    options,
-  });
+export interface MissionRoadResponse {
+  ok: boolean;
+  lanes: MissionLane[];
+  summary: {
+    totalMissions: number;
+    unlockedCount: number;
+    completedCount: number;
+    completionPercent: number;
+  };
+}
 
-  return { ok: true };
+export async function fetchMissionRoad(): Promise<MissionRoadResponse> {
+  const res = await api.get<MissionRoadResponse>('/missions/road');
+  return res.data;
+}
+
+export async function startMission(templateId: string) {
+  const res = await api.post(`/missions/${templateId}/start`, {});
+  return res.data;
+}
+
+export async function completeMission(
+  templateId: string,
+  body: { sessionId?: string; isSuccess?: boolean; score?: number },
+) {
+  const res = await api.post(`/missions/${templateId}/complete`, body);
+  return res.data;
 }

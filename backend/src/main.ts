@@ -1,10 +1,16 @@
+// FILE: backend/src/main.ts
 import { NestFactory } from '@nestjs/core';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import { ValidationPipe } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
+import { join } from 'path';
+import fastifyStatic from '@fastify/static';
 
 import { AppModule } from './app.module';
 import { CanonicalErrorFilter } from './common/http/canonical-error.filter';
@@ -23,21 +29,43 @@ async function bootstrap() {
 
   // --- CORS ---
   const allowList =
-    process.env.CORS_ORIGINS?.split(',').map(s => s.trim()).filter(Boolean) ??
-    ['http://localhost:5173', 'http://localhost:19006'];
+    process.env.CORS_ORIGINS?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean) ?? [
+      'http://localhost:5173',
+      'http://localhost:19006',
+      'http://localhost:3000', // allow dashboard served by backend
+    ];
 
   await app.register(cors as any, {
-    origin: (origin: string | undefined, cb: (err: Error | null, allow: boolean) => void) => {
-      if (!origin) return cb(null, true);
+    origin: (
+      origin: string | undefined,
+      cb: (err: Error | null, allow: boolean) => void,
+    ) => {
+      // Note: for file:// pages and some tools, origin is literally "null"
+      if (!origin || origin === 'null') {
+        return cb(null, true);
+      }
       cb(null, allowList.includes(origin));
     },
     credentials: true,
-    allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-idempotency-key'],
+    allowedHeaders: [
+      'authorization',
+      'content-type',
+      'idempotency-key',
+      'x-idempotency-key',
+    ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   } as any);
 
   // --- Security headers ---
   await app.register(helmet as any, { contentSecurityPolicy: false } as any);
+
+  // --- Static files for dev dashboard ---
+  await app.register(fastifyStatic as any, {
+    root: join(__dirname, '..', 'public'),
+    prefix: '/', // so /dev-dashboard.html works
+  });
 
   // --- Correlation ID hook ---
   const fastify = app.getHttpAdapter().getInstance();

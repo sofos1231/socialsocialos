@@ -1,6 +1,5 @@
-// socialsocial/src/screens/PracticeScreen.tsx
+// FILE: socialsocial/src/screens/PracticeScreen.tsx
 // Chat-style mission screen calling POST /v1/practice/session
-
 import React, { useRef, useState } from 'react';
 import {
   Alert,
@@ -15,7 +14,6 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import {
   PracticeStackParamList,
   PracticeMessageInput,
@@ -30,6 +28,7 @@ async function readAccessToken(): Promise<string | null> {
   try {
     const direct = await AsyncStorage.getItem('accessToken');
     if (direct) return direct;
+
     const legacy = await AsyncStorage.getItem('token');
     return legacy;
   } catch (e) {
@@ -38,7 +37,7 @@ async function readAccessToken(): Promise<string | null> {
   }
 }
 
-export default function PracticeScreen({ navigation }: Props) {
+export default function PracticeScreen({ navigation, route }: Props) {
   const [messages, setMessages] = useState<PracticeMessageInput[]>([
     {
       role: 'AI',
@@ -48,9 +47,12 @@ export default function PracticeScreen({ navigation }: Props) {
   ]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [lastResponse, setLastResponse] = useState<PracticeSessionResponse | null>(null);
+  const [lastResponse, setLastResponse] =
+    useState<PracticeSessionResponse | null>(null);
 
   const scrollRef = useRef<ScrollView | null>(null);
+
+  const missionTitle = route?.params?.title ?? 'Text Mission';
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -64,7 +66,6 @@ export default function PracticeScreen({ navigation }: Props) {
 
     try {
       setSending(true);
-
       const token = await readAccessToken();
       if (!token) {
         Alert.alert('Not logged in', 'Please log in again to run a mission.');
@@ -78,8 +79,12 @@ export default function PracticeScreen({ navigation }: Props) {
         { role: 'USER', content: trimmed },
       ];
 
+      const topicBase =
+        route?.params?.title ||
+        'Free text mission – chat opener';
+
       const payload: PracticeSessionRequest = {
-        topic: 'Free text mission – chat opener',
+        topic: topicBase,
         messages: payloadMessages,
       };
 
@@ -128,7 +133,7 @@ export default function PracticeScreen({ navigation }: Props) {
         <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Text Mission</Text>
+        <Text style={styles.headerTitle}>{missionTitle}</Text>
       </View>
 
       <ScrollView
@@ -146,7 +151,9 @@ export default function PracticeScreen({ navigation }: Props) {
                 isUser ? styles.userBubble : styles.aiBubble,
               ]}
             >
-              <Text style={styles.bubbleRole}>{isUser ? 'You' : 'Coach'}</Text>
+              <Text style={styles.bubbleRole}>
+                {isUser ? 'You' : 'Coach'}
+              </Text>
               <Text style={styles.bubbleText}>{m.content}</Text>
             </View>
           );

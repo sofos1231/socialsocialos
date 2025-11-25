@@ -1,7 +1,6 @@
-// socialsocial/src/navigation/types.ts
+// FILE: socialsocial/src/navigation/types.ts
 
 // ===== Practice session & rewards =====
-
 export type MessageRarity = 'C' | 'B' | 'A' | 'S' | 'S+';
 
 export interface RewardMessage {
@@ -94,14 +93,11 @@ export interface StatsSummary {
   averageScore: number;
   averageMessageScore: number;
   lastSessionAt: string | null;
-
   latest: LatestStats;
   averages: AverageStats;
   insights: StatsInsights;
-
   socialScore: number | null;
   socialTier: string | null;
-
   recentSessions: RecentSessionSummary[];
 }
 
@@ -140,7 +136,6 @@ export interface PracticeSessionResponse {
   rewards: SessionRewards;
   dashboard: DashboardSummaryResponse;
   sessionId: string;
-
   // 6A: backend already returns these, keep them loosely typed for now
   ai?: any;
   aiCore?: any;
@@ -211,7 +206,16 @@ export type MainTabParamList = {
 
 export type PracticeStackParamList = {
   PracticeHub: undefined;
-  PracticeSession: undefined;
+  MissionRoad: undefined;
+  PracticeSession:
+    | {
+        missionId?: string;
+        title?: string;
+        // ✅ IMPORTANT: must match MissionRoadScreen navigate payload
+        templateId?: string;
+        personaId?: string;
+      }
+    | undefined;
   VoicePracticeSession: undefined;
   ABPracticeSession: undefined;
 };

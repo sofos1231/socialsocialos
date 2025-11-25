@@ -29,6 +29,9 @@ model User {
   gender         Gender               @default(UNKNOWN)
   attractedTo    AttractionPreference @default(UNKNOWN)
   preferencePath PreferencePath       @default(UNKNOWN_PATH)
+
+  // Mission progress
+  missionProgress MissionProgress[]
 }
 
 model IdempotencyKey {
@@ -57,31 +60,84 @@ model RefreshToken {
   @@index([userId, expiresAt, revoked])
 }
 
+/// --------------------------------------
+/// AI Personas – characters for missions
+/// --------------------------------------
 model AiPersona {
-  id          String            @id @default(cuid())
+  id          String                    @id @default(cuid())
+  code        String                    @unique           // e.g. "MAYA_FLIRTY"
   name        String
   shortLabel  String?
   description String?
   style       String?
   avatarUrl   String?
   difficulty  Int?
-  active      Boolean           @default(true)
-  createdAt   DateTime          @default(now())
-  sessions    PracticeSession[]
+  voicePreset String?                   // TTS preset key
+  active      Boolean                   @default(true)
+  createdAt   DateTime                  @default(now())
+
+  // Relations
+  sessions         PracticeSession[]
+  missionTemplates PracticeMissionTemplate[]
 }
 
+/// --------------------------------------
+/// Mission categories (Openers, Flirting…)
+/// --------------------------------------
+model MissionCategory {
+  id          String                   @id @default(cuid())
+  code        String                   @unique           // "OPENERS", "FLIRTING"
+  label       String                   // "Openers"
+  description String?
+
+  templates   PracticeMissionTemplate[]
+}
+
+/// --------------------------------------
+/// Mission template = "practice mission definition"
+/// --------------------------------------
 model PracticeMissionTemplate {
-  id           String            @id @default(cuid())
-  code         String            @unique
-  title        String
-  description  String?
-  category     String?
-  difficulty   Int?
-  timeLimitSec Int?
-  maxMessages  Int?
-  active       Boolean           @default(true)
-  createdAt    DateTime          @default(now())
-  sessions     PracticeSession[]
+  id          String            @id @default(cuid())
+  code        String            @unique          // "OPENERS_L1_M1"
+  title       String
+  description String?
+
+  // Category & goal
+  categoryId  String?
+  category    MissionCategory?  @relation(fields: [categoryId], references: [id])
+
+  goalType    MissionGoalType?
+
+  // Persona assigned to this mission (optional)
+  personaId   String?
+  persona     AiPersona?        @relation(fields: [personaId], references: [id])
+
+  // Difficulty & constraints
+  difficulty   MissionDifficulty @default(EASY)
+  timeLimitSec Int               @default(30)   // per user message
+  maxMessages  Int?                              // per mission
+  wordLimit    Int?                              // per user message
+
+  // Mission Road layout
+  laneIndex   Int               @default(0)     // column index
+  orderIndex  Int               @default(0)     // position inside lane
+
+  // Voice support
+  isVoiceSupported Boolean      @default(true)
+
+  // Rewards (base values, before multipliers)
+  baseXpReward    Int           @default(50)
+  baseCoinsReward Int           @default(10)
+  baseGemsReward  Int           @default(0)
+
+  aiContract   Json? 
+
+  active      Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+
+  // Relations
+  sessions   PracticeSession[]
+  progress   MissionProgress[]
 }
 
 model PowerUpType {
@@ -209,11 +265,39 @@ model PowerUpUsage {
   @@index([powerUpTypeId])
 }
 
+/// --------------------------------------
+/// Mission progress per user
+/// --------------------------------------
+model MissionProgress {
+  id         String                 @id @default(cuid())
+  userId     String
+  templateId String
+  status     MissionProgressStatus  @default(LOCKED)
+  bestScore  Int?
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+
+  user     User                     @relation(fields: [userId], references: [id])
+  template PracticeMissionTemplate  @relation(fields: [templateId], references: [id])
+
+  @@unique([userId, templateId])
+}
+
+/// --------------------------------------
+/// Enums
+/// --------------------------------------
+
 enum MissionStatus {
   IN_PROGRESS
   SUCCESS
   FAIL
   ABORTED
+}
+
+enum MissionProgressStatus {
+  LOCKED
+  UNLOCKED
+  COMPLETED
 }
 
 enum MessageRole {
@@ -257,4 +341,22 @@ enum PreferencePath {
   DUAL_PATH
   OTHER_PATH
   UNKNOWN_PATH
+}
+
+/// Mission difficulty levels
+enum MissionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+  ELITE
+}
+
+/// Mission goal / type
+enum MissionGoalType {
+  OPENING
+  FLIRTING
+  RECOVERY
+  BOUNDARY
+  LOGISTICS
+  SOCIAL
 }
