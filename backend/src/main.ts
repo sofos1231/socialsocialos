@@ -1,20 +1,11 @@
 // FILE: backend/src/main.ts
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import cors from '@fastify/cors';
-import helmet from '@fastify/helmet';
-import { ValidationPipe } from '@nestjs/common';
-import { v4 as uuidv4 } from 'uuid';
-import { join } from 'path';
-import fastifyStatic from '@fastify/static';
-
 import { AppModule } from './app.module';
-import { CanonicalErrorFilter } from './common/http/canonical-error.filter';
-import { setupHttpMetrics } from './observability/metrics';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -22,89 +13,33 @@ async function bootstrap() {
     new FastifyAdapter(),
   );
 
-  // ---- HARD-CODED GLOBAL PREFIX ----
-  const prefix = 'v1';
-  console.log('[BOOT] API_PREFIX =', prefix);
-  app.setGlobalPrefix(prefix);
+  const apiPrefix = process.env.API_PREFIX || 'v1';
+  app.setGlobalPrefix(apiPrefix);
 
-  // --- CORS ---
-  const allowList =
-    process.env.CORS_ORIGINS?.split(',')
-      .map((s) => s.trim())
-      .filter(Boolean) ?? [
-      'http://localhost:5173',
-      'http://localhost:19006',
-      'http://localhost:3000', // allow dashboard served by backend
-    ];
-
-  await app.register(cors as any, {
-    origin: (
-      origin: string | undefined,
-      cb: (err: Error | null, allow: boolean) => void,
-    ) => {
-      // Note: for file:// pages and some tools, origin is literally "null"
-      if (!origin || origin === 'null') {
-        return cb(null, true);
-      }
-      cb(null, allowList.includes(origin));
-    },
+  app.enableCors({
+    origin: true,
     credentials: true,
-    allowedHeaders: [
-      'authorization',
-      'content-type',
-      'idempotency-key',
-      'x-idempotency-key',
-    ],
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  } as any);
-
-  // --- Security headers ---
-  await app.register(helmet as any, { contentSecurityPolicy: false } as any);
-
-  // --- Static files for dev dashboard ---
-  await app.register(fastifyStatic as any, {
-    root: join(__dirname, '..', 'public'),
-    prefix: '/', // so /dev-dashboard.html works
   });
 
-  // --- Correlation ID hook ---
-  const fastify = app.getHttpAdapter().getInstance();
-  fastify.addHook('onRequest', async (req: any, reply: any) => {
-    const incomingId = (req.headers as any)['x-correlation-id'];
-    const correlationId =
-      typeof incomingId === 'string' && incomingId.length > 0
-        ? incomingId
-        : uuidv4();
-    (req as any).correlationId = correlationId;
-    reply.header('X-Correlation-Id', correlationId);
-  });
-
-  // --- Validation + canonical error shaping ---
+  // Keep the relaxed, conversion-enabled validation
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
       transform: true,
+      transformOptions: { enableImplicitConversion: true },
+      whitelist: true,
+      forbidNonWhitelisted: false,
     }),
   );
-  app.useGlobalFilters(new CanonicalErrorFilter());
 
-  // --- Swagger ---
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('SocialGym API')
-    .setDescription('The SocialGym API description')
-    .setVersion('1.0')
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup(`${prefix}/api`, app, document);
+  const port = Number(process.env.PORT || 3000);
+  const host = process.env.HOST || '0.0.0.0';
 
-  // --- Metrics ---
-  setupHttpMetrics(app, 'backend');
+  await app.listen(port, host);
 
-  // --- Start ---
-  const port = Number(process.env.PORT) || 3000;
-  await app.listen(port, '0.0.0.0');
-  console.log(`Application is running on: http://localhost:${port}/${prefix}`);
+  // eslint-disable-next-line no-console
+  console.log(
+    `Application is running on: http://localhost:${port}/${apiPrefix}`,
+  );
 }
 
 bootstrap();
