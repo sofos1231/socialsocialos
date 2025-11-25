@@ -5,7 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
-import { MissionDifficulty, MissionGoalType, Prisma } from '@prisma/client';
+import {
+  MissionDifficulty,
+  MissionGoalType,
+  Prisma,
+} from '@prisma/client';
 import { CreateMissionDto, UpdateMissionDto } from './dto/admin-mission.dto';
 import {
   CreateMissionCategoryDto,
@@ -19,15 +23,27 @@ function slugify(input: string) {
     .trim()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
-    .slice(0, 28);
+    .slice(0, 24);
 }
 
-function normalizeCode(raw: string) {
+function normalizeCode(raw: any) {
   const v = String(raw ?? '').trim();
   if (!v) return '';
-  // allow user to type "Flirting & Tension" and still get something safe-ish
   const safe = v.replace(/[^a-zA-Z0-9_]+/g, '_').replace(/_+/g, '_');
   return safe.toUpperCase().replace(/^_+|_+$/g, '').slice(0, 40);
+}
+
+function pickTitle(dto: { title?: any; name?: any }) {
+  const t = String(dto.title ?? '').trim();
+  if (t) return t;
+  const n = String(dto.name ?? '').trim();
+  if (n) return n;
+  return '';
+}
+
+function cleanStr(v: any) {
+  const s = String(v ?? '').trim();
+  return s.length ? s : undefined;
 }
 
 @Injectable()
@@ -57,40 +73,49 @@ export class MissionsAdminService {
     if (raw === undefined) return undefined;
     if (raw === null) return null;
 
-    const t = typeof raw;
-    if (t === 'string') {
+    if (typeof raw === 'string') {
+      const s = raw.trim();
+      if (!s.length) return undefined;
       try {
-        const parsed = JSON.parse(raw);
-        return this.sanitizeAiContract(parsed);
+        return JSON.parse(s);
       } catch {
-        throw new BadRequestException({
-          code: 'AI_CONTRACT_INVALID_JSON',
-          message: 'aiContract must be valid JSON',
-        });
+        // allow raw string as-is (dashboard might put "..." accidentally)
+        return { raw: s };
       }
     }
 
-    const size = JSON.stringify(raw).length;
-    if (size > 50_000) {
-      throw new BadRequestException({
-        code: 'AI_CONTRACT_TOO_LARGE',
-        message: 'aiContract too large (max 50KB)',
-      });
-    }
-
+    // object/array/number/bool are valid JSON values
     return raw;
   }
 
-  // ---------------------------------------------------------------------------
-  // META + ROAD
-  // ---------------------------------------------------------------------------
+  private async ensureUniqueTemplateCode(base: string) {
+    const normalized = normalizeCode(base);
+    if (!normalized) return '';
+
+    let code = normalized.slice(0, 40);
+    for (let i = 0; i < 50; i++) {
+      const exists = await this.prisma.practiceMissionTemplate.findUnique({
+        where: { code },
+        select: { id: true },
+      });
+      if (!exists) return code;
+
+      const suffix = `_${i + 2}`;
+      code = (normalized.slice(0, 40 - suffix.length) + suffix).slice(0, 40);
+    }
+
+    // if we somehow spammed 50 collisions, force a random tail
+    const tail = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return (normalized.slice(0, 35) + '_' + tail).slice(0, 40);
+  }
 
   async getMeta() {
-    const [categories, personas] = await this.prisma.$transaction([
-      this.prisma.missionCategory.findMany({ orderBy: { code: 'asc' } }),
+    const [categories, personas] = await Promise.all([
+      this.prisma.missionCategory.findMany({
+        orderBy: [{ label: 'asc' }],
+      }),
       this.prisma.aiPersona.findMany({
-        where: { active: true },
-        orderBy: { code: 'asc' },
+        orderBy: [{ name: 'asc' }],
       }),
     ]);
 
@@ -105,348 +130,323 @@ export class MissionsAdminService {
   }
 
   async getRoad() {
-    // lane ordering is visual; orderIndex is “progression”
-    return this.prisma.practiceMissionTemplate.findMany({
+    const templates = await this.prisma.practiceMissionTemplate.findMany({
       where: { active: true },
       include: { category: true, persona: true },
-      orderBy: [{ orderIndex: 'asc' }, { laneIndex: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ laneIndex: 'asc' }, { orderIndex: 'asc' }],
     });
+
+    return { templates };
   }
 
-  // ---------------------------------------------------------------------------
-  // MISSIONS – CRUD + REORDER
-  // ---------------------------------------------------------------------------
-
   async listMissions() {
-    return this.prisma.practiceMissionTemplate.findMany({
+    const templates = await this.prisma.practiceMissionTemplate.findMany({
       include: { category: true, persona: true },
-      orderBy: [{ orderIndex: 'asc' }, { laneIndex: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ createdAt: 'desc' }],
     });
+
+    return { templates };
   }
 
   async createMission(dto: CreateMissionDto) {
-    try {
-      const missionCategoryId = String(dto.missionCategoryId ?? '').trim();
-      if (!missionCategoryId) {
-        throw new BadRequestException({
-          code: 'CATEGORY_REQUIRED',
-          message: 'missionCategoryId is required',
-        });
-      }
-
-      const category = await this.prisma.missionCategory.findUnique({
-        where: { id: missionCategoryId },
-        select: { id: true, code: true },
+    const title = pickTitle(dto);
+    if (!title) {
+      throw new BadRequestException({
+        code: 'VALIDATION',
+        message: 'title is required (or provide "name")',
       });
-      if (!category) {
-        throw new BadRequestException({
-          code: 'CATEGORY_NOT_FOUND',
-          message: 'missionCategoryId not found',
-        });
-      }
+    }
 
-      const laneIndex = dto.laneIndex ?? 0;
-      const orderIndex = dto.orderIndex ?? 0;
+    const laneIndex = Number.isFinite(dto.laneIndex as any)
+      ? (dto.laneIndex as number)
+      : 0;
 
-      const aiContract = this.sanitizeAiContract(dto.aiContract);
+    // If dashboard didn't provide orderIndex, place at end of lane
+    let orderIndex =
+      Number.isFinite(dto.orderIndex as any) ? (dto.orderIndex as number) : undefined;
 
-      const requestedCode = dto.code ? normalizeCode(dto.code) : '';
-      const code =
-        requestedCode ||
-        `${category.code}_${laneIndex}_${orderIndex}_${slugify(dto.title)}_${Math.random()
-          .toString(36)
-          .slice(2, 7)}`;
+    if (orderIndex === undefined) {
+      const last = await this.prisma.practiceMissionTemplate.findFirst({
+        where: { laneIndex },
+        orderBy: { orderIndex: 'desc' },
+        select: { orderIndex: true },
+      });
+      orderIndex = (last?.orderIndex ?? -1) + 1;
+    }
 
-      try {
-        return await this.prisma.practiceMissionTemplate.create({
-          data: {
-            code,
-            title: dto.title,
-            description: dto.description ?? null,
+    const categoryId = cleanStr(dto.categoryId);
+    const categoryCode = normalizeCode(dto.categoryCode);
 
-            categoryId: missionCategoryId,
-            personaId:
-              dto.aiPersonaId && String(dto.aiPersonaId).trim().length
-                ? String(dto.aiPersonaId).trim()
-                : null,
+    const personaId = cleanStr(dto.personaId);
+    const personaCode = normalizeCode(dto.personaCode);
 
-            laneIndex,
-            orderIndex,
+    // Build a stable base code if dashboard omitted it
+    const preferredCode =
+      normalizeCode(dto.code) ||
+      normalizeCode(`${categoryCode || 'MISSION'}_${slugify(title)}`) ||
+      normalizeCode(`MISSION_${slugify(title)}`);
 
-            difficulty: dto.difficulty ?? MissionDifficulty.EASY,
-            goalType: dto.goalType ?? null,
+    const code = await this.ensureUniqueTemplateCode(preferredCode);
+    if (!code) {
+      throw new BadRequestException({
+        code: 'VALIDATION',
+        message: 'could not generate mission code',
+      });
+    }
 
-            timeLimitSec: dto.timeLimitSec ?? 30,
-            maxMessages: dto.maxMessages ?? null,
-            wordLimit: dto.wordLimit ?? null,
+    const aiContract = this.sanitizeAiContract(dto.aiContract);
 
-            isVoiceSupported: dto.isVoiceSupported ?? true,
+    const data: Prisma.PracticeMissionTemplateCreateInput = {
+      code,
+      title,
+      description: cleanStr(dto.description) ?? null,
 
-            baseXpReward: dto.rewardXp ?? 50,
-            baseCoinsReward: dto.rewardCoins ?? 10,
-            baseGemsReward: dto.rewardGems ?? 0,
+      laneIndex,
+      orderIndex,
 
-            aiContract: aiContract ?? null,
+      timeLimitSec: dto.timeLimitSec ?? 30,
+      maxMessages: dto.maxMessages ?? null,
+      wordLimit: dto.wordLimit ?? null,
 
-            active: dto.active ?? true,
-          } as any,
-        });
-      } catch (e: any) {
-        // Make creation idempotent by code to prevent "works once then 500"
-        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-          const exists = await this.prisma.practiceMissionTemplate.findUnique({ where: { code } });
-          if (exists) {
-            return await this.prisma.practiceMissionTemplate.update({
-              where: { id: exists.id },
-              data: {
-                title: dto.title ?? exists.title,
-                description: dto.description ?? exists.description,
-                categoryId: missionCategoryId,
-                personaId:
-                  dto.aiPersonaId && String(dto.aiPersonaId).trim().length
-                    ? String(dto.aiPersonaId).trim()
-                    : null,
-                laneIndex,
-                orderIndex,
-                difficulty: dto.difficulty ?? exists.difficulty,
-                goalType: dto.goalType ?? exists.goalType,
-                timeLimitSec: dto.timeLimitSec ?? exists.timeLimitSec,
-                maxMessages: dto.maxMessages ?? exists.maxMessages,
-                wordLimit: dto.wordLimit ?? exists.wordLimit,
-                isVoiceSupported: dto.isVoiceSupported ?? exists.isVoiceSupported,
-                baseXpReward: dto.rewardXp ?? exists.baseXpReward,
-                baseCoinsReward: dto.rewardCoins ?? exists.baseCoinsReward,
-                baseGemsReward: dto.rewardGems ?? exists.baseGemsReward,
-                aiContract: aiContract ?? exists.aiContract,
-                active: dto.active ?? exists.active,
-              } as any,
-            });
-          }
-        }
-        throw e;
-      }
-    } catch (e: any) {
+      isVoiceSupported: dto.isVoiceSupported ?? true,
+
+      baseXpReward: dto.baseXpReward ?? 50,
+      baseCoinsReward: dto.baseCoinsReward ?? 10,
+      baseGemsReward: dto.baseGemsReward ?? 0,
+
+      difficulty: dto.difficulty ?? MissionDifficulty.EASY,
+      goalType: dto.goalType ?? null,
+
+      active: dto.active ?? true,
+      aiContract: aiContract ?? null,
+
+      ...(categoryId
+        ? { category: { connect: { id: categoryId } } }
+        : categoryCode
+          ? { category: { connect: { code: categoryCode } } }
+          : {}),
+
+      ...(personaId
+        ? { persona: { connect: { id: personaId } } }
+        : personaCode
+          ? { persona: { connect: { code: personaCode } } }
+          : {}),
+    };
+
+    try {
+      const created = await this.prisma.practiceMissionTemplate.create({
+        data,
+        include: { category: true, persona: true },
+      });
+      return { ok: true, template: created };
+    } catch (e) {
       throw this.mapPrismaError(e);
     }
   }
 
   async updateMission(id: string, dto: UpdateMissionDto) {
+    const existing = await this.prisma.practiceMissionTemplate.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException({ code: 'NOT_FOUND', message: 'mission not found' });
+
+    const title = pickTitle(dto);
+    const categoryId = cleanStr(dto.categoryId);
+    const categoryCode = normalizeCode(dto.categoryCode);
+    const personaId = cleanStr(dto.personaId);
+    const personaCode = normalizeCode(dto.personaCode);
+
+    const aiContract = this.sanitizeAiContract(dto.aiContract);
+
+    const data: Prisma.PracticeMissionTemplateUpdateInput = {
+      ...(title ? { title } : {}),
+      ...(dto.description !== undefined ? { description: cleanStr(dto.description) ?? null } : {}),
+
+      ...(dto.laneIndex !== undefined ? { laneIndex: dto.laneIndex } : {}),
+      ...(dto.orderIndex !== undefined ? { orderIndex: dto.orderIndex } : {}),
+
+      ...(dto.timeLimitSec !== undefined ? { timeLimitSec: dto.timeLimitSec } : {}),
+      ...(dto.maxMessages !== undefined ? { maxMessages: dto.maxMessages ?? null } : {}),
+      ...(dto.wordLimit !== undefined ? { wordLimit: dto.wordLimit ?? null } : {}),
+
+      ...(dto.isVoiceSupported !== undefined ? { isVoiceSupported: dto.isVoiceSupported } : {}),
+
+      ...(dto.baseXpReward !== undefined ? { baseXpReward: dto.baseXpReward } : {}),
+      ...(dto.baseCoinsReward !== undefined ? { baseCoinsReward: dto.baseCoinsReward } : {}),
+      ...(dto.baseGemsReward !== undefined ? { baseGemsReward: dto.baseGemsReward } : {}),
+
+      ...(dto.difficulty !== undefined ? { difficulty: dto.difficulty } : {}),
+      ...(dto.goalType !== undefined ? { goalType: dto.goalType ?? null } : {}),
+
+      ...(dto.active !== undefined ? { active: dto.active } : {}),
+      ...(dto.aiContract !== undefined ? { aiContract: aiContract ?? null } : {}),
+
+      ...(dto.code ? { code: normalizeCode(dto.code) } : {}),
+    };
+
+    // Relations — allow switching by id/code
+    if (dto.categoryId !== undefined || dto.categoryCode !== undefined) {
+      (data as any).category = categoryId
+        ? { connect: { id: categoryId } }
+        : categoryCode
+          ? { connect: { code: categoryCode } }
+          : { disconnect: true };
+    }
+
+    if (dto.personaId !== undefined || dto.personaCode !== undefined) {
+      (data as any).persona = personaId
+        ? { connect: { id: personaId } }
+        : personaCode
+          ? { connect: { code: personaCode } }
+          : { disconnect: true };
+    }
+
     try {
-      const exists = await this.prisma.practiceMissionTemplate.findUnique({
+      const updated = await this.prisma.practiceMissionTemplate.update({
         where: { id },
+        data,
+        include: { category: true, persona: true },
       });
-      if (!exists) throw new NotFoundException('Mission not found');
-
-      const aiContract =
-        dto.aiContract !== undefined
-          ? this.sanitizeAiContract(dto.aiContract)
-          : undefined;
-
-      const nextCode =
-        dto.code !== undefined && dto.code !== null
-          ? normalizeCode(String(dto.code))
-          : undefined;
-
-      return await this.prisma.practiceMissionTemplate.update({
-        where: { id },
-        data: {
-          ...(nextCode !== undefined && { code: nextCode }),
-          ...(dto.title !== undefined && { title: dto.title }),
-          ...(dto.description !== undefined && {
-            description: dto.description ?? null,
-          }),
-          ...(dto.missionCategoryId !== undefined && {
-            categoryId: String(dto.missionCategoryId).trim(),
-          }),
-          ...(dto.aiPersonaId !== undefined && {
-            personaId:
-              dto.aiPersonaId && String(dto.aiPersonaId).trim().length
-                ? String(dto.aiPersonaId).trim()
-                : null,
-          }),
-          ...(dto.laneIndex !== undefined && { laneIndex: dto.laneIndex ?? 0 }),
-          ...(dto.orderIndex !== undefined && {
-            orderIndex: dto.orderIndex ?? 0,
-          }),
-          ...(dto.difficulty !== undefined && {
-            difficulty: dto.difficulty ?? MissionDifficulty.EASY,
-          }),
-          ...(dto.goalType !== undefined && { goalType: dto.goalType ?? null }),
-          ...(dto.timeLimitSec !== undefined && {
-            timeLimitSec: dto.timeLimitSec ?? 30,
-          }),
-          ...(dto.maxMessages !== undefined && {
-            maxMessages: dto.maxMessages ?? null,
-          }),
-          ...(dto.wordLimit !== undefined && { wordLimit: dto.wordLimit ?? null }),
-          ...(dto.isVoiceSupported !== undefined && {
-            isVoiceSupported: dto.isVoiceSupported ?? true,
-          }),
-          ...(dto.rewardXp !== undefined && { baseXpReward: dto.rewardXp ?? 50 }),
-          ...(dto.rewardCoins !== undefined && {
-            baseCoinsReward: dto.rewardCoins ?? 10,
-          }),
-          ...(dto.rewardGems !== undefined && {
-            baseGemsReward: dto.rewardGems ?? 0,
-          }),
-          ...(aiContract !== undefined && { aiContract: aiContract ?? null }),
-          ...(dto.active !== undefined && { active: dto.active ?? true }),
-        } as any,
-      });
-    } catch (e: any) {
+      return { ok: true, template: updated };
+    } catch (e) {
       throw this.mapPrismaError(e);
     }
   }
 
   async softDeleteMission(id: string) {
-    const exists = await this.prisma.practiceMissionTemplate.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-    if (!exists) throw new NotFoundException('Mission not found');
-
-    return this.prisma.practiceMissionTemplate.update({
-      where: { id },
-      data: { active: false },
-    });
+    try {
+      const updated = await this.prisma.practiceMissionTemplate.update({
+        where: { id },
+        data: { active: false },
+        select: { id: true, active: true },
+      });
+      return { ok: true, template: updated };
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+        throw new NotFoundException({ code: 'NOT_FOUND', message: 'mission not found' });
+      }
+      throw this.mapPrismaError(e);
+    }
   }
 
   async reorderMissions(dto: ReorderMissionsDto) {
-    try {
-      if (dto.items && dto.items.length > 0) {
+    if (dto.items?.length) {
+      try {
         await this.prisma.$transaction(
           dto.items.map((it) =>
             this.prisma.practiceMissionTemplate.update({
               where: { id: it.id },
               data: { laneIndex: it.laneIndex, orderIndex: it.orderIndex },
+              select: { id: true },
             }),
           ),
         );
-        return { ok: true, mode: 'items' };
+        return { ok: true };
+      } catch (e) {
+        throw this.mapPrismaError(e);
       }
-
-      if (!dto.orderedIds || dto.orderedIds.length === 0) {
-        throw new BadRequestException('orderedIds must not be empty');
-      }
-
-      await this.prisma.$transaction(
-        dto.orderedIds.map((id, index) =>
-          this.prisma.practiceMissionTemplate.update({
-            where: { id },
-            data: { orderIndex: index + 1 },
-          }),
-        ),
-      );
-
-      return { ok: true, mode: 'orderedIds' };
-    } catch (e: any) {
-      throw this.mapPrismaError(e);
     }
+
+    if (dto.orderedIds?.length) {
+      // simple mode: just re-number orderIndex in given order, laneIndex stays unchanged
+      try {
+        await this.prisma.$transaction(
+          dto.orderedIds.map((id, idx) =>
+            this.prisma.practiceMissionTemplate.update({
+              where: { id },
+              data: { orderIndex: idx },
+              select: { id: true },
+            }),
+          ),
+        );
+        return { ok: true };
+      } catch (e) {
+        throw this.mapPrismaError(e);
+      }
+    }
+
+    throw new BadRequestException({
+      code: 'VALIDATION',
+      message: 'Provide either items[] or orderedIds[]',
+    });
   }
 
-  // ---------------------------------------------------------------------------
-  // CATEGORIES – CRUD
-  // ---------------------------------------------------------------------------
+  // ---------- Categories (used by missions-admin.categories.controller) ----------
 
   async listCategories() {
-    return this.prisma.missionCategory.findMany({ orderBy: { code: 'asc' } });
+    const categories = await this.prisma.missionCategory.findMany({
+      orderBy: [{ label: 'asc' }],
+    });
+    return { categories };
   }
 
   async createCategory(dto: CreateMissionCategoryDto) {
-    try {
-      const label = (dto.label ?? dto.name ?? '').trim();
-      if (!label) {
-        throw new BadRequestException({
-          code: 'CATEGORY_LABEL_REQUIRED',
-          message: 'Category label/name is required',
-        });
-      }
-
-      const rawCode = dto.code ?? '';
-      const code = normalizeCode(rawCode);
-      if (!code) {
-        throw new BadRequestException({
-          code: 'CATEGORY_CODE_REQUIRED',
-          message: 'Category code is required',
-        });
-      }
-
-      const description =
-        (dto.description ?? dto.subtitle ?? '').trim() || null;
-
-      // ✅ Idempotent by code: create if missing, otherwise update
-      return await this.prisma.missionCategory.upsert({
-        where: { code },
-        create: { code, label, description },
-        update: { label, description },
+    const label = String(dto.label ?? dto.title ?? '').trim();
+    if (!label) {
+      throw new BadRequestException({
+        code: 'VALIDATION',
+        message: 'label is required (or provide "title")',
       });
-    } catch (e: any) {
+    }
+
+    const code =
+      normalizeCode(dto.code) || normalizeCode(slugify(label)) || normalizeCode(`CAT_${slugify(label)}`);
+
+    try {
+      const created = await this.prisma.missionCategory.create({
+        data: {
+          code,
+          label,
+          description: cleanStr(dto.description) ?? null,
+        },
+      });
+      return { ok: true, category: created };
+    } catch (e) {
       throw this.mapPrismaError(e);
     }
   }
 
   async updateCategory(id: string, dto: UpdateMissionCategoryDto) {
+    const label = String(dto.label ?? dto.title ?? '').trim();
+    const data: Prisma.MissionCategoryUpdateInput = {
+      ...(dto.code ? { code: normalizeCode(dto.code) } : {}),
+      ...(label ? { label } : {}),
+      ...(dto.description !== undefined ? { description: cleanStr(dto.description) ?? null } : {}),
+    };
+
     try {
-      const exists = await this.prisma.missionCategory.findUnique({
+      const updated = await this.prisma.missionCategory.update({
         where: { id },
+        data,
       });
-      if (!exists) throw new NotFoundException('Category not found');
-
-      const nextLabel = (dto.label ?? dto.name ?? exists.label)?.trim();
-      if (!nextLabel) {
-        throw new BadRequestException({
-          code: 'CATEGORY_LABEL_REQUIRED',
-          message: 'Category label/name is required',
-        });
+      return { ok: true, category: updated };
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+        throw new NotFoundException({ code: 'NOT_FOUND', message: 'category not found' });
       }
-
-      const nextDescriptionRaw = dto.description ?? dto.subtitle;
-      const nextDescription =
-        nextDescriptionRaw === undefined
-          ? exists.description
-          : (nextDescriptionRaw ?? '').trim() || null;
-
-      const nextCode =
-        dto.code === undefined ? undefined : normalizeCode(dto.code);
-
-      if (nextCode !== undefined && !nextCode) {
-        throw new BadRequestException({
-          code: 'CATEGORY_CODE_INVALID',
-          message: 'Category code is invalid',
-        });
-      }
-
-      return await this.prisma.missionCategory.update({
-        where: { id },
-        data: {
-          ...(nextCode !== undefined && { code: nextCode }),
-          label: nextLabel,
-          description: nextDescription,
-        },
-      });
-    } catch (e: any) {
       throw this.mapPrismaError(e);
     }
   }
 
   async deleteCategory(id: string) {
     try {
-      const exists = await this.prisma.missionCategory.findUnique({
+      const deleted = await this.prisma.missionCategory.delete({
         where: { id },
+        select: { id: true },
       });
-      if (!exists) throw new NotFoundException('Category not found');
-
-      await this.prisma.missionCategory.delete({ where: { id } });
-      return { ok: true };
-    } catch (e: any) {
+      return { ok: true, category: deleted };
+    } catch (e) {
       throw this.mapPrismaError(e);
     }
   }
 
-  async listAdminPersonas() {
-    return this.prisma.aiPersona.findMany({
-      where: { active: true },
-      orderBy: { code: 'asc' },
+  // ---------- Personas (used by missions-admin.personas.controller) ----------
+
+  async listPersonas() {
+    const personas = await this.prisma.aiPersona.findMany({
+      orderBy: [{ name: 'asc' }],
     });
+    return { personas };
   }
 }

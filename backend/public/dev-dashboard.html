@@ -1028,19 +1028,20 @@ cat > backend/public/dev-dashboard.html <<'EOF'
         const title = ui.missionTitleInput.value.trim();
         const description = ui.missionDescInput.value.trim();
 
-        const missionCategoryId = ui.missionCategorySelect.value;
-        const aiPersonaId = ui.missionPersonaSelect.value;
+        const categoryId = ui.missionCategorySelect.value || undefined;
+        const personaId = ui.missionPersonaSelect.value || undefined;
 
         return {
           code,
           title,
           description: description || null,
 
-          missionCategoryId,
-          aiPersonaId,
+          // names expected by backend DTO / service
+          categoryId,
+          personaId,
 
           laneIndex: readNumber(ui.missionLaneInput.value),
-          orderIndex: readNumber(ui.missionOrderInput.value),
+          orderIndex: readNumber(ui.missionOrderInput.value, { allowNull: true }),
 
           difficulty: ui.missionDifficultySelect.value,
           goalType: ui.missionGoalTypeSelect.value,
@@ -1049,24 +1050,45 @@ cat > backend/public/dev-dashboard.html <<'EOF'
           maxMessages: readNumber(ui.missionMaxMessagesInput.value, { allowNull: true }),
           wordLimit: readNumber(ui.missionWordLimitInput.value, { allowNull: true }),
 
-          rewardXp: readNumber(ui.missionXpInput.value),
-          rewardCoins: readNumber(ui.missionCoinsInput.value, { allowNull: true }),
-          rewardGems: readNumber(ui.missionGemsInput.value, { allowNull: true }),
+          baseXpReward: readNumber(ui.missionXpInput.value),
+          baseCoinsReward: readNumber(ui.missionCoinsInput.value, { allowNull: true }),
+          baseGemsReward: readNumber(ui.missionGemsInput.value, { allowNull: true }),
 
           active: ui.missionActiveSelect.value === 'true',
         };
       }
 
       async function loadAll() {
-        const [cats, missions, personas] = await Promise.all([
+        const [catsRaw, missionsRaw, personasRaw] = await Promise.all([
           apiFetch(API_ROUTES.listCategories),
           apiFetch(API_ROUTES.listMissions),
           apiFetch(API_ROUTES.listPersonas),
         ]);
 
-        state.categories = Array.isArray(cats) ? cats : [];
-        state.missions = Array.isArray(missions) ? missions : [];
-        state.personas = Array.isArray(personas) ? personas : [];
+        // Backend returns envelopes: { categories }, { templates }, { personas }
+        const cats = Array.isArray(catsRaw)
+          ? catsRaw
+          : Array.isArray(catsRaw?.categories)
+            ? catsRaw.categories
+            : [];
+
+        const missions = Array.isArray(missionsRaw)
+          ? missionsRaw
+          : Array.isArray(missionsRaw?.templates)
+            ? missionsRaw.templates
+            : Array.isArray(missionsRaw?.missions)
+              ? missionsRaw.missions
+              : [];
+
+        const personas = Array.isArray(personasRaw)
+          ? personasRaw
+          : Array.isArray(personasRaw?.personas)
+            ? personasRaw.personas
+            : [];
+
+        state.categories = cats;
+        state.missions = missions;
+        state.personas = personas;
       }
 
       async function connect() {
@@ -1153,6 +1175,7 @@ cat > backend/public/dev-dashboard.html <<'EOF'
           }
 
           await loadAll();
+          resetCategoryForm();
           renderCategories();
           setBadge('ok', 'Category saved');
           showMessage('success', 'Category saved successfully.');
@@ -1198,11 +1221,11 @@ cat > backend/public/dev-dashboard.html <<'EOF'
           showMessage('error', 'Mission requires: code + title');
           return;
         }
-        if (!payload.missionCategoryId) {
+        if (!payload.categoryId) {
           showMessage('error', 'Mission requires: category');
           return;
         }
-        if (!payload.aiPersonaId) {
+        if (!payload.personaId) {
           showMessage('error', 'Mission requires: persona');
           return;
         }
