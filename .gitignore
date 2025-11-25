@@ -54,3 +54,7 @@ socialsocial/data/practice/
 !backend/prisma/migrations/**
 backend/prisma/dev.db
 backend/NUL
+
+# Build artifacts
+backend/*.tsbuildinfo
+backend/tsconfig*.tsbuildinfo
