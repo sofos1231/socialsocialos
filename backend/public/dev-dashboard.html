@@ -1875,8 +1875,10 @@ const api = {
   get: (path) => apiRequest('GET', path),
   post: (path, body) => apiRequest('POST', path, body),
   put: (path, body) => apiRequest('PUT', path, body),
+  patch: (path, body) => apiRequest('PATCH', path, body),
   delete: (path) => apiRequest('DELETE', path),
 };
+
 
 // ---------- rendering helpers ----------
 function clearChildren(node) {
@@ -2131,6 +2133,24 @@ function refreshMissionCategorySelect() {
   });
   if (prev) ui.missionCategorySelect.value = prev;
 }
+
+function escapeHtml(value) {
+  const s = String(value ?? '');
+  return s.replace(/[&<>"'`=\/]/g, (ch) => {
+    switch (ch) {
+      case '&': return '&amp;';
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '"': return '&quot;';
+      case "'": return '&#39;';
+      case '`': return '&#96;';
+      case '=': return '&#61;';
+      case '/': return '&#47;';
+      default: return ch;
+    }
+  });
+}
+
 
 function refreshMissionPersonaSelect() {
   const prev = ui.missionPersonaSelect.value;
