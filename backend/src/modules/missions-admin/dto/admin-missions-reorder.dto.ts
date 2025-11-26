@@ -33,6 +33,7 @@ export class ReorderMissionItemDto {
 }
 
 export class ReorderMissionsDto {
+  // ✅ canonical
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
@@ -44,4 +45,35 @@ export class ReorderMissionsDto {
   @ValidateNested({ each: true })
   @Type(() => ReorderMissionItemDto)
   items?: ReorderMissionItemDto[];
+
+  // ✅ aliases (to survive ValidationPipe whitelist)
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  orderedIDs?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  ids?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ReorderMissionItemDto)
+  missions?: ReorderMissionItemDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ReorderMissionItemDto)
+  templates?: ReorderMissionItemDto[];
+
+  // Also allow dashboard to send lanes[] and we’ll flatten in service.
+  // Keep as any[] so whitelist doesn’t strip it, and we can parse safely.
+  @IsOptional()
+  @IsArray()
+  lanes?: any[];
 }

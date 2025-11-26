@@ -5,11 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
-import {
-  MissionDifficulty,
-  MissionGoalType,
-  Prisma,
-} from '@prisma/client';
+import { MissionDifficulty, MissionGoalType, Prisma } from '@prisma/client';
 import { CreateMissionDto, UpdateMissionDto } from './dto/admin-mission.dto';
 import {
   CreateMissionCategoryDto,
@@ -46,6 +42,11 @@ function cleanStr(v: any) {
   return s.length ? s : undefined;
 }
 
+function safeInt(v: any, fallback: number) {
+  const n = typeof v === 'number' ? v : Number(String(v));
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+
 @Injectable()
 export class MissionsAdminService {
   constructor(private readonly prisma: PrismaService) {}
@@ -79,12 +80,10 @@ export class MissionsAdminService {
       try {
         return JSON.parse(s);
       } catch {
-        // allow raw string as-is (dashboard might put "..." accidentally)
         return { raw: s };
       }
     }
 
-    // object/array/number/bool are valid JSON values
     return raw;
   }
 
@@ -104,22 +103,18 @@ export class MissionsAdminService {
       code = (normalized.slice(0, 40 - suffix.length) + suffix).slice(0, 40);
     }
 
-    // if we somehow spammed 50 collisions, force a random tail
     const tail = Math.random().toString(36).slice(2, 6).toUpperCase();
     return (normalized.slice(0, 35) + '_' + tail).slice(0, 40);
   }
 
   async getMeta() {
     const [categories, personas] = await Promise.all([
-      this.prisma.missionCategory.findMany({
-        orderBy: [{ label: 'asc' }],
-      }),
-      this.prisma.aiPersona.findMany({
-        orderBy: [{ name: 'asc' }],
-      }),
+      this.prisma.missionCategory.findMany({ orderBy: [{ label: 'asc' }] }),
+      this.prisma.aiPersona.findMany({ orderBy: [{ name: 'asc' }] }),
     ]);
 
     return {
+      ok: true,
       categories,
       personas,
       enums: {
@@ -129,6 +124,8 @@ export class MissionsAdminService {
     };
   }
 
+  // -------- ADMIN (dashboard) --------
+
   async getRoad() {
     const templates = await this.prisma.practiceMissionTemplate.findMany({
       where: { active: true },
@@ -136,7 +133,39 @@ export class MissionsAdminService {
       orderBy: [{ laneIndex: 'asc' }, { orderIndex: 'asc' }],
     });
 
-    return { templates };
+    const normalized = templates
+      .map((t) => ({
+        ...t,
+        laneIndex: safeInt((t as any).laneIndex, 0),
+        orderIndex: safeInt((t as any).orderIndex, 0),
+      }))
+      .sort((a, b) => a.laneIndex - b.laneIndex || a.orderIndex - b.orderIndex);
+
+    return {
+      ok: true,
+      templates: normalized,
+      missions: normalized, // compat
+      items: normalized, // compat
+      count: normalized.length,
+    };
+  }
+
+  /**
+   * ✅ New: flat array list for dashboards
+   * This is what GET /v1/admin/missions will return (controller uses this).
+   */
+  async listMissionsFlat() {
+    const templates = await this.prisma.practiceMissionTemplate.findMany({
+      include: { category: true, persona: true },
+      // Better for “road ordering” UIs than createdAt:
+      orderBy: [{ laneIndex: 'asc' }, { orderIndex: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    return templates.map((t) => ({
+      ...t,
+      laneIndex: safeInt((t as any).laneIndex, 0),
+      orderIndex: safeInt((t as any).orderIndex, 0),
+    }));
   }
 
   async listMissions() {
@@ -145,8 +174,130 @@ export class MissionsAdminService {
       orderBy: [{ createdAt: 'desc' }],
     });
 
-    return { templates };
+    return {
+      ok: true,
+      templates,
+      missions: templates,
+      items: templates,
+      count: templates.length,
+    };
   }
+
+  // -------- PUBLIC (mobile app) --------
+  // (unchanged)
+  async getPublicRoad() {
+    const templates = await this.prisma.practiceMissionTemplate.findMany({
+      where: { active: true },
+      include: { category: true, persona: true },
+      orderBy: [{ laneIndex: 'asc' }, { orderIndex: 'asc' }],
+    });
+
+    const normalized = templates
+      .map((t) => ({
+        ...t,
+        laneIndex: safeInt((t as any).laneIndex, 0),
+        orderIndex: safeInt((t as any).orderIndex, 0),
+      }))
+      .sort((a, b) => a.laneIndex - b.laneIndex || a.orderIndex - b.orderIndex);
+
+    const firstId = normalized[0]?.id;
+
+    const byLane = new Map<number, any[]>();
+    for (const t of normalized) {
+      const lane = t.laneIndex ?? 0;
+      if (!byLane.has(lane)) byLane.set(lane, []);
+      byLane.get(lane)!.push(t);
+    }
+
+    const lanes = Array.from(byLane.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([laneIndex, laneTemplates]) => {
+        const missions = laneTemplates
+          .sort((a, b) => a.orderIndex - b.orderIndex)
+          .map((t) => {
+            const isUnlocked = t.id === firstId;
+            const isCompleted = false;
+
+            const visualState: 'completed' | 'current' | 'locked' =
+              isCompleted ? 'completed' : isUnlocked ? 'current' : 'locked';
+
+            return {
+              id: t.id,
+              code: t.code,
+              title: t.title,
+              description: t.description ?? null,
+
+              laneIndex: t.laneIndex,
+              orderIndex: t.orderIndex,
+
+              difficulty: t.difficulty,
+              goalType: t.goalType ?? null,
+
+              timeLimitSec: t.timeLimitSec,
+              maxMessages: t.maxMessages ?? null,
+              wordLimit: t.wordLimit ?? null,
+              isVoiceSupported: t.isVoiceSupported,
+
+              rewards: {
+                xp: t.baseXpReward,
+                coins: t.baseCoinsReward,
+                gems: t.baseGemsReward,
+              },
+
+              category: t.category
+                ? {
+                    id: t.category.id,
+                    code: t.category.code,
+                    label: t.category.label,
+                    description: t.category.description ?? null,
+                  }
+                : null,
+
+              persona: t.persona
+                ? {
+                    id: t.persona.id,
+                    code: t.persona.code,
+                    name: t.persona.name,
+                    shortLabel: t.persona.shortLabel ?? null,
+                    description: t.persona.description ?? null,
+                    style: t.persona.style ?? null,
+                    avatarUrl: t.persona.avatarUrl ?? null,
+                    difficulty: t.persona.difficulty ?? null,
+                  }
+                : null,
+
+              aiContract: (t as any).aiContract ?? null,
+
+              isCompleted,
+              isUnlocked,
+              visualState,
+              bestScore: null,
+            };
+          });
+
+        return {
+          laneIndex,
+          title: `Lane ${laneIndex + 1}`,
+          missions,
+        };
+      });
+
+    const totalMissions = normalized.length;
+    const unlockedCount = totalMissions > 0 ? 1 : 0;
+
+    return {
+      ok: true,
+      lanes,
+      summary: {
+        totalMissions,
+        unlockedCount,
+        completedCount: 0,
+        completionPercent: 0,
+      },
+    };
+  }
+
+  // -------- create/update/delete/reorder (unchanged) --------
 
   async createMission(dto: CreateMissionDto) {
     const title = pickTitle(dto);
@@ -157,11 +308,8 @@ export class MissionsAdminService {
       });
     }
 
-    const laneIndex = Number.isFinite(dto.laneIndex as any)
-      ? (dto.laneIndex as number)
-      : 0;
+    const laneIndex = Number.isFinite(dto.laneIndex as any) ? (dto.laneIndex as number) : 0;
 
-    // If dashboard didn't provide orderIndex, place at end of lane
     let orderIndex =
       Number.isFinite(dto.orderIndex as any) ? (dto.orderIndex as number) : undefined;
 
@@ -180,7 +328,6 @@ export class MissionsAdminService {
     const personaId = cleanStr(dto.personaId);
     const personaCode = normalizeCode(dto.personaCode);
 
-    // Build a stable base code if dashboard omitted it
     const preferredCode =
       normalizeCode(dto.code) ||
       normalizeCode(`${categoryCode || 'MISSION'}_${slugify(title)}`) ||
@@ -249,7 +396,9 @@ export class MissionsAdminService {
       where: { id },
       select: { id: true },
     });
-    if (!existing) throw new NotFoundException({ code: 'NOT_FOUND', message: 'mission not found' });
+    if (!existing) {
+      throw new NotFoundException({ code: 'NOT_FOUND', message: 'mission not found' });
+    }
 
     const title = pickTitle(dto);
     const categoryId = cleanStr(dto.categoryId);
@@ -261,7 +410,9 @@ export class MissionsAdminService {
 
     const data: Prisma.PracticeMissionTemplateUpdateInput = {
       ...(title ? { title } : {}),
-      ...(dto.description !== undefined ? { description: cleanStr(dto.description) ?? null } : {}),
+      ...(dto.description !== undefined
+        ? { description: cleanStr(dto.description) ?? null }
+        : {}),
 
       ...(dto.laneIndex !== undefined ? { laneIndex: dto.laneIndex } : {}),
       ...(dto.orderIndex !== undefined ? { orderIndex: dto.orderIndex } : {}),
@@ -270,7 +421,9 @@ export class MissionsAdminService {
       ...(dto.maxMessages !== undefined ? { maxMessages: dto.maxMessages ?? null } : {}),
       ...(dto.wordLimit !== undefined ? { wordLimit: dto.wordLimit ?? null } : {}),
 
-      ...(dto.isVoiceSupported !== undefined ? { isVoiceSupported: dto.isVoiceSupported } : {}),
+      ...(dto.isVoiceSupported !== undefined
+        ? { isVoiceSupported: dto.isVoiceSupported }
+        : {}),
 
       ...(dto.baseXpReward !== undefined ? { baseXpReward: dto.baseXpReward } : {}),
       ...(dto.baseCoinsReward !== undefined ? { baseCoinsReward: dto.baseCoinsReward } : {}),
@@ -285,7 +438,6 @@ export class MissionsAdminService {
       ...(dto.code ? { code: normalizeCode(dto.code) } : {}),
     };
 
-    // Relations — allow switching by id/code
     if (dto.categoryId !== undefined || dto.categoryCode !== undefined) {
       (data as any).category = categoryId
         ? { connect: { id: categoryId } }
@@ -331,10 +483,28 @@ export class MissionsAdminService {
   }
 
   async reorderMissions(dto: ReorderMissionsDto) {
-    if (dto.items?.length) {
+    const effectiveItems =
+      dto.items?.length
+        ? dto.items
+        : (dto as any).missions?.length
+          ? (dto as any).missions
+          : (dto as any).templates?.length
+            ? (dto as any).templates
+            : undefined;
+
+    const effectiveOrderedIds =
+      dto.orderedIds?.length
+        ? dto.orderedIds
+        : (dto as any).orderedIDs?.length
+          ? (dto as any).orderedIDs
+          : (dto as any).ids?.length
+            ? (dto as any).ids
+            : undefined;
+
+    if (effectiveItems?.length) {
       try {
         await this.prisma.$transaction(
-          dto.items.map((it) =>
+          effectiveItems.map((it: any) =>
             this.prisma.practiceMissionTemplate.update({
               where: { id: it.id },
               data: { laneIndex: it.laneIndex, orderIndex: it.orderIndex },
@@ -348,11 +518,10 @@ export class MissionsAdminService {
       }
     }
 
-    if (dto.orderedIds?.length) {
-      // simple mode: just re-number orderIndex in given order, laneIndex stays unchanged
+    if (effectiveOrderedIds?.length) {
       try {
         await this.prisma.$transaction(
-          dto.orderedIds.map((id, idx) =>
+          effectiveOrderedIds.map((id: string, idx: number) =>
             this.prisma.practiceMissionTemplate.update({
               where: { id },
               data: { orderIndex: idx },
@@ -368,17 +537,17 @@ export class MissionsAdminService {
 
     throw new BadRequestException({
       code: 'VALIDATION',
-      message: 'Provide either items[] or orderedIds[]',
+      message:
+        'Provide either items[] or orderedIds[] (aliases accepted: missions/templates/ids/orderedIDs)',
     });
   }
 
-  // ---------- Categories (used by missions-admin.categories.controller) ----------
-
+  // ---------- Categories ----------
   async listCategories() {
     const categories = await this.prisma.missionCategory.findMany({
       orderBy: [{ label: 'asc' }],
     });
-    return { categories };
+    return { ok: true, categories };
   }
 
   async createCategory(dto: CreateMissionCategoryDto) {
@@ -391,7 +560,9 @@ export class MissionsAdminService {
     }
 
     const code =
-      normalizeCode(dto.code) || normalizeCode(slugify(label)) || normalizeCode(`CAT_${slugify(label)}`);
+      normalizeCode(dto.code) ||
+      normalizeCode(slugify(label)) ||
+      normalizeCode(`CAT_${slugify(label)}`);
 
     try {
       const created = await this.prisma.missionCategory.create({
@@ -412,14 +583,13 @@ export class MissionsAdminService {
     const data: Prisma.MissionCategoryUpdateInput = {
       ...(dto.code ? { code: normalizeCode(dto.code) } : {}),
       ...(label ? { label } : {}),
-      ...(dto.description !== undefined ? { description: cleanStr(dto.description) ?? null } : {}),
+      ...(dto.description !== undefined
+        ? { description: cleanStr(dto.description) ?? null }
+        : {}),
     };
 
     try {
-      const updated = await this.prisma.missionCategory.update({
-        where: { id },
-        data,
-      });
+      const updated = await this.prisma.missionCategory.update({ where: { id }, data });
       return { ok: true, category: updated };
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
@@ -441,12 +611,11 @@ export class MissionsAdminService {
     }
   }
 
-  // ---------- Personas (used by missions-admin.personas.controller) ----------
-
+  // ---------- Personas ----------
   async listPersonas() {
     const personas = await this.prisma.aiPersona.findMany({
       orderBy: [{ name: 'asc' }],
     });
-    return { personas };
+    return { ok: true, personas };
   }
 }

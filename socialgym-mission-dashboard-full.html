@@ -710,164 +710,6 @@
       .ai-collapsed .ai-section-body {
         display: none;
       }
-    
-      /* ===========================
-         Mission Road UX Upgrade
-         =========================== */
-      .missions-list {
-        padding-right: 10px;
-      }
-
-      .lane {
-        border: 1px solid rgba(148, 163, 184, 0.18);
-        border-radius: 16px;
-        padding: 10px;
-        margin: 10px 0 14px 0;
-        background: linear-gradient(180deg, rgba(2,6,23,0.92), rgba(3,7,18,0.92));
-      }
-
-      .lane-titlebar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 8px 8px 10px 8px;
-        position: sticky;
-        top: 0;
-        z-index: 2;
-        background: linear-gradient(180deg, rgba(2,6,23,0.97), rgba(2,6,23,0.92));
-        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-        border-radius: 12px;
-        margin-bottom: 10px;
-      }
-
-      .lane-titlebar .lane-name {
-        font-weight: 900;
-        letter-spacing: 0.02em;
-      }
-      .lane-titlebar .lane-count {
-        font-size: 12px;
-        color: rgba(226, 232, 240, 0.7);
-      }
-
-      .cat-section {
-        border: 1px solid rgba(148, 163, 184, 0.14);
-        border-radius: 14px;
-        margin: 10px 0;
-        overflow: hidden;
-        background: rgba(2, 6, 23, 0.55);
-      }
-
-      .cat-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 10px 10px;
-        background: rgba(15, 23, 42, 0.6);
-        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-        cursor: grab;
-        user-select: none;
-      }
-      .cat-header:active { cursor: grabbing; }
-
-      .cat-left {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        min-width: 0;
-      }
-
-      .cat-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        background: rgba(34, 197, 94, 0.10);
-        border: 1px solid rgba(34, 197, 94, 0.22);
-        color: rgba(240, 253, 244, 0.95);
-        font-weight: 800;
-        font-size: 12px;
-        white-space: nowrap;
-      }
-
-      .cat-sub {
-        font-size: 12px;
-        color: rgba(226, 232, 240, 0.7);
-        white-space: nowrap;
-      }
-
-      .cat-handle {
-        opacity: 0.8;
-        font-weight: 900;
-        letter-spacing: 0.06em;
-        color: rgba(226, 232, 240, 0.7);
-      }
-
-      .cat-body {
-        padding: 8px;
-      }
-
-      .mission-row {
-        cursor: grab;
-      }
-      .mission-row:active { cursor: grabbing; }
-
-      .mission-row .mission-controls {
-        gap: 6px;
-      }
-
-      .btn-icon-danger {
-        background: rgba(239, 68, 68, 0.10);
-        border: 1px solid rgba(239, 68, 68, 0.24);
-        color: rgba(254, 226, 226, 0.95);
-      }
-      .btn-icon-danger:hover {
-        background: rgba(239, 68, 68, 0.18);
-        border-color: rgba(239, 68, 68, 0.35);
-      }
-
-      .drop-placeholder {
-        height: 56px;
-        border-radius: 14px;
-        border: 1px dashed rgba(34, 197, 94, 0.55);
-        background: rgba(34, 197, 94, 0.08);
-        margin: 8px 0;
-      }
-
-      .drop-placeholder.compact {
-        height: 12px;
-        margin: 8px 2px;
-        border-radius: 999px;
-      }
-
-      .drag-ghost {
-        position: fixed;
-        z-index: 9999;
-        pointer-events: none;
-        opacity: 0.92;
-        transform: rotate(-0.5deg);
-        filter: drop-shadow(0 18px 32px rgba(0,0,0,0.6));
-        width: min(860px, calc(100vw - 48px));
-      }
-
-      .dragging-source {
-        opacity: 0.25;
-      }
-
-      .hint-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
-        border-radius: 999px;
-        background: rgba(148, 163, 184, 0.10);
-        border: 1px solid rgba(148, 163, 184, 0.18);
-        color: rgba(226, 232, 240, 0.76);
-        font-size: 12px;
-      }
-
     </style>
   </head>
 
@@ -1605,12 +1447,10 @@ const API_ROUTES = {
   deleteMission: (id) => '/v1/admin/missions/' + id,
   reorderMissions: '/v1/admin/missions/reorder',
 
-  road: '/v1/admin/missions/road',
-  listPersonas: '/v1/admin/missions/personas',
-createPersona: '/v1/admin/missions/personas',
-updatePersona: (id) => '/v1/admin/missions/personas/' + id,
-deletePersona: (id) => '/v1/admin/missions/personas/' + id,
-
+  listPersonas: '/v1/admin/personas',
+  createPersona: '/v1/admin/personas',
+  updatePersona: (id) => '/v1/admin/personas/' + id,
+  deletePersona: (id) => '/v1/admin/personas/' + id,
 
   meta: '/v1/admin/missions/meta',
 };
@@ -1628,9 +1468,6 @@ const state = {
   categories: [],
   missions: [],
   personas: [],
-
-  // snapshot for detecting category changes while dragging
-  originalMissionCategoryById: {},
 
   selectedCategoryId: null,
   selectedMissionId: null,
@@ -2005,9 +1842,7 @@ function newCategory() {
 // ---------- personas ----------
 function renderPersonas() {
   clearChildren(ui.personaList);
-  const personas = [...state.personas]
-    .filter((p) => p && p.active !== false)
-    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const personas = [...state.personas].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   personas.forEach((p) => {
     const div = document.createElement('div');
     div.className = 'persona-pill' + (p.id === state.selectedPersonaId ? ' active' : '');
@@ -2149,229 +1984,16 @@ function refreshMissionPersonaSelect() {
   if (prev) ui.missionPersonaSelect.value = prev;
 }
 
-
-function isReorderEnabled() {
-  return !(state.missionSearch || '').trim().length;
-}
-
-function markOrderingDirty(message) {
-  state.orderingDirty = true;
-  ui.orderingBanner.classList.add('show');
-  if (message) {
-    ui.orderingBanner.innerHTML =
-      `${escapeHtml(message)} <span style="opacity:.9">Press <b>Save ordering</b> to persist.</span>`;
-  }
-}
-
-function updateMissionsSummary() {
-  const missions = Array.isArray(state.missions) ? state.missions : [];
-  ui.missionsSummary.textContent = missions.length
-    ? `${missions.length} missions loaded.`
-    : 'No missions loaded.';
-}
-
-function buildLaneDom(laneIndex, laneMissions) {
-  const laneWrap = document.createElement('div');
-  laneWrap.className = 'lane';
-  laneWrap.dataset.lane = String(laneIndex);
-
-  const top = document.createElement('div');
-  top.className = 'lane-titlebar';
-
-  const left = document.createElement('div');
-  left.style.display = 'flex';
-  left.style.alignItems = 'center';
-  left.style.gap = '10px';
-
-  const name = document.createElement('div');
-  name.className = 'lane-name';
-  name.textContent = `Lane ${laneIndex}`;
-
-  const count = document.createElement('div');
-  count.className = 'lane-count';
-  count.textContent = `${laneMissions.length} missions`;
-
-  left.appendChild(name);
-  left.appendChild(count);
-
-  const hint = document.createElement('div');
-  hint.className = 'hint-chip';
-  hint.innerHTML = `<span style="font-weight:900">Tip:</span> drag a mission by grabbing it anywhere. Drag category headers too.`;
-
-  top.appendChild(left);
-  top.appendChild(hint);
-
-  laneWrap.appendChild(top);
-
-  // Group by category in this lane
-  const groups = new Map();
-  function groupKey(m) {
-    return m.categoryId || '__UNCAT__';
-  }
-  for (const m of laneMissions) {
-    const k = groupKey(m);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(m);
-  }
-
-  // Determine category order by min orderIndex in each group
-  const orderedKeys = Array.from(groups.keys()).sort((a, b) => {
-    const aMin = Math.min(
-      ...groups.get(a).map((m) => (typeof m.orderIndex === 'number' ? m.orderIndex : 0)),
-    );
-    const bMin = Math.min(
-      ...groups.get(b).map((m) => (typeof m.orderIndex === 'number' ? m.orderIndex : 0)),
-    );
-    return aMin - bMin;
-  });
-
-  // Make sure uncategorized goes last (unless it's the only one)
-  if (orderedKeys.includes('__UNCAT__') && orderedKeys.length > 1) {
-    const rest = orderedKeys.filter((k) => k !== '__UNCAT__');
-    rest.push('__UNCAT__');
-    orderedKeys.length = 0;
-    rest.forEach((k) => orderedKeys.push(k));
-  }
-
-  orderedKeys.forEach((categoryId) => {
-    const cat = categoryId === '__UNCAT__' ? null : findCategory(categoryId);
-    const label =
-      categoryId === '__UNCAT__'
-        ? 'Uncategorized'
-        : (cat?.label || cat?.code || 'Unknown category');
-
-    const section = document.createElement('div');
-    section.className = 'cat-section';
-    section.dataset.lane = String(laneIndex);
-    section.dataset.cat = categoryId;
-
-    const header = document.createElement('div');
-    header.className = 'cat-header';
-    header.dataset.role = 'cat-header';
-    header.innerHTML = `
-      <div class="cat-left">
-        <div class="cat-chip">
-          <span class="cat-handle">≡</span>
-          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;">${escapeHtml(label)}</span>
-        </div>
-        <div class="cat-sub">${groups.get(categoryId).length} missions</div>
-      </div>
-      <div style="opacity:.65;font-size:12px;">Drag category • Drop missions inside</div>
-    `;
-
-    const body = document.createElement('div');
-    body.className = 'cat-body';
-
-    const list = [...groups.get(categoryId)].sort((a, b) => {
-      const oa = typeof a.orderIndex === 'number' ? a.orderIndex : 0;
-      const ob = typeof b.orderIndex === 'number' ? b.orderIndex : 0;
-      return oa - ob;
-    });
-
-    list.forEach((m) => {
-      const row = document.createElement('div');
-      row.className = 'mission-row';
-      row.dataset.missionId = m.id;
-
-      if (state.selectedMissionId === m.id) row.classList.add('active');
-
-      const main = document.createElement('div');
-      main.className = 'mission-main';
-
-      const title = document.createElement('div');
-      title.className = 'mission-title';
-      title.textContent = m.title || '(no title)';
-
-      const meta = document.createElement('div');
-      meta.className = 'mission-meta';
-
-      const persona = findPersona(m.personaId);
-
-      const pills = [];
-      pills.push(`Lane ${m.laneIndex ?? 0} · #${m.orderIndex ?? 0}`);
-      // Label is implied by group (category), but we still show it
-      pills.push(label);
-      if (persona) pills.push(persona.name || '');
-      if (m.goalType) pills.push(`Goal: ${m.goalType}`);
-      if (m.difficulty) pills.push(`Diff: ${m.difficulty}`);
-
-      meta.innerHTML = pills
-        .filter(Boolean)
-        .map((p) => `<span>${escapeHtml(p)}</span>`)
-        .join('');
-
-      main.appendChild(title);
-      main.appendChild(meta);
-
-      const controls = document.createElement('div');
-      controls.className = 'mission-controls';
-
-      const btnDelete = document.createElement('button');
-      btnDelete.className = 'btn-ghost btn-small btn-icon btn-icon-danger';
-      btnDelete.title = 'Delete mission (soft delete)';
-      btnDelete.textContent = '🗑';
-      btnDelete.onclick = async (ev) => {
-        ev.stopPropagation();
-        await deleteMissionById(m.id);
-      };
-
-      // keep arrows as backup
-      const btnUp = document.createElement('button');
-      btnUp.className = 'btn-ghost btn-small btn-icon';
-      btnUp.textContent = '↑';
-      btnUp.title = 'Move up';
-      btnUp.onclick = (ev) => {
-        ev.stopPropagation();
-        moveMission(m.id, -1);
-      };
-
-      const btnDown = document.createElement('button');
-      btnDown.className = 'btn-ghost btn-small btn-icon';
-      btnDown.textContent = '↓';
-      btnDown.title = 'Move down';
-      btnDown.onclick = (ev) => {
-        ev.stopPropagation();
-        moveMission(m.id, 1);
-      };
-
-      controls.appendChild(btnUp);
-      controls.appendChild(btnDown);
-      controls.appendChild(btnDelete);
-
-      row.appendChild(main);
-      row.appendChild(controls);
-
-      row.onclick = () => selectMission(m.id);
-
-      body.appendChild(row);
-    });
-
-    section.appendChild(header);
-    section.appendChild(body);
-    laneWrap.appendChild(section);
-  });
-
-  return laneWrap;
-}
-
 function renderMissions() {
   clearChildren(ui.missionsList);
+  const term = (state.missionSearch || '').toLowerCase();
 
-  const source = Array.isArray(state.missions) ? state.missions : [];
-  const term = (state.missionSearch || '').toLowerCase().trim();
-
-  // Sort stable by lane+order
-  let missions = [...source].sort((a, b) => {
-    const laneA = typeof a.laneIndex === 'number' ? a.laneIndex : 0;
-    const laneB = typeof b.laneIndex === 'number' ? b.laneIndex : 0;
-    if (laneA !== laneB) return laneA - laneB;
-
-    const orderA = typeof a.orderIndex === 'number' ? a.orderIndex : 0;
-    const orderB = typeof b.orderIndex === 'number' ? b.orderIndex : 0;
-    return orderA - orderB;
+  let missions = [...state.missions];
+  missions.sort((a, b) => {
+    if (a.laneIndex !== b.laneIndex) return a.laneIndex - b.laneIndex;
+    return a.orderIndex - b.orderIndex;
   });
 
-  // Search filter (visual only). We disable drag while searching to avoid corrupt reorder.
   if (term) {
     missions = missions.filter((m) => {
       const cat = findCategory(m.categoryId);
@@ -2379,44 +2001,106 @@ function renderMissions() {
       return (
         (m.title || '').toLowerCase().includes(term) ||
         (m.code || '').toLowerCase().includes(term) ||
-        ((cat && (cat.label || cat.code || '')).toLowerCase().includes(term)) ||
-        ((persona && (persona.name || '')).toLowerCase().includes(term))
+        (cat?.label || '').toLowerCase().includes(term) ||
+        (persona?.name || '').toLowerCase().includes(term)
       );
     });
-
-    ui.orderingBanner.classList.add('show');
-    ui.orderingBanner.innerHTML =
-      `Search is active — reordering is temporarily disabled. Clear the search to drag & drop.`;
-  } else if (state.orderingDirty) {
-    ui.orderingBanner.classList.add('show');
-    ui.orderingBanner.innerHTML =
-      `Ordering changed but not saved yet. Press <b>Save ordering</b> to persist.`;
-  } else {
-    ui.orderingBanner.classList.remove('show');
   }
 
   if (!missions.length) {
-    ui.missionsSummary.textContent = term ? 'No matching missions.' : 'No missions loaded.';
+    ui.missionsSummary.textContent = 'No missions loaded.';
     return;
   }
 
-  // Group by lane
-  const byLane = new Map();
-  for (const m of missions) {
-    const lane = typeof m.laneIndex === 'number' ? m.laneIndex : 0;
-    if (!byLane.has(lane)) byLane.set(lane, []);
-    byLane.get(lane).push(m);
-  }
+  const lanes = new Map();
+  missions.forEach((m) => {
+    const key = m.laneIndex ?? 0;
+    if (!lanes.has(key)) lanes.set(key, []);
+    lanes.get(key).push(m);
+  });
 
-  Array.from(byLane.keys())
+  Array.from(lanes.keys())
     .sort((a, b) => a - b)
     .forEach((lane) => {
-      const laneMissions = byLane.get(lane) || [];
-      const laneDom = buildLaneDom(lane, laneMissions);
-      ui.missionsList.appendChild(laneDom);
+      const header = document.createElement('div');
+      header.className = 'lane-header';
+      header.innerHTML = `<span>Lane ${lane}</span><span>${lanes.get(lane).length} missions</span>`;
+      ui.missionsList.appendChild(header);
+
+      const bucket = document.createElement('div');
+      bucket.className = 'lane-bucket';
+      ui.missionsList.appendChild(bucket);
+
+      lanes.get(lane).forEach((m) => {
+        const row = document.createElement('div');
+        row.className =
+          'mission-row' + (m.id === state.selectedMissionId ? ' active' : '');
+        row.dataset.id = m.id;
+
+        const handle = document.createElement('div');
+        handle.className = 'drag-handle';
+        handle.textContent = '≡';
+
+        const main = document.createElement('div');
+        main.className = 'mission-main';
+        const title = document.createElement('div');
+        title.className = 'mission-title';
+        title.textContent = m.title || m.code || 'Untitled mission';
+        const meta = document.createElement('div');
+        meta.className = 'mission-meta';
+        const cat = findCategory(m.categoryId);
+        const persona = findPersona(m.personaId);
+        const tags = [
+          m.code,
+          cat ? cat.code : null,
+          persona ? persona.name : null,
+          m.difficulty,
+          m.goalType,
+          (m.baseXpReward || 0) + ' XP',
+        ].filter(Boolean);
+        tags.forEach((t) => {
+          const span = document.createElement('span');
+          span.textContent = t;
+          meta.appendChild(span);
+        });
+        main.appendChild(title);
+        main.appendChild(meta);
+
+        const controls = document.createElement('div');
+        controls.className = 'mission-controls';
+        const btnUp = document.createElement('button');
+        btnUp.className = 'btn-ghost btn-small';
+        btnUp.textContent = '↑';
+        btnUp.onclick = (ev) => {
+          ev.stopPropagation();
+          moveMission(m.id, -1);
+        };
+        const btnDown = document.createElement('button');
+        btnDown.className = 'btn-ghost btn-small';
+        btnDown.textContent = '↓';
+        btnDown.onclick = (ev) => {
+          ev.stopPropagation();
+          moveMission(m.id, 1);
+        };
+        controls.appendChild(btnUp);
+        controls.appendChild(btnDown);
+
+        row.onclick = () => selectMission(m.id);
+
+        row.appendChild(handle);
+        row.appendChild(main);
+        row.appendChild(controls);
+
+        bucket.appendChild(row);
+      });
     });
 
   ui.missionsSummary.textContent = `${missions.length} missions loaded.`;
+}
+
+function markOrderingDirty() {
+  state.orderingDirty = true;
+  ui.orderingBanner.classList.add('show');
 }
 
 function moveMission(id, delta) {
@@ -2425,386 +2109,56 @@ function moveMission(id, delta) {
   const lane = m.laneIndex ?? 0;
   const laneMissions = state.missions
     .filter((x) => (x.laneIndex ?? 0) === lane)
-    .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+    .sort((a, b) => a.orderIndex - b.orderIndex);
 
   const idx = laneMissions.findIndex((x) => x.id === id);
   const swapWith = laneMissions[idx + delta];
   if (!swapWith) return;
 
-  const tmp = m.orderIndex ?? 0;
-  m.orderIndex = swapWith.orderIndex ?? 0;
+  const tmp = m.orderIndex;
+  m.orderIndex = swapWith.orderIndex;
   swapWith.orderIndex = tmp;
 
-  normalizeOrdering();
   markOrderingDirty();
   renderMissions();
 }
 
 function normalizeOrdering() {
   const byLane = new Map();
-  (state.missions || []).forEach((m) => {
+  state.missions.forEach((m) => {
     const lane = m.laneIndex ?? 0;
     if (!byLane.has(lane)) byLane.set(lane, []);
     byLane.get(lane).push(m);
   });
-
   byLane.forEach((list) => {
     list
-      .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+      .sort((a, b) => a.orderIndex - b.orderIndex)
       .forEach((m, i) => {
-        m.orderIndex = i; // 0-based for safety
+        m.orderIndex = i + 1;
       });
   });
-}
-
-function syncStateFromDOM() {
-  const missions = Array.isArray(state.missions) ? state.missions : [];
-  const byId = new Map(missions.map((m) => [m.id, m]));
-
-  const laneEls = ui.missionsList.querySelectorAll('.lane');
-  laneEls.forEach((laneEl) => {
-    const lane = Number(laneEl.dataset.lane || 0);
-    let order = 0;
-
-    const catEls = laneEl.querySelectorAll('.cat-section');
-    catEls.forEach((catEl) => {
-      const catKey = catEl.dataset.cat || '__UNCAT__';
-      const body = catEl.querySelector('.cat-body');
-      const rows = body ? body.querySelectorAll('.mission-row') : [];
-
-      rows.forEach((row) => {
-        const id = row.dataset.missionId;
-        if (!id) return;
-        const m = byId.get(id);
-        if (!m) return;
-
-        m.laneIndex = lane;
-
-        if (catKey === '__UNCAT__') {
-          // NOTE: backend can't "disconnect" category with current DTO transforms.
-          // We'll keep it null in state, but saving will NOT remove category if it had one.
-          m.categoryId = m.categoryId ?? null;
-        } else {
-          m.categoryId = catKey;
-        }
-
-        m.orderIndex = order++;
-      });
-    });
-  });
-}
-
-async function deleteMissionById(id) {
-  const m = findMission(id);
-  const label = m?.title || m?.code || id;
-  if (!confirm(`Delete mission: "${label}"?\n\nThis is a soft delete (active=false).`)) return;
-
-  try {
-    await api.delete(API_ROUTES.deleteMission(id));
-    if (state.selectedMissionId === id) state.selectedMissionId = null;
-    showToast('ok', 'Mission deleted', '');
-    await reloadMissions();
-    clearMissionForm();
-  } catch (e) {
-    console.error(e);
-    showToast('error', 'Mission delete failed', e.message);
-  }
+  markOrderingDirty();
+  renderMissions();
 }
 
 async function saveOrdering() {
   if (!state.orderingDirty) return;
-
-  // ensure state matches current DOM
+  const payload = state.missions.map((m) => ({
+    id: m.id,
+    laneIndex: m.laneIndex ?? 0,
+    orderIndex: m.orderIndex ?? 0,
+  }));
   try {
-    syncStateFromDOM();
-  } catch (e) {
-    console.warn('syncStateFromDOM failed, proceeding with state order', e);
-  }
-
-  // persist category changes first (if any)
-  const original = state.originalMissionCategoryById || {};
-  const changed = (state.missions || []).filter((m) => {
-    const before = original[m.id] ?? null;
-    const now = m.categoryId ?? null;
-    return before !== now && now !== null; // cannot disconnect to null with current backend DTO
-  });
-
-  const skippedToNull = (state.missions || []).filter((m) => {
-    const before = original[m.id] ?? null;
-    const now = m.categoryId ?? null;
-    return before !== now && now === null;
-  });
-
-  try {
-    for (const m of changed) {
-      await api.patch(API_ROUTES.updateMission(m.id), { categoryId: m.categoryId });
-      original[m.id] = m.categoryId ?? null;
-    }
-
-    if (skippedToNull.length) {
-      showToast(
-        'warning',
-        'Note',
-        'Some missions were dropped into "Uncategorized". The backend currently cannot remove a category assignment via this dashboard, so those changes were not saved.',
-      );
-    }
-
-    const items = (state.missions || []).map((m) => ({
-      id: m.id,
-      laneIndex: m.laneIndex ?? 0,
-      orderIndex: m.orderIndex ?? 0,
-    }));
-
-    await api.post(API_ROUTES.reorderMissions, { items });
-
+    await api.post(API_ROUTES.reorderMissions, { ordering: payload });
     state.orderingDirty = false;
     ui.orderingBanner.classList.remove('show');
-    showToast('ok', 'Ordering saved', 'Mission road updated.');
+    showToast('ok', 'Ordering saved', 'Mission order updated.');
     await reloadMissions();
   } catch (e) {
     console.error(e);
     showToast('error', 'Save ordering failed', e.message);
   }
 }
-
-// ---------- Mission Road Drag & Drop (pointer-based; no HTML5 DnD) ----------
-const roadDnD = {
-  installed: false,
-  mode: null, // 'mission' | 'category'
-  pointerId: null,
-  startX: 0,
-  startY: 0,
-  currentX: 0,
-  currentY: 0,
-  threshold: 6,
-  sourceEl: null,
-  ghostEl: null,
-  placeholderEl: null,
-  dragging: false,
-  pendingClickMissionId: null,
-};
-
-function setupMissionRoadDnD() {
-  if (roadDnD.installed) return;
-  roadDnD.installed = true;
-
-  ui.missionsList.addEventListener('pointerdown', (ev) => {
-    if (!isReorderEnabled()) return;
-
-    // ignore clicks on buttons/inputs
-    if (ev.target && ev.target.closest && ev.target.closest('button, input, textarea, select, a')) return;
-
-    const catHeader = ev.target.closest ? ev.target.closest('.cat-header') : null;
-    const missionRow = ev.target.closest ? ev.target.closest('.mission-row') : null;
-
-    if (catHeader) {
-      const catSection = catHeader.closest('.cat-section');
-      const laneEl = catHeader.closest('.lane');
-      if (!catSection || !laneEl) return;
-
-      roadDnD.mode = 'category';
-      roadDnD.sourceEl = catSection;
-      roadDnD.pointerId = ev.pointerId;
-      roadDnD.startX = ev.clientX;
-      roadDnD.startY = ev.clientY;
-      roadDnD.currentX = ev.clientX;
-      roadDnD.currentY = ev.clientY;
-      roadDnD.dragging = false;
-
-      catHeader.setPointerCapture(ev.pointerId);
-      ev.preventDefault();
-      return;
-    }
-
-    if (missionRow) {
-      roadDnD.mode = 'mission';
-      roadDnD.sourceEl = missionRow;
-      roadDnD.pointerId = ev.pointerId;
-      roadDnD.startX = ev.clientX;
-      roadDnD.startY = ev.clientY;
-      roadDnD.currentX = ev.clientX;
-      roadDnD.currentY = ev.clientY;
-      roadDnD.dragging = false;
-      roadDnD.pendingClickMissionId = missionRow.dataset.missionId || null;
-
-      missionRow.setPointerCapture(ev.pointerId);
-      ev.preventDefault();
-    }
-  });
-
-  window.addEventListener('pointermove', (ev) => {
-    if (!roadDnD.mode || roadDnD.pointerId !== ev.pointerId) return;
-    roadDnD.currentX = ev.clientX;
-    roadDnD.currentY = ev.clientY;
-
-    const dx = roadDnD.currentX - roadDnD.startX;
-    const dy = roadDnD.currentY - roadDnD.startY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (!roadDnD.dragging && dist >= roadDnD.threshold) {
-      startDrag();
-    }
-
-    if (!roadDnD.dragging) return;
-
-    moveGhost(ev.clientX, ev.clientY);
-
-    if (roadDnD.mode === 'mission') {
-      updateMissionPlaceholder(ev.clientX, ev.clientY);
-    } else if (roadDnD.mode === 'category') {
-      updateCategoryPlaceholder(ev.clientX, ev.clientY);
-    }
-  }, { passive: true });
-
-  window.addEventListener('pointerup', (ev) => {
-    if (!roadDnD.mode || roadDnD.pointerId !== ev.pointerId) return;
-
-    if (!roadDnD.dragging && roadDnD.mode === 'mission' && roadDnD.pendingClickMissionId) {
-      // Treat as click
-      selectMission(roadDnD.pendingClickMissionId);
-    }
-
-    if (roadDnD.dragging) {
-      finishDrag();
-    }
-
-    resetDnD();
-  });
-}
-
-function startDrag() {
-  if (!roadDnD.sourceEl) return;
-  roadDnD.dragging = true;
-
-  // Ghost clone
-  const ghost = roadDnD.sourceEl.cloneNode(true);
-  ghost.classList.add('drag-ghost');
-  roadDnD.ghostEl = ghost;
-  document.body.appendChild(ghost);
-
-  roadDnD.sourceEl.classList.add('dragging-source');
-
-  // Placeholder
-  const ph = document.createElement('div');
-  ph.className = 'drop-placeholder' + (roadDnD.mode === 'category' ? ' compact' : '');
-  roadDnD.placeholderEl = ph;
-
-  if (roadDnD.mode === 'mission') {
-    // insert placeholder right after source row initially
-    roadDnD.sourceEl.parentElement.insertBefore(ph, roadDnD.sourceEl.nextSibling);
-  } else {
-    // category placeholder goes after the category initially
-    roadDnD.sourceEl.parentElement.insertBefore(ph, roadDnD.sourceEl.nextSibling);
-  }
-
-  moveGhost(roadDnD.currentX, roadDnD.currentY);
-}
-
-function moveGhost(x, y) {
-  if (!roadDnD.ghostEl) return;
-  roadDnD.ghostEl.style.left = Math.max(12, x - 24) + 'px';
-  roadDnD.ghostEl.style.top = Math.max(12, y - 24) + 'px';
-}
-
-function updateMissionPlaceholder(x, y) {
-  if (!roadDnD.placeholderEl || !roadDnD.sourceEl) return;
-
-  const el = document.elementFromPoint(x, y);
-  if (!el) return;
-
-  const targetRow = el.closest ? el.closest('.mission-row') : null;
-  const targetBody = el.closest ? el.closest('.cat-body') : null;
-  const targetSection = el.closest ? el.closest('.cat-section') : null;
-
-  // Identify target category section (must exist)
-  const section = targetSection || (targetBody ? targetBody.closest('.cat-section') : null);
-  if (!section) return;
-
-  const targetCat = section.dataset.cat || '__UNCAT__';
-  const movingId = roadDnD.sourceEl.dataset.missionId;
-  const movingMission = findMission(movingId);
-
-  // Disallow dropping into Uncategorized if mission previously had a category (backend can't disconnect)
-  if (targetCat === '__UNCAT__' && movingMission && movingMission.categoryId) {
-    return;
-  }
-
-  const body = section.querySelector('.cat-body');
-  if (!body) return;
-
-  // If hovering a row, insert before/after based on pointer position
-  if (targetRow && targetRow !== roadDnD.sourceEl) {
-    const rect = targetRow.getBoundingClientRect();
-    const before = y < rect.top + rect.height / 2;
-    body.insertBefore(roadDnD.placeholderEl, before ? targetRow : targetRow.nextSibling);
-    return;
-  }
-
-  // else append to end of body
-  body.appendChild(roadDnD.placeholderEl);
-}
-
-function updateCategoryPlaceholder(x, y) {
-  if (!roadDnD.placeholderEl || !roadDnD.sourceEl) return;
-
-  const el = document.elementFromPoint(x, y);
-  if (!el) return;
-
-  const laneEl = el.closest ? el.closest('.lane') : null;
-  if (!laneEl) return;
-
-  // Keep category drag within the same lane to avoid ambiguity
-  const sourceLaneEl = roadDnD.sourceEl.closest('.lane');
-  if (!sourceLaneEl || sourceLaneEl !== laneEl) return;
-
-  const targetSection = el.closest ? el.closest('.cat-section') : null;
-  if (!targetSection || targetSection === roadDnD.sourceEl) {
-    // append to end if hovering empty lane area
-    laneEl.appendChild(roadDnD.placeholderEl);
-    return;
-  }
-
-  const rect = targetSection.getBoundingClientRect();
-  const before = y < rect.top + rect.height / 2;
-  laneEl.insertBefore(roadDnD.placeholderEl, before ? targetSection : targetSection.nextSibling);
-}
-
-function finishDrag() {
-  if (!roadDnD.placeholderEl || !roadDnD.sourceEl) return;
-
-  // Move real element into placeholder position
-  const parent = roadDnD.placeholderEl.parentElement;
-  if (!parent) return;
-
-  parent.insertBefore(roadDnD.sourceEl, roadDnD.placeholderEl);
-  roadDnD.placeholderEl.remove();
-
-  // Update state based on DOM order and rerender
-  syncStateFromDOM();
-  markOrderingDirty('Ordering changed.');
-  renderMissions();
-}
-
-function resetDnD() {
-  roadDnD.mode = null;
-  roadDnD.pointerId = null;
-  roadDnD.startX = 0;
-  roadDnD.startY = 0;
-  roadDnD.currentX = 0;
-  roadDnD.currentY = 0;
-  roadDnD.pendingClickMissionId = null;
-  roadDnD.dragging = false;
-
-  if (roadDnD.sourceEl) roadDnD.sourceEl.classList.remove('dragging-source');
-  roadDnD.sourceEl = null;
-
-  if (roadDnD.placeholderEl && roadDnD.placeholderEl.parentElement) roadDnD.placeholderEl.remove();
-  roadDnD.placeholderEl = null;
-
-  if (roadDnD.ghostEl && roadDnD.ghostEl.parentElement) roadDnD.ghostEl.remove();
-  roadDnD.ghostEl = null;
-}
-
 
 // ---------- mission form + AI contract ----------
 function selectMission(id) {
@@ -3333,137 +2687,38 @@ async function reloadMeta() {
   refreshMissionPersonaSelect();
 }
 
-async function reloadMissions(showToastOnError = true) {
-  try {
-    setStatus('warning', 'Loading missions…');
-
-    const extract = (res) => {
-      if (!res) return [];
-      if (Array.isArray(res)) return res;
-      if (typeof res !== 'object') return [];
-
-      // Common shapes across iterations
-      if (Array.isArray(res.templates)) return res.templates;
-      if (Array.isArray(res.missions)) return res.missions;
-      if (Array.isArray(res.items)) return res.items;
-
-      // Some wrappers may nest templates under { data: { templates: [...] } }
-      if (res.data && typeof res.data === 'object') {
-        if (Array.isArray(res.data.templates)) return res.data.templates;
-        if (Array.isArray(res.data.missions)) return res.data.missions;
-        if (Array.isArray(res.data.items)) return res.data.items;
-      }
-
-      return [];
-    };
-
-    let listRes = null;
-    let roadRes = null;
-
-    // Prefer /admin/missions (full list). If it returns empty, fallback to /admin/missions/road.
-    try {
-      listRes = await api.get(API_ROUTES.listMissions);
-    } catch (e) {
-      listRes = { __error: e };
-    }
-
-    let missions = extract(listRes);
-
-    if (!missions.length) {
-      try {
-        roadRes = await api.get(API_ROUTES.road);
-      } catch (e) {
-        roadRes = { __error: e };
-      }
-      const roadMissions = extract(roadRes);
-      if (roadMissions.length) missions = roadMissions;
-    }
-
-    // Persist locally
-    state.missions = Array.isArray(missions) ? missions : [];
-
-    // Track original category per mission (for "category label decided by where you drop it" features)
-    state.originalMissionCategoryById = {};
-    state.missions.forEach((m) => {
-      state.originalMissionCategoryById[m.id] = m.categoryId ?? null;
-    });
-
-    renderMissions();
-    updateMissionsSummary();
-
-    if (!state.missions.length) {
-      const keys =
-        listRes && !listRes.__error && typeof listRes === 'object'
-          ? Object.keys(listRes).slice(0, 12).join(', ')
-          : '';
-      setStatus(
-        'warning',
-        'Connected – but no missions returned (check endpoint + response shape).',
-      );
-      if (showToastOnError) {
-        showToast(
-          'warning',
-          'No missions returned',
-          keys
-            ? `Backend responded but returned no templates. Keys: ${keys}`
-            : 'Backend responded but returned no templates.',
-        );
-      }
-      return;
-    }
-
-    setStatus('ok', 'Connected – data loaded.');
-  } catch (err) {
-    console.error('reloadMissions error', err);
-    state.missions = [];
-    renderMissions();
-    updateMissionsSummary();
-
-    setStatus('error', 'Connection failed – check base URL or token.');
-    if (showToastOnError) {
-      showToast('error', 'Connection failed', err?.message || String(err));
-    }
-  }
+async function reloadMissions() {
+  const res = await api.get(API_ROUTES.listMissions);
+  state.missions = res.missions || res || [];
+  state.orderingDirty = false;
+  ui.orderingBanner.classList.remove('show');
+  renderMissions();
 }
 
-
 async function connectAndLoad() {
-  const base = (ui.baseUrlInput.value || '').trim();
-  let tok = (ui.tokenInput.value || '').trim();
+  state.baseUrl = ui.baseUrlInput.value.trim();
+  state.token = ui.tokenInput.value.trim();
+  saveLocal();
 
-  // allow user to paste "Bearer eyJ...." or just "eyJ...."
-  tok = tok.replace(/^bearer\s+/i, '');
-
-  if (!base || !tok) {
-    setStatus('error', 'Missing base URL or token.');
-    showToast('warning', 'Missing connection data', 'Fill Base URL and paste a JWT token.');
+  if (!state.baseUrl || !state.token) {
+    showToast('warning', 'Missing connection info', 'Base URL and token are required.');
     return;
   }
 
-  state.baseUrl = base;
-  state.token = tok;
-  saveLocal();
-
-  const prevText = ui.connectBtn.textContent;
-  ui.connectBtn.disabled = true;
-  ui.connectBtn.textContent = 'Loading…';
-
+  setStatus('warning', 'Connecting…');
   try {
-    setStatus('warning', 'Loading admin data…');
     await reloadMeta();
-    await reloadMissions(false);
+    await reloadMissions();
+    state.connected = true;
     setStatus('ok', 'Connected – data loaded.');
-    showToast('ok', 'Connected', `Loaded ${state.categories.length} categories, ${state.personas.length} personas, ${state.missions.length} missions.`);
-  } catch (err) {
-    console.error('connectAndLoad error', err);
-    setStatus('error', 'Connection failed – check base URL or token.');
-    showToast('error', 'Connection failed', err?.message || String(err));
-  } finally {
-    ui.connectBtn.disabled = false;
-    ui.connectBtn.textContent = prevText || 'Load data';
+    showToast('ok', 'Connected', 'Categories, personas and missions loaded.');
+  } catch (e) {
+    console.error(e);
+    state.connected = false;
+    setStatus('error', 'Connection failed.');
+    showToast('error', 'Connection failed', e.message);
   }
 }
-
 
 function clearAllState() {
   state.categories = [];
@@ -3533,9 +2788,6 @@ function init() {
     await connectAndLoad();
   });
 
-
-  // enable pointer-based drag & drop for Mission Road
-  setupMissionRoadDnD();
   // mission form
   [
     ui.missionCodeInput,

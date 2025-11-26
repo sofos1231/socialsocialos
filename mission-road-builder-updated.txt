@@ -1605,7 +1605,6 @@ const API_ROUTES = {
   deleteMission: (id) => '/v1/admin/missions/' + id,
   reorderMissions: '/v1/admin/missions/reorder',
 
-  road: '/v1/admin/missions/road',
   listPersonas: '/v1/admin/missions/personas',
 createPersona: '/v1/admin/missions/personas',
 updatePersona: (id) => '/v1/admin/missions/personas/' + id,
@@ -3337,80 +3336,30 @@ async function reloadMissions(showToastOnError = true) {
   try {
     setStatus('warning', 'Loading missions…');
 
-    const extract = (res) => {
-      if (!res) return [];
-      if (Array.isArray(res)) return res;
-      if (typeof res !== 'object') return [];
+    const res = await api.get(API_ROUTES.listMissions);
 
-      // Common shapes across iterations
-      if (Array.isArray(res.templates)) return res.templates;
-      if (Array.isArray(res.missions)) return res.missions;
-      if (Array.isArray(res.items)) return res.items;
-
-      // Some wrappers may nest templates under { data: { templates: [...] } }
-      if (res.data && typeof res.data === 'object') {
-        if (Array.isArray(res.data.templates)) return res.data.templates;
-        if (Array.isArray(res.data.missions)) return res.data.missions;
-        if (Array.isArray(res.data.items)) return res.data.items;
-      }
-
-      return [];
-    };
-
-    let listRes = null;
-    let roadRes = null;
-
-    // Prefer /admin/missions (full list). If it returns empty, fallback to /admin/missions/road.
-    try {
-      listRes = await api.get(API_ROUTES.listMissions);
-    } catch (e) {
-      listRes = { __error: e };
+    let missions;
+    if (Array.isArray(res)) {
+      missions = res;
+    } else if (Array.isArray(res.templates)) {
+      missions = res.templates;
+    } else if (Array.isArray(res.items)) {
+      missions = res.items;
+    } else if (Array.isArray(res.missions)) {
+      missions = res.missions;
+    } else {
+      missions = [];
     }
 
-    let missions = extract(listRes);
+    state.missions = missions;
 
-    if (!missions.length) {
-      try {
-        roadRes = await api.get(API_ROUTES.road);
-      } catch (e) {
-        roadRes = { __error: e };
-      }
-      const roadMissions = extract(roadRes);
-      if (roadMissions.length) missions = roadMissions;
-    }
-
-    // Persist locally
-    state.missions = Array.isArray(missions) ? missions : [];
-
-    // Track original category per mission (for "category label decided by where you drop it" features)
     state.originalMissionCategoryById = {};
-    state.missions.forEach((m) => {
-      state.originalMissionCategoryById[m.id] = m.categoryId ?? null;
+    missions.forEach((m) => {
+      if (m && m.id) state.originalMissionCategoryById[m.id] = m.categoryId ?? null;
     });
 
     renderMissions();
     updateMissionsSummary();
-
-    if (!state.missions.length) {
-      const keys =
-        listRes && !listRes.__error && typeof listRes === 'object'
-          ? Object.keys(listRes).slice(0, 12).join(', ')
-          : '';
-      setStatus(
-        'warning',
-        'Connected – but no missions returned (check endpoint + response shape).',
-      );
-      if (showToastOnError) {
-        showToast(
-          'warning',
-          'No missions returned',
-          keys
-            ? `Backend responded but returned no templates. Keys: ${keys}`
-            : 'Backend responded but returned no templates.',
-        );
-      }
-      return;
-    }
 
     setStatus('ok', 'Connected – data loaded.');
   } catch (err) {
@@ -3425,7 +3374,6 @@ async function reloadMissions(showToastOnError = true) {
     }
   }
 }
-
 
 async function connectAndLoad() {
   const base = (ui.baseUrlInput.value || '').trim();
@@ -3453,7 +3401,7 @@ async function connectAndLoad() {
     await reloadMeta();
     await reloadMissions(false);
     setStatus('ok', 'Connected – data loaded.');
-    showToast('ok', 'Connected', `Loaded ${state.categories.length} categories, ${state.personas.length} personas, ${state.missions.length} missions.`);
+    showToast('ok', 'Connected', 'Loaded categories, personas and missions.');
   } catch (err) {
     console.error('connectAndLoad error', err);
     setStatus('error', 'Connection failed – check base URL or token.');

@@ -11,21 +11,15 @@ import {
   Put,
 } from '@nestjs/common';
 import { MissionsAdminService } from './missions-admin.service';
-import {
-  CreateMissionDto,
-  UpdateMissionDto,
-} from './dto/admin-mission.dto';
+import { CreateMissionDto, UpdateMissionDto } from './dto/admin-mission.dto';
 import { ReorderMissionsDto } from './dto/admin-missions-reorder.dto';
 
 @Controller('admin/missions')
 export class MissionsAdminController {
-  constructor(
-    private readonly missionsAdminService: MissionsAdminService,
-  ) {}
+  constructor(private readonly missionsAdminService: MissionsAdminService) {}
 
   /**
    * GET /v1/admin/missions/meta
-   * Categories, personas, enums – used by the Mission Builder sidebar.
    */
   @Get('meta')
   getMeta() {
@@ -34,7 +28,7 @@ export class MissionsAdminController {
 
   /**
    * GET /v1/admin/missions/road
-   * Mission Road (templates only, ordered by laneIndex/orderIndex).
+   * (templates ordered by laneIndex/orderIndex)
    */
   @Get('road')
   getRoad() {
@@ -42,17 +36,44 @@ export class MissionsAdminController {
   }
 
   /**
+   * ✅ Alias routes (some dashboard versions call these)
+   * GET /v1/admin/missions/mission-road
+   * GET /v1/admin/missions/missions-road
+   */
+  @Get('mission-road')
+  getRoadAlias1() {
+    return this.missionsAdminService.getRoad();
+  }
+
+  @Get('missions-road')
+  getRoadAlias2() {
+    return this.missionsAdminService.getRoad();
+  }
+
+  /**
+   * ✅ IMPORTANT COMPAT FIX:
    * GET /v1/admin/missions
-   * Flat list of all active mission templates (with category + persona).
+   *
+   * Return a RAW ARRAY so *any* dashboard implementation works:
+   * - dashboards that expect an array -> ✅
+   * - dashboards that expect {items|missions|templates} -> also ✅ (they usually handle Array.isArray)
    */
   @Get()
-  listMissions() {
+  async listMissions() {
+    return this.missionsAdminService.listMissionsFlat();
+  }
+
+  /**
+   * Debug/compat: keep the wrapped format available:
+   * GET /v1/admin/missions/list
+   */
+  @Get('list')
+  listMissionsWrapped() {
     return this.missionsAdminService.listMissions();
   }
 
   /**
    * POST /v1/admin/missions
-   * Create new mission template.
    */
   @Post()
   createMission(@Body() dto: CreateMissionDto) {
@@ -61,31 +82,22 @@ export class MissionsAdminController {
 
   /**
    * PUT /v1/admin/missions/:id
-   * The HTML dashboard uses PUT for update – mirror PATCH behavior.
    */
   @Put(':id')
-  putMission(
-    @Param('id') id: string,
-    @Body() dto: UpdateMissionDto,
-  ) {
+  putMission(@Param('id') id: string, @Body() dto: UpdateMissionDto) {
     return this.missionsAdminService.updateMission(id, dto);
   }
 
   /**
    * PATCH /v1/admin/missions/:id
-   * Same logic as PUT – partial update.
    */
   @Patch(':id')
-  updateMission(
-    @Param('id') id: string,
-    @Body() dto: UpdateMissionDto,
-  ) {
+  updateMission(@Param('id') id: string, @Body() dto: UpdateMissionDto) {
     return this.missionsAdminService.updateMission(id, dto);
   }
 
   /**
    * DELETE /v1/admin/missions/:id
-   * Soft delete – sets active = false.
    */
   @Delete(':id')
   deleteMission(@Param('id') id: string) {
@@ -94,10 +106,18 @@ export class MissionsAdminController {
 
   /**
    * POST /v1/admin/missions/reorder
-   * Reorders missions either by "orderedIds" or by "items".
    */
   @Post('reorder')
   reorder(@Body() dto: ReorderMissionsDto) {
+    return this.missionsAdminService.reorderMissions(dto);
+  }
+
+  /**
+   * ✅ Alias for reorder used by some dashboards:
+   * POST /v1/admin/missions/road/reorder
+   */
+  @Post('road/reorder')
+  reorderAlias(@Body() dto: ReorderMissionsDto) {
     return this.missionsAdminService.reorderMissions(dto);
   }
 }

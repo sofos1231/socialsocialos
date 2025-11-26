@@ -8,6 +8,8 @@ import { MissionsAdminService } from './missions-admin.service';
 
 import { MissionsAdminCategoriesController } from './missions-admin.categories.controller';
 import { MissionsAdminPersonasController } from './missions-admin.personas.controller';
+import { MissionsAdminMissionsPersonasController } from './missions-admin.missions-personas.controller';
+
 
 @Module({
   imports: [PrismaModule],
@@ -15,6 +17,7 @@ import { MissionsAdminPersonasController } from './missions-admin.personas.contr
     MissionsAdminController,
     MissionsAdminCategoriesController,
     MissionsAdminPersonasController,
+    MissionsAdminMissionsPersonasController, // ✅ alias route support
   ],
   providers: [MissionsAdminService],
 })
