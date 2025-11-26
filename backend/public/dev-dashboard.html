@@ -3377,27 +3377,30 @@ async function reloadMissions(showToastOnError = true) {
       return [];
     };
 
-    let listRes = null;
-    let roadRes = null;
 
-    // Prefer /admin/missions (full list). If it returns empty, fallback to /admin/missions/road.
+       // Prefer the active-only road endpoint for Step 4 ordering.
+    // Fallback to the flat admin list only if road is empty or fails.
+    let roadRes = null;
+    let listRes = null;
+
     try {
-      listRes = await api.get(API_ROUTES.listMissions);
+      roadRes = await api.get(API_ROUTES.road); // /v1/admin/missions/road (active=true)
     } catch (e) {
-      listRes = { __error: e };
+      roadRes = { __error: e };
     }
 
-    let missions = extract(listRes);
+    let missions = extract(roadRes);
 
     if (!missions.length) {
       try {
-        roadRes = await api.get(API_ROUTES.road);
+        listRes = await api.get(API_ROUTES.listMissions); // /v1/admin/missions (may include inactive)
       } catch (e) {
-        roadRes = { __error: e };
+        listRes = { __error: e };
       }
-      const roadMissions = extract(roadRes);
-      if (roadMissions.length) missions = roadMissions;
+      const listMissions = extract(listRes);
+      if (listMissions.length) missions = listMissions;
     }
+
 
     // Persist locally
     state.missions = Array.isArray(missions) ? missions : [];
