@@ -1,0 +1,1 @@
+export { PrismaService } from '../db/prisma.service';

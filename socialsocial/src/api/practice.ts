@@ -1,61 +1,20 @@
-// socialsocial/src/api/practice.ts
-import { api } from './client';
-import type {
-  PracticeSessionRequest,
-  PracticeSessionResponse,
-  VoicePracticeRequest,
-  VoicePracticeResponse,
-  ABPracticeRequest,
-  ABPracticeResponse,
-} from '../navigation/types';
+// FILE: socialsocial/src/api/practice.ts
 
-export async function createPracticeSession(
-  accessToken: string,
-  payload: PracticeSessionRequest,
-): Promise<PracticeSessionResponse> {
-  const res = await api.post<PracticeSessionResponse>(
-    '/practice/session',
-    payload,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  );
+import apiClient from './apiClient';
 
-  return res.data;
+export interface PracticeMessageInput {
+  role: 'USER' | 'AI';
+  content: string;
 }
 
-export async function createVoicePracticeSession(
-  accessToken: string,
-  payload: VoicePracticeRequest,
-): Promise<VoicePracticeResponse> {
-  const res = await api.post<VoicePracticeResponse>(
-    '/practice/voice-session',
-    payload,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  );
-
-  return res.data;
+export interface PracticeSessionRequest {
+  topic: string;
+  messages: PracticeMessageInput[];
+  templateId?: string;   // NEW
+  personaId?: string;    // NEW
 }
 
-export async function createABPracticeSession(
-  accessToken: string,
-  payload: ABPracticeRequest,
-): Promise<ABPracticeResponse> {
-  const res = await api.post<ABPracticeResponse>(
-    '/practice/ab-session',
-    payload,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  );
-
+export async function createPracticeSession(payload: PracticeSessionRequest) {
+  const res = await apiClient.post('/practice/session', payload);
   return res.data;
 }

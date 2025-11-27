@@ -1,293 +1,114 @@
-// backend/src/modules/practice/practice.service.ts
-// NOTE: This file currently uses Option A (rarity/xp-based) scoring/rewards,
-// plus Option B AiCore metrics (charismaIndex + traits) for every real session.
+// FILE: backend/src/modules/practice/practice.service.ts
 
-// backend/src/modules/practice/practice.service.ts
-
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { SessionsService } from '../sessions/sessions.service';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { PrismaService } from '../../db/prisma.service';
 import { AiScoringService } from '../ai/ai-scoring.service';
-import { PracticeMessageInput } from '../ai/ai.types';
 import { AiCoreScoringService } from '../ai/ai-core-scoring.service';
-import { TranscriptMessage } from '../ai/ai-scoring.types';
+import { SessionsService } from '../sessions/sessions.service';
+import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
+
+import type { PracticeMessageInput as AiPracticeMessageInput } from '../ai/ai.types';
+import type { TranscriptMessage } from '../ai/ai-scoring.types';
 
 @Injectable()
 export class PracticeService {
   constructor(
-    private readonly sessionsService: SessionsService,
+    private readonly prisma: PrismaService,
     private readonly aiScoring: AiScoringService,
     private readonly aiCore: AiCoreScoringService,
+    private readonly sessions: SessionsService,
   ) {}
 
   /**
-   * מצב טקסט רגיל – כפי שהיה עד עכשיו.
+   * Main practice session entry point (text chat).
+   * Option A: rarity/xp-based rewards (AiScoringService + SessionsService rewards)
+   * Option B: core traits (AiCoreScoringService) persisted via SessionsService.createScoredSessionFromScores
    */
-  async runRealSession(userId: string, dto: any) {
-    const { messages } = dto;
-
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      throw new BadRequestException({
-        code: 'PRACTICE_EMPTY',
-        message: 'messages must contain at least one item',
-      });
+  async runPracticeSession(userId: string, dto: CreatePracticeSessionDto) {
+    if (!userId) {
+      throw new BadRequestException('Missing userId.');
     }
 
-    // Clean topic
-    const topic = dto.topic?.trim() || 'Practice session';
+    if (!dto?.messages || dto.messages.length === 0) {
+      throw new BadRequestException('No messages provided.');
+    }
 
-    // Normalize incoming messages to PracticeMessageInput[]
-    const normalizedMessages: PracticeMessageInput[] = messages.map(
-      (m: any, index: number) => ({
-        index,
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: String(m.content ?? ''),
-      }),
-    );
+    // If templateId is present, validate it exists and pull contract (currently not used by AiScoringService).
+    const missionContract = dto.templateId
+      ? await this.loadMissionContract(dto.templateId)
+      : null;
 
-    // Build transcript for Option B AiCore
-    const transcript: TranscriptMessage[] = normalizedMessages.map((m) => ({
-      sentBy: m.role === 'assistant' ? 'ai' : 'user',
-      text: m.content,
+    // Option A scoring should be based on USER messages (not the AI messages).
+    const userOnly = dto.messages.filter((m) => m.role === 'USER');
+    if (userOnly.length === 0) {
+      throw new BadRequestException('No USER messages provided.');
+    }
+
+    // Normalize USER messages for Option A scorer: role must be 'user'|'assistant' (ai.types)
+    const normalizedUser: AiPracticeMessageInput[] = userOnly.map((m, idx) => ({
+      index: idx,
+      role: 'user',
+      content: m.content,
     }));
 
-    const aiCoreResult = await this.aiCore.scoreSession(transcript);
-
-    // Useful logging while wiring the loop
-    console.log('[AiCore v1]', {
-      userId,
-      topic,
-      charismaIndex: aiCoreResult.metrics.charismaIndex,
-      overallScore: aiCoreResult.metrics.overallScore,
-      totalMessages: aiCoreResult.metrics.totalMessages,
-    });
-
-    // Option A AI scoring engine (rarity/xp)
+    // Option A: per-message scores + rarity (AiScoringService has scoreConversation)
     const aiResult = await this.aiScoring.scoreConversation({
       userId,
       personaId: dto.personaId ?? null,
       templateId: dto.templateId ?? null,
-      messages: normalizedMessages,
+      messages: normalizedUser,
     });
 
-    // Convert AI result → SessionsService scoring format
-    const messageScores = aiResult.perMessage.map((m) => m.score);
+    const messageScores = (aiResult?.perMessage ?? []).map((m) => m.score);
+    if (messageScores.length === 0) {
+      throw new BadRequestException('AI scoring produced no message scores.');
+    }
 
-    // Let SessionsService handle DB writes + stats + wallet + AiCore persistence
-    const sessionResult =
-      await this.sessionsService.createScoredSessionFromScores({
-        userId,
-        topic,
-        messageScores,
-        aiCoreResult,
-      });
+    const transcript: TranscriptMessage[] = dto.messages.map((m) => ({
+      text: m.content,
+      sentBy: m.role === 'USER' ? 'user' : 'ai',
+    }));
+    
 
-    // Attach AI metadata to response
+    const aiCoreResult = await this.aiCore.scoreSession(transcript);
+
+    // Persist session via the real SessionsService API that exists in your repo
+    const saved = await this.sessions.createScoredSessionFromScores({
+      userId,
+      topic: dto.topic,
+      messageScores,
+      aiCoreResult,
+    });
+
+    // It's safe to return extra context; frontend can ignore it.
     return {
-      ...sessionResult,
-      ai: aiResult,
-      aiCore: aiCoreResult,
-      mode: 'text',
+      ...saved,
+      mission: dto.templateId
+        ? { templateId: dto.templateId, aiContract: missionContract }
+        : null,
     };
   }
 
   /**
-   * 7.1 – Voice Practice
-   *
-   * הפרונט כבר עושה speech-to-text ושולח לנו transcript אחד.
-   * פה אנחנו:
-   * - עושים validate שהוא לא ריק
-   * - בונים הודעה אחת (או יותר) ללופ הקיים
-   * - מריצים AiCore + AiScoring + SessionsService
+   * Loads mission template contract JSON from Prisma.
+   * Prisma schema field is: PracticeMissionTemplate.aiContract (Json?)
    */
-  async runVoiceSession(userId: string, dto: any) {
-    const rawTranscript = dto?.transcript;
+  private async loadMissionContract(templateId: string) {
+    const template = await this.prisma.practiceMissionTemplate.findUnique({
+      where: { id: templateId },
+      select: {
+        aiContract: true,
+      },
+    });
 
-    if (
-      !rawTranscript ||
-      typeof rawTranscript !== 'string' ||
-      rawTranscript.trim().length === 0
-    ) {
-      throw new BadRequestException({
-        code: 'VOICE_EMPTY',
-        message: 'transcript must be a non-empty string',
-      });
+    if (!template) {
+      throw new NotFoundException('Mission template not found.');
     }
 
-    const transcriptText = rawTranscript.trim();
-    const topic = dto.topic?.trim() || 'Voice practice session';
-
-    // MVP: מתייחסים לכל ה-transcript כהודעה אחת של המשתמש
-    const normalizedMessages: PracticeMessageInput[] = [
-      {
-        index: 0,
-        role: 'user',
-        content: transcriptText,
-      },
-    ];
-
-    const transcript: TranscriptMessage[] = [
-      {
-        sentBy: 'user',
-        text: transcriptText,
-      },
-    ];
-
-    const aiCoreResult = await this.aiCore.scoreSession(transcript);
-
-    console.log('[AiCore v1 – VOICE]', {
-      userId,
-      topic,
-      charismaIndex: aiCoreResult.metrics.charismaIndex,
-      overallScore: aiCoreResult.metrics.overallScore,
-      totalMessages: aiCoreResult.metrics.totalMessages,
-    });
-
-    const aiResult = await this.aiScoring.scoreConversation({
-      userId,
-      personaId: null,
-      templateId: null,
-      messages: normalizedMessages,
-    });
-
-    const messageScores = aiResult.perMessage.map((m) => m.score);
-
-    const sessionResult =
-      await this.sessionsService.createScoredSessionFromScores({
-        userId,
-        topic,
-        messageScores,
-        aiCoreResult,
-      });
-
-    return {
-      ...sessionResult,
-      ai: aiResult,
-      aiCore: aiCoreResult,
-      mode: 'voice',
-      transcript: transcriptText,
-    };
-  }
-
-  /**
-   * 7.3 – A vs B Practice
-   *
-   * - מקבלים optionA + optionB (ולפעמים prompt להקשר)
-   * - נותנים ציון לשתיהן דרך AiScoring
-   * - בוחרים winner
-   * - בונים סשן אחד עם שתי הודעות והולכים ללופ הרגיל
-   * - AiCore מקבל את הטקסט של הזוכה לניתוח עומק
-   */
-  async runABSession(userId: string, dto: any) {
-    const optionA = dto?.optionA;
-    const optionB = dto?.optionB;
-
-    if (
-      !optionA ||
-      typeof optionA !== 'string' ||
-      optionA.trim().length === 0
-    ) {
-      throw new BadRequestException({
-        code: 'AB_EMPTY_A',
-        message: 'optionA must be a non-empty string',
-      });
-    }
-
-    if (
-      !optionB ||
-      typeof optionB !== 'string' ||
-      optionB.trim().length === 0
-    ) {
-      throw new BadRequestException({
-        code: 'AB_EMPTY_B',
-        message: 'optionB must be a non-empty string',
-      });
-    }
-
-    const topic =
-      dto.topic?.trim() ||
-      dto.prompt?.trim() ||
-      'A vs B practice session';
-
-    const cleanA = optionA.trim();
-    const cleanB = optionB.trim();
-
-    const normalizedMessages: PracticeMessageInput[] = [
-      {
-        index: 0,
-        role: 'user',
-        content: cleanA,
-      },
-      {
-        index: 1,
-        role: 'user',
-        content: cleanB,
-      },
-    ];
-
-    // נשתמש ב-AiScoring כדי לדרג את שתי התשובות
-    const aiResult = await this.aiScoring.scoreConversation({
-      userId,
-      personaId: null,
-      templateId: null,
-      messages: normalizedMessages,
-    });
-
-    const scores = aiResult.perMessage.map((m) => m.score);
-    const scoreA = scores[0] ?? 0;
-    const scoreB = scores[1] ?? 0;
-
-    const winnerIndex = scoreA >= scoreB ? 0 : 1;
-    const winnerLabel = winnerIndex === 0 ? 'A' : 'B';
-    const winnerText = winnerIndex === 0 ? cleanA : cleanB;
-
-    // AiCore יקבל את התשובה המנצחת כ"טקסט הייצוגי" של הסשן
-    const transcript: TranscriptMessage[] = [
-      {
-        sentBy: 'user',
-        text: winnerText,
-      },
-    ];
-
-    const aiCoreResult = await this.aiCore.scoreSession(transcript);
-
-    console.log('[AiCore v1 – A/B]', {
-      userId,
-      topic,
-      winner: winnerLabel,
-      charismaIndex: aiCoreResult.metrics.charismaIndex,
-      overallScore: aiCoreResult.metrics.overallScore,
-    });
-
-    // ללופ ה-Session אנחנו נותנים את שתי הניקודיים (A + B)
-    const messageScores = scores;
-
-    const sessionResult =
-      await this.sessionsService.createScoredSessionFromScores({
-        userId,
-        topic,
-        messageScores,
-        aiCoreResult,
-      });
-
-    return {
-      ...sessionResult,
-      ai: aiResult,
-      aiCore: aiCoreResult,
-      mode: 'ab',
-      ab: {
-        prompt: dto.prompt ?? null,
-        optionA: {
-          text: cleanA,
-          score: scoreA,
-          details: aiResult.perMessage[0],
-        },
-        optionB: {
-          text: cleanB,
-          score: scoreB,
-          details: aiResult.perMessage[1],
-        },
-        winner: winnerLabel,
-      },
-    };
+    return template.aiContract ?? null;
   }
 }

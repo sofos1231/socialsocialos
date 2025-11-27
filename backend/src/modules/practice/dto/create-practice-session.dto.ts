@@ -1,61 +1,41 @@
 // FILE: backend/src/modules/practice/dto/create-practice-session.dto.ts
-import { IsArray, IsOptional, IsString, ValidateNested, IsIn } from 'class-validator';
+
+import {
+  IsArray,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class PracticeMessageDto {
+export class PracticeMessageInput {
   @IsString()
-  @IsIn(['USER', 'AI'])
   role: 'USER' | 'AI';
 
   @IsString()
   content: string;
-
-  @IsOptional()
-  @IsString()
-  timestamp?: string;
 }
 
 export class CreatePracticeSessionDto {
+  @IsString()
+  topic: string;
+
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => PracticeMessageDto)
-  messages: PracticeMessageDto[];
+  @Type(() => PracticeMessageInput)
+  messages: PracticeMessageInput[];
 
-  @IsOptional()
-  @IsString()
-  topic?: string;
-
-  // ✅ mission wiring (was getting stripped by ValidationPipe before)
+  /**
+   * ⚡ NEW: mission template context
+   */
   @IsOptional()
   @IsString()
   templateId?: string;
 
+  /**
+   * ⚡ NEW: mission persona context
+   */
   @IsOptional()
   @IsString()
   personaId?: string;
-}
-
-export class CreateVoicePracticeSessionDto {
-  @IsString()
-  transcript: string;
-
-  @IsOptional()
-  @IsString()
-  topic?: string;
-}
-
-export class ComparePracticeOptionsDto {
-  @IsOptional()
-  @IsString()
-  prompt?: string;
-
-  @IsString()
-  optionA: string;
-
-  @IsString()
-  optionB: string;
-
-  @IsOptional()
-  @IsString()
-  topic?: string;
 }
