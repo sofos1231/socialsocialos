@@ -1,25 +1,28 @@
-// NOTE: This file currently uses Option A (rarity/xp-based) scoring/rewards.
-// It will be migrated to Option B AiCore metrics later.
+// FILE: backend/src/modules/ai/ai.module.ts
 
-// backend/src/modules/ai/ai.module.ts
 import { Module } from '@nestjs/common';
+import { PrismaModule } from '../../db/prisma.module';
 import { AiScoringService } from './ai-scoring.service';
 import { AiCoreScoringService } from './ai-core-scoring.service';
+import { AiChatService } from './providers/ai-chat.service';
+import { OpenAiClient } from './providers/openai.client';
 
-/**
- * AI module shell.
- *
- * For now this module provides:
- * - AiScoringService  → Option A / premium effects (rarities, microfeedback)
- * - AiCoreScoringService → Option B core metrics engine (charisma traits)
- *
- * Later we can plug in:
- * - provider-specific LLM clients (OpenAI, Anthropic, etc.)
- * - configuration (models, timeouts, cost limits)
- * - caching / fallbacks
- */
 @Module({
-  providers: [AiScoringService, AiCoreScoringService],
-  exports: [AiScoringService, AiCoreScoringService],
+  imports: [PrismaModule],
+  providers: [
+    AiScoringService,
+    AiCoreScoringService,
+
+    // NEW: real chat replies
+    OpenAiClient,
+    AiChatService,
+  ],
+  exports: [
+    AiScoringService,
+    AiCoreScoringService,
+
+    // export so PracticeService can inject it
+    AiChatService,
+  ],
 })
 export class AiModule {}

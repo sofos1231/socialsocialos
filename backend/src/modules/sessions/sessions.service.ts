@@ -1,8 +1,4 @@
-// NOTE: This file currently uses Option A (rarity/xp-based) scoring/rewards
-// as the primary reward engine, and additionally persists Option B AiCore
-// metrics + insights into PracticeSession when provided.
-
-// backend/src/modules/sessions/sessions.service.ts
+// FILE: backend/src/modules/sessions/sessions.service.ts
 
 import {
   Injectable,
@@ -33,6 +29,8 @@ const RARITY_TO_GRADE: Record<MessageRarity, MessageGrade> = {
   'S+': MessageGrade.BRILLIANT,
 };
 
+type TranscriptMsg = { role: 'USER' | 'AI'; content: string };
+
 @Injectable()
 export class SessionsService {
   constructor(
@@ -40,9 +38,6 @@ export class SessionsService {
     private readonly statsService: StatsService,
   ) {}
 
-  /**
-   * Safety net: make sure wallet + stats exist for the user.
-   */
   private async ensureUserProfilePrimitives(userId: string) {
     await this.prisma.$transaction(async (tx) => {
       await tx.userWallet.upsert({
@@ -75,26 +70,27 @@ export class SessionsService {
   }
 
   /**
-   * General scored-session engine – heart of the loop.
-   * Does NOT return dashboard; only summary + sessionId.
+   * Core transaction: creates PracticeSession + ChatMessages + stats + wallet.
+   * If transcript is provided: persist REAL messages (USER + AI).
+   * If transcript is missing: keep legacy behavior (mock messages) for mock endpoints.
    */
   private async runScoredSession(params: {
     userId: string;
     topic: string;
     messageScores: number[];
+    templateId?: string | null;
+    personaId?: string | null;
+    transcript?: TranscriptMsg[];
   }): Promise<{
     summary: SessionRewardsSummary;
     finalScore: number;
     isSuccess: boolean;
     sessionId: string;
   }> {
-    const { userId, topic, messageScores } = params;
+    const { userId, topic, messageScores, templateId, personaId, transcript } =
+      params;
 
-    if (
-      !messageScores ||
-      !Array.isArray(messageScores) ||
-      messageScores.length === 0
-    ) {
+    if (!messageScores || !Array.isArray(messageScores) || messageScores.length === 0) {
       throw new BadRequestException({
         code: 'SESSION_EMPTY',
         message: 'messageScores must contain at least one score',
@@ -103,24 +99,19 @@ export class SessionsService {
 
     const now = new Date();
 
-    // 1) Compute rewards from message scores
-    const inputs: MessageEvaluationInput[] = messageScores.map((score) => ({
-      score,
-    }));
-
+    // 1) Compute rewards from message scores (USER messages only)
+    const inputs: MessageEvaluationInput[] = messageScores.map((score) => ({ score }));
     const summary: SessionRewardsSummary = computeSessionRewards(inputs);
     const finalScore = Math.round(summary.finalScore);
     const isSuccess = finalScore >= 60;
 
-    // Average per-message score for this session
     const perMessageScores = summary.messages.map((m) => m.score);
     const sessionMessageAvg =
       perMessageScores.length > 0
-        ? perMessageScores.reduce((sum, s) => sum + s, 0) /
-          perMessageScores.length
+        ? perMessageScores.reduce((sum, s) => sum + s, 0) / perMessageScores.length
         : 0;
 
-    // 2) Transaction: PracticeSession + ChatMessages + stats + wallet
+    // 2) Transaction
     const createdSession = await this.prisma.$transaction(async (tx) => {
       const stats = await tx.userStats.findUnique({ where: { userId } });
       const wallet = await tx.userWallet.findUnique({ where: { userId } });
@@ -144,39 +135,103 @@ export class SessionsService {
 
           messageCount: messageScores.length,
           rarityCounts: summary.rarityCounts as any,
-          payload: { messageScores },
+          payload: {
+            messageScores,
+            transcript: transcript ?? null,
+          } as any,
           durationSec: 60,
 
           status: isSuccess ? 'SUCCESS' : 'FAIL',
-          templateId: null,
-          personaId: null,
+          templateId: templateId ?? null,
+          personaId: personaId ?? null,
+
           overallScore: finalScore,
           endedAt: now,
           isSuccess,
         },
       });
 
-      // 2.2) Create ChatMessage rows (currently mock content)
-      const messagesData = summary.messages.map((m, index) => ({
-        sessionId: session.id,
-        userId,
-        role: MessageRole.USER,
-        content: `Mock message #${index + 1}`, // later: real text from conversation
-        grade: RARITY_TO_GRADE[m.rarity],
-        xpDelta: m.xp,
-        coinsDelta: m.coins,
-        gemsDelta: m.gems,
-        isBrilliant: m.rarity === 'S+',
-        isLifesaver: false,
-        meta: {
-          index,
-          score: m.score,
-          rarity: m.rarity,
-        } as any,
-      }));
+      // 2.2) Create ChatMessage rows
+      if (transcript && transcript.length > 0) {
+        // Map reward deltas onto USER messages in order
+        const userRewards = summary.messages; // aligns with messageScores (USER-only)
+        let userIdx = 0;
 
-      if (messagesData.length > 0) {
-        await tx.chatMessage.createMany({ data: messagesData });
+        const rows = transcript
+          .filter((m) => typeof m?.content === 'string' && m.content.trim().length > 0)
+          .map((m, i) => {
+            if (m.role === 'USER') {
+              const r = userRewards[userIdx];
+              const score = r?.score ?? null;
+              const rarity = r?.rarity ?? null;
+
+              const row = {
+                sessionId: session.id,
+                userId,
+                role: MessageRole.USER,
+                content: m.content.trim(),
+                grade: rarity ? RARITY_TO_GRADE[rarity] : null,
+                xpDelta: r?.xp ?? 0,
+                coinsDelta: r?.coins ?? 0,
+                gemsDelta: r?.gems ?? 0,
+                isBrilliant: rarity === 'S+',
+                isLifesaver: false,
+                meta: {
+                  index: i,
+                  userIndex: userIdx,
+                  score,
+                  rarity,
+                } as any,
+              };
+              userIdx += 1;
+              return row;
+            }
+
+            // AI/assistant rows: no deltas
+            return {
+              sessionId: session.id,
+              userId,
+              role: MessageRole.AI,
+              content: m.content.trim(),
+              grade: null,
+              xpDelta: 0,
+              coinsDelta: 0,
+              gemsDelta: 0,
+              isBrilliant: false,
+              isLifesaver: false,
+              meta: {
+                index: i,
+                generated: true,
+              } as any,
+            };
+          });
+
+        if (rows.length > 0) {
+          await tx.chatMessage.createMany({ data: rows as any });
+        }
+      } else {
+        // Legacy behavior for mock endpoints
+        const messagesData = summary.messages.map((m, index) => ({
+          sessionId: session.id,
+          userId,
+          role: MessageRole.USER,
+          content: `Mock message #${index + 1}`,
+          grade: RARITY_TO_GRADE[m.rarity],
+          xpDelta: m.xp,
+          coinsDelta: m.coins,
+          gemsDelta: m.gems,
+          isBrilliant: m.rarity === 'S+',
+          isLifesaver: false,
+          meta: {
+            index,
+            score: m.score,
+            rarity: m.rarity,
+          } as any,
+        }));
+
+        if (messagesData.length > 0) {
+          await tx.chatMessage.createMany({ data: messagesData });
+        }
       }
 
       // 2.3) Update UserStats
@@ -229,21 +284,31 @@ export class SessionsService {
   }
 
   /**
-   * General API used by:
+   * Used by:
    * - /v1/sessions/mock
    * - /v1/practice/session
-   *
-   * Option A: still responsible for rewards (xp/coins/gems + rarity/messages).
-   * Option B: if aiCoreResult exists, we also update AiCore fields on PracticeSession
-   *           and aiSummary with insights.
    */
   async createScoredSessionFromScores(params: {
     userId: string;
     topic: string;
     messageScores: number[];
     aiCoreResult?: AiSessionResult;
+
+    // NEW (optional):
+    templateId?: string | null;
+    personaId?: string | null;
+    transcript?: TranscriptMsg[];
+    assistantReply?: string; // currently stored via transcript; kept for future
   }) {
-    const { userId, topic, messageScores, aiCoreResult } = params;
+    const {
+      userId,
+      topic,
+      messageScores,
+      aiCoreResult,
+      templateId,
+      personaId,
+      transcript,
+    } = params;
 
     if (!userId) {
       throw new UnauthorizedException({
@@ -255,9 +320,16 @@ export class SessionsService {
     await this.ensureUserProfilePrimitives(userId);
 
     const { summary, finalScore, isSuccess, sessionId } =
-      await this.runScoredSession({ userId, topic, messageScores });
+      await this.runScoredSession({
+        userId,
+        topic,
+        messageScores,
+        templateId: templateId ?? null,
+        personaId: personaId ?? null,
+        transcript,
+      });
 
-    // Option B: if we got AiCoreResult, persist metrics + insights to PracticeSession
+    // Option B: persist metrics + insights
     if (aiCoreResult?.metrics) {
       const m = aiCoreResult.metrics;
       const aiSummary = buildAiInsightSummary(aiCoreResult);
@@ -265,7 +337,6 @@ export class SessionsService {
       await this.prisma.practiceSession.update({
         where: { id: sessionId },
         data: {
-          // Core scores
           charismaIndex: m.charismaIndex ?? null,
           confidenceScore: m.confidence ?? null,
           clarityScore: m.clarity ?? null,
@@ -274,16 +345,13 @@ export class SessionsService {
           emotionalWarmth: m.emotionalWarmth ?? null,
           dominanceScore: m.dominance ?? null,
 
-          // Counters
           fillerWordsCount: m.fillerWordsCount ?? null,
           totalMessages: m.totalMessages ?? null,
           totalWords: m.totalWords ?? null,
 
-          // Versioning + raw payload
           aiCoreVersion: aiCoreResult.version ?? null,
           aiCorePayload: aiCoreResult as any,
 
-          // Single-session insight summary
           aiSummary: aiSummary ? (aiSummary as any) : null,
         },
       });
@@ -315,21 +383,14 @@ export class SessionsService {
     };
   }
 
-  /**
-   * Mock endpoint – uses createScoredSessionFromScores with static scores.
-   */
   async createMockSession(userId: string) {
     return this.createScoredSessionFromScores({
       userId,
       topic: 'Mock practice session',
       messageScores: MOCK_MESSAGE_SCORES,
-      // No AiCore mock for now
     });
   }
 
-  /**
-   * Alias: if someone still hits /v1/sessions/dashboard/summary.
-   */
   async getDashboardSnapshot(userId: string) {
     if (!userId) {
       throw new UnauthorizedException({
