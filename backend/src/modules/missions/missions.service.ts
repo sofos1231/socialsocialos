@@ -5,7 +5,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from '../../db/prisma.service';
 import { MissionProgressStatus } from '@prisma/client';
 
 function pickEnumValue<T extends Record<string, any>>(
@@ -20,6 +20,7 @@ function pickEnumValue<T extends Record<string, any>>(
   return vals[0] as any;
 }
 
+// Your schema differs between versions, so we choose values defensively.
 const STATUS_NOT_STARTED = pickEnumValue(MissionProgressStatus as any, [
   'NOT_STARTED',
   'PENDING',
@@ -49,24 +50,24 @@ export class MissionsService {
       include: { persona: true, category: true },
     });
 
-    const ids = templates.map((t: any) => t.id);
+    const ids = (templates as any[]).map((t) => t.id);
 
-    const progresses = ids.length
-      ? await this.prisma.missionProgress.findMany({
-          where: {
-            userId,
-            templateId: { in: ids },
-          },
-        })
-      : [];
+    const progresses =
+      ids.length > 0
+        ? await this.prisma.missionProgress.findMany({
+            where: {
+              userId,
+              templateId: { in: ids },
+            },
+          })
+        : [];
 
     const progressByTemplateId = new Map<string, any>();
     for (const p of progresses as any[]) {
-      // MissionProgress.templateId (from schema)
       progressByTemplateId.set(p.templateId, p);
     }
 
-    // Compute unlock per lane: first is unlocked; next unlocked only if previous completed
+    // group templates by lane and sort inside lane
     const templatesByLane = new Map<number, any[]>();
     for (const t of templates as any[]) {
       const lane = Number((t as any).laneIndex ?? 0);
@@ -74,13 +75,12 @@ export class MissionsService {
       arr.push(t);
       templatesByLane.set(lane, arr);
     }
-
-    // Ensure lane ordering stable
     for (const [lane, arr] of templatesByLane.entries()) {
-      arr.sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+      arr.sort((a, b) => Number(a.orderIndex ?? 0) - Number(b.orderIndex ?? 0));
       templatesByLane.set(lane, arr);
     }
 
+    // unlock rules: first in lane unlocked, others require previous completed
     const unlockedById = new Map<string, boolean>();
     for (const [, arr] of templatesByLane.entries()) {
       for (let i = 0; i < arr.length; i++) {
@@ -96,23 +96,21 @@ export class MissionsService {
       }
     }
 
-    // Pick "current": first unlocked-but-not-completed across all templates
+    // current: first unlocked-but-not-completed in overall order
     let currentId: string | null = null;
     for (const t of templates as any[]) {
       const isUnlocked = unlockedById.get(t.id) ?? false;
       const prog = progressByTemplateId.get(t.id);
       const isCompleted = prog?.status === STATUS_COMPLETED;
-      if (!currentId && isUnlocked && !isCompleted) {
-        currentId = t.id;
-      }
+      if (!currentId && isUnlocked && !isCompleted) currentId = t.id;
     }
 
-    return templates.map((t: any) => {
+    return (templates as any[]).map((t) => {
       const prog = progressByTemplateId.get(t.id);
       const isUnlocked = unlockedById.get(t.id) ?? false;
       const isCompleted = prog?.status === STATUS_COMPLETED;
 
-      // estMinutes is not typed in your prisma client -> read defensively
+      // field not guaranteed in schema — keep defensive access
       const estMinutes =
         (t as any).estMinutes ??
         (t as any).estimatedMinutes ??
@@ -131,21 +129,14 @@ export class MissionsService {
         estMinutes,
 
         category: t.category
-          ? {
-              id: t.category.id,
-              code: t.category.code,
-              label: t.category.label,
-            }
+          ? { id: t.category.id, code: t.category.code, label: t.category.label }
           : null,
 
         persona: t.persona
           ? {
               id: t.persona.id,
               name: t.persona.name,
-              bio:
-                (t.persona as any).bio ??
-                (t.persona as any).description ??
-                '',
+              bio: (t.persona as any).bio ?? (t.persona as any).description ?? '',
               avatarUrl: (t.persona as any).avatarUrl ?? null,
               voicePreset: (t.persona as any).voicePreset ?? null,
             }
@@ -154,7 +145,6 @@ export class MissionsService {
         progress: prog
           ? {
               status: prog.status,
-              // schema currently has no "attempts" column; this will just be undefined
               attempts: (prog as any).attempts ?? 0,
               bestScore: prog.bestScore ?? null,
               updatedAt: prog.updatedAt ?? null,
@@ -172,7 +162,7 @@ export class MissionsService {
    * Start mission flow:
    * - validate template exists + active
    * - validate unlocked
-   * - ensure MissionProgress row exists (without relying on compound unique name)
+   * - ensure MissionProgress row exists
    */
   async startMissionForUser(userId: string, templateId: string) {
     const template = await this.prisma.practiceMissionTemplate.findUnique({
@@ -180,17 +170,13 @@ export class MissionsService {
       include: { persona: true, category: true },
     });
 
-    if (!template) {
-      throw new NotFoundException('Mission template not found.');
-    }
-    if (!(template as any).active) {
+    if (!template) throw new NotFoundException('Mission template not found.');
+    if (!(template as any).active)
       throw new ForbiddenException('Mission is inactive.');
-    }
 
     const isUnlocked = await this.isUnlockedForUser(userId, template as any);
-    if (!isUnlocked) {
+    if (!isUnlocked)
       throw new ForbiddenException('You must complete earlier missions first.');
-    }
 
     const existing = await this.prisma.missionProgress.findFirst({
       where: { userId, templateId },

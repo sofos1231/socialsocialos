@@ -1,5 +1,3 @@
-// FILE: backend/src/modules/sessions/sessions.service.ts
-
 import {
   Injectable,
   UnauthorizedException,
@@ -13,7 +11,7 @@ import {
   SessionRewardsSummary,
   MessageRarity,
 } from './scoring';
-import { MessageGrade, MessageRole } from '@prisma/client';
+import { MessageGrade, MessageRole, MissionProgressStatus } from '@prisma/client';
 import { AiSessionResult } from '../ai/ai-scoring.types';
 import { buildAiInsightSummary } from '../ai/ai-insights';
 
@@ -29,7 +27,45 @@ const RARITY_TO_GRADE: Record<MessageRarity, MessageGrade> = {
   'S+': MessageGrade.BRILLIANT,
 };
 
-type TranscriptMsg = { role: 'USER' | 'AI'; content: string };
+// NOTE: keep role as string for flexibility; we still *expect* "USER"/"AI".
+type TranscriptMsg = { role: string; content: string };
+
+/**
+ * Helper to safely pick enum values even if names change slightly between schema versions.
+ */
+function pickEnumValue<T extends Record<string, any>>(
+  enumObj: T,
+  preferredKeys: string[],
+): T[keyof T] {
+  for (const k of preferredKeys) {
+    if ((enumObj as any)[k] !== undefined) return (enumObj as any)[k];
+  }
+  const vals = Object.values(enumObj);
+  if (!vals.length) throw new Error('Enum has no values');
+  return vals[0] as any;
+}
+
+// Defensive mapping for MissionProgressStatus
+const STATUS_NOT_STARTED = pickEnumValue(MissionProgressStatus as any, [
+  'NOT_STARTED',
+  'PENDING',
+  'NEW',
+  'STARTED',
+]);
+
+const STATUS_COMPLETED = pickEnumValue(MissionProgressStatus as any, [
+  'COMPLETED',
+  'DONE',
+  'FINISHED',
+  'SUCCESS',
+]);
+
+const STATUS_IN_PROGRESS = pickEnumValue(MissionProgressStatus as any, [
+  'IN_PROGRESS',
+  'ACTIVE',
+  'ONGOING',
+  'STARTED',
+]);
 
 @Injectable()
 export class SessionsService {
@@ -355,6 +391,48 @@ export class SessionsService {
           aiSummary: aiSummary ? (aiSummary as any) : null,
         },
       });
+    }
+
+    // --- Mission progress update (NO attempts column usage) ---
+    if (templateId) {
+      const now = new Date();
+
+      const existing = await this.prisma.missionProgress.findFirst({
+        where: {
+          userId,
+          templateId,
+        },
+      });
+
+      if (!existing) {
+        await this.prisma.missionProgress.create({
+          data: {
+            userId,
+            templateId,
+            status: isSuccess ? STATUS_COMPLETED : STATUS_IN_PROGRESS,
+            bestScore: finalScore,
+          } as any,
+        });
+      } else {
+        const newBest =
+          typeof existing.bestScore === 'number'
+            ? Math.max(existing.bestScore, finalScore)
+            : finalScore;
+
+        await this.prisma.missionProgress.updateMany({
+          where: {
+            userId,
+            templateId,
+          },
+          data: {
+            status: isSuccess
+              ? STATUS_COMPLETED
+              : existing.status ?? STATUS_IN_PROGRESS,
+            bestScore: newBest,
+            updatedAt: now,
+          } as any,
+        });
+      }
     }
 
     const dashboard = await this.statsService.getDashboardForUser(userId);

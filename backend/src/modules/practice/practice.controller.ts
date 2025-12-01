@@ -1,33 +1,26 @@
 // FILE: backend/src/modules/practice/practice.controller.ts
 
-import {
-  Controller,
-  Post,
-  Req,
-  Body,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PracticeService } from './practice.service';
 import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
+@ApiTags('practice')
+@ApiBearerAuth()
 @Controller('practice')
 export class PracticeController {
-  constructor(private readonly practice: PracticeService) {}
+  constructor(private readonly practiceService: PracticeService) {}
 
   /**
+   * POST /v1/practice/session
    * Main AI text endpoint.
    * FE sends: { topic, messages[], templateId?, personaId? }
    */
   @Post('session')
   @UseGuards(JwtAuthGuard)
-  async session(
-    @Req() req: any,
-    @Body() dto: CreatePracticeSessionDto,
-  ) {
-    const userId =
-      req.user?.sub ?? req.user?.userId ?? req.user?.id ?? String(req.user);
-
-    return this.practice.runPracticeSession(String(userId), dto);
+  async session(@Req() req: any, @Body() dto: CreatePracticeSessionDto) {
+    const userId = req.user?.sub ?? req.user?.id;
+    return this.practiceService.runPracticeSession(userId, dto);
   }
 }

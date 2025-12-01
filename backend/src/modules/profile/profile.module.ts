@@ -1,14 +1,14 @@
 // backend/src/modules/profile/profile.module.ts
 
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../db/prisma.module';
-import { ProfileService } from './profile.service';
+import { PrismaModule } from '../../prisma/prisma.module';
 import { ProfileController } from './profile.controller';
+import { ProfileService } from './profile.service';
 
 @Module({
   imports: [PrismaModule],
-  providers: [ProfileService],
   controllers: [ProfileController],
+  providers: [ProfileService],
   exports: [ProfileService],
 })
 export class ProfileModule {}

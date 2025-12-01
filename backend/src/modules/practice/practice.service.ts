@@ -1,5 +1,4 @@
 // FILE: backend/src/modules/practice/practice.service.ts
-
 import {
   Injectable,
   NotFoundException,
@@ -15,6 +14,70 @@ import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
 import type { PracticeMessageInput as AiPracticeMessageInput } from '../ai/ai.types';
 import type { TranscriptMessage } from '../ai/ai-scoring.types';
 
+type MissionStateStatus = 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
+
+export interface MissionStatePayload {
+  status: MissionStateStatus;
+  /**
+   * 0–100 – how far the user is into the mission according to simple heuristics.
+   */
+  progressPct: number;
+  /**
+   * Average score (0–100) over this session’s USER messages.
+   */
+  averageScore: number;
+  /**
+   * Number of USER messages in this session.
+   */
+  totalMessages: number;
+}
+
+/**
+ * Simple, deterministic mission state calculator.
+ * This is *frontend-facing* state only — DB persistence stays inside SessionsService.
+ */
+function computeMissionState(
+  messageScores: number[],
+  totalUserMessages: number,
+): MissionStatePayload {
+  if (!messageScores.length || totalUserMessages === 0) {
+    return {
+      status: 'IN_PROGRESS',
+      progressPct: 0,
+      averageScore: 0,
+      totalMessages: 0,
+    };
+  }
+
+  const sum = messageScores.reduce((acc, v) => acc + v, 0);
+  const averageScore = sum / messageScores.length;
+
+  // Heuristic progress: נניח שמיסיה טיפוסית היא 5 הודעות יוזר.
+  const ESTIMATED_MESSAGES_FOR_MISSION = 5;
+  const rawProgress = (totalUserMessages / ESTIMATED_MESSAGES_FOR_MISSION) * 100;
+  const progressPct = Math.max(5, Math.min(100, Math.round(rawProgress)));
+
+  // Heuristic status rules:
+  // - SUCCESS: ממוצע >= 90 ויש לפחות 3 הודעות
+  // - FAIL: ממוצע < 60 ויש לפחות 3 הודעות
+  // - אחרת: IN_PROGRESS
+  let status: MissionStateStatus = 'IN_PROGRESS';
+  if (totalUserMessages >= 3) {
+    if (averageScore >= 90) {
+      status = 'SUCCESS';
+    } else if (averageScore < 60) {
+      status = 'FAIL';
+    }
+  }
+
+  return {
+    status,
+    progressPct,
+    averageScore: Math.round(averageScore),
+    totalMessages: totalUserMessages,
+  };
+}
+
 @Injectable()
 export class PracticeService {
   constructor(
@@ -27,7 +90,8 @@ export class PracticeService {
 
   /**
    * Main practice session entry point (text chat).
-   * Now returns aiReply every time, and persists real messages.
+   * Now returns aiReply every time, persists real messages,
+   * AND exposes missionState for real-time mission feedback in the app.
    */
   async runPracticeSession(userId: string, dto: CreatePracticeSessionDto) {
     if (!userId) throw new BadRequestException('Missing userId.');
@@ -72,7 +136,7 @@ export class PracticeService {
 
     const aiCoreResult = await this.aiCore.scoreSession(transcriptForCore);
 
-    // NEW: generate assistant reply using mission contract + persona + conversation
+    // Generate assistant reply using mission contract + persona + conversation
     const { aiReply, aiDebug } = await this.aiChat.generateReply({
       userId,
       topic: dto.topic,
@@ -98,6 +162,9 @@ export class PracticeService {
       assistantReply: aiReply,
     });
 
+    // 🔥 NEW: missionState for real-time mission mood + progress UI
+    const missionState = computeMissionState(messageScores, userOnly.length);
+
     return {
       ...saved,
       aiReply,
@@ -105,6 +172,7 @@ export class PracticeService {
       mission: dto.templateId
         ? { templateId: dto.templateId, aiContract: missionContract }
         : null,
+      missionState,
     };
   }
 
