@@ -1,5 +1,3 @@
-// FILE: backend/src/modules/missions/missions.service.ts
-
 import {
   Injectable,
   NotFoundException,
@@ -8,32 +6,9 @@ import {
 import { PrismaService } from '../../db/prisma.service';
 import { MissionProgressStatus } from '@prisma/client';
 
-function pickEnumValue<T extends Record<string, any>>(
-  enumObj: T,
-  preferredKeys: string[],
-): T[keyof T] {
-  for (const k of preferredKeys) {
-    if ((enumObj as any)[k] !== undefined) return (enumObj as any)[k];
-  }
-  const vals = Object.values(enumObj);
-  if (!vals.length) throw new Error('Enum has no values');
-  return vals[0] as any;
-}
-
-// Your schema differs between versions, so we choose values defensively.
-const STATUS_NOT_STARTED = pickEnumValue(MissionProgressStatus as any, [
-  'NOT_STARTED',
-  'PENDING',
-  'NEW',
-  'STARTED',
-]);
-
-const STATUS_COMPLETED = pickEnumValue(MissionProgressStatus as any, [
-  'COMPLETED',
-  'DONE',
-  'FINISHED',
-  'SUCCESS',
-]);
+const STATUS_LOCKED = MissionProgressStatus.LOCKED;
+const STATUS_UNLOCKED = MissionProgressStatus.UNLOCKED;
+const STATUS_COMPLETED = MissionProgressStatus.COMPLETED;
 
 @Injectable()
 export class MissionsService {
@@ -162,7 +137,7 @@ export class MissionsService {
    * Start mission flow:
    * - validate template exists + active
    * - validate unlocked
-   * - ensure MissionProgress row exists
+   * - ensure MissionProgress row exists (UNLOCKED, not LOCKED)
    */
   async startMissionForUser(userId: string, templateId: string) {
     const template = await this.prisma.practiceMissionTemplate.findUnique({
@@ -187,7 +162,7 @@ export class MissionsService {
         data: {
           userId,
           templateId,
-          status: STATUS_NOT_STARTED,
+          status: STATUS_UNLOCKED,
         } as any,
       });
     }

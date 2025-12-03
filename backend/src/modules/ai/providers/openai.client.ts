@@ -10,6 +10,8 @@ export type OpenAiChatMessage = {
   content: string;
 };
 
+type ResponseFormatMode = 'json_object';
+
 @Injectable()
 export class OpenAiClient {
   private readonly logger = new Logger(OpenAiClient.name);
@@ -17,7 +19,11 @@ export class OpenAiClient {
   constructor(private readonly config: ConfigService) {}
 
   private get apiKey(): string | null {
-    return this.config.get<string>('OPENAI_API_KEY') || process.env.OPENAI_API_KEY || null;
+    return (
+      this.config.get<string>('OPENAI_API_KEY') ||
+      process.env.OPENAI_API_KEY ||
+      null
+    );
   }
 
   private get model(): string {
@@ -41,6 +47,7 @@ export class OpenAiClient {
     messages: OpenAiChatMessage[];
     temperature?: number;
     maxTokens?: number;
+    responseFormat?: ResponseFormatMode;
   }): Promise<{ text: string; debug: { model: string; ms: number } }> {
     const key = this.apiKey;
     if (!key) {
@@ -55,12 +62,17 @@ export class OpenAiClient {
     const startedAt = Date.now();
 
     try {
-      const body = {
+      const body: any = {
         model: this.model,
         messages: params.messages,
         temperature: params.temperature ?? 0.7,
         max_tokens: params.maxTokens ?? 220,
       };
+
+      if (params.responseFormat === 'json_object') {
+        // Chat Completions JSON mode
+        body.response_format = { type: 'json_object' };
+      }
 
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',

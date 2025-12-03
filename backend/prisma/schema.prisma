@@ -32,6 +32,9 @@ model User {
 
   // Mission progress
   missionProgress MissionProgress[]
+
+  // ✅ Rewards ledger (idempotent grants)
+  rewardLedger RewardLedgerEntry[]
 }
 
 model IdempotencyKey {
@@ -46,6 +49,32 @@ model IdempotencyKey {
   expiresAt    DateTime
 
   @@unique([key, userId, route])
+}
+
+/// ✅ Rewards ledger entry (prevents double-award)
+model RewardLedgerEntry {
+  id         String  @id @default(cuid())
+  userId     String
+  sessionId  String
+  templateId String?
+
+  kind RewardLedgerKind @default(SESSION_REWARD)
+
+  xpDelta    Int @default(0)
+  coinsDelta Int @default(0)
+  gemsDelta  Int @default(0)
+
+  score     Int?
+  isSuccess Boolean?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, kind])
+  @@index([userId, createdAt])
+  @@index([templateId])
 }
 
 model RefreshToken {
@@ -64,17 +93,17 @@ model RefreshToken {
 /// AI Personas – characters for missions
 /// --------------------------------------
 model AiPersona {
-  id          String                    @id @default(cuid())
-  code        String                    @unique           // e.g. "MAYA_FLIRTY"
+  id          String   @id @default(cuid())
+  code        String   @unique // e.g. "MAYA_FLIRTY"
   name        String
   shortLabel  String?
   description String?
   style       String?
   avatarUrl   String?
   difficulty  Int?
-  voicePreset String?                   // TTS preset key
-  active      Boolean                   @default(true)
-  createdAt   DateTime                  @default(now())
+  voicePreset String? // TTS preset key
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
 
   // Relations
   sessions         PracticeSession[]
@@ -85,59 +114,59 @@ model AiPersona {
 /// Mission categories (Openers, Flirting…)
 /// --------------------------------------
 model MissionCategory {
-  id          String                   @id @default(cuid())
-  code        String                   @unique           // "OPENERS", "FLIRTING"
-  label       String                   // "Openers"
+  id          String  @id @default(cuid())
+  code        String  @unique // "OPENERS", "FLIRTING"
+  label       String // "Openers"
   description String?
 
-  templates   PracticeMissionTemplate[]
+  templates PracticeMissionTemplate[]
 }
 
 /// --------------------------------------
 /// Mission template = "practice mission definition"
 /// --------------------------------------
 model PracticeMissionTemplate {
-  id          String            @id @default(cuid())
-  code        String            @unique          // "OPENERS_L1_M1"
+  id          String  @id @default(cuid())
+  code        String  @unique // "OPENERS_L1_M1"
   title       String
   description String?
 
   // Category & goal
-  categoryId  String?
-  category    MissionCategory?  @relation(fields: [categoryId], references: [id])
+  categoryId String?
+  category   MissionCategory? @relation(fields: [categoryId], references: [id])
 
-  goalType    MissionGoalType?
+  goalType MissionGoalType?
 
   // Persona assigned to this mission (optional)
-  personaId   String?
-  persona     AiPersona?        @relation(fields: [personaId], references: [id])
+  personaId String?
+  persona   AiPersona? @relation(fields: [personaId], references: [id])
 
   // Difficulty & constraints
   difficulty   MissionDifficulty @default(EASY)
-  timeLimitSec Int               @default(30)   // per user message
-  maxMessages  Int?                              // per mission
-  wordLimit    Int?                              // per user message
+  timeLimitSec Int               @default(30) // per user message
+  maxMessages  Int? // per mission
+  wordLimit    Int? // per user message
 
   // Mission Road layout
-  laneIndex   Int               @default(0)     // column index
-  orderIndex  Int               @default(0)     // position inside lane
+  laneIndex  Int @default(0) // column index
+  orderIndex Int @default(0) // position inside lane
 
   // Voice support
-  isVoiceSupported Boolean      @default(true)
+  isVoiceSupported Boolean @default(true)
 
   // Rewards (base values, before multipliers)
-  baseXpReward    Int           @default(50)
-  baseCoinsReward Int           @default(10)
-  baseGemsReward  Int           @default(0)
+  baseXpReward    Int @default(50)
+  baseCoinsReward Int @default(10)
+  baseGemsReward  Int @default(0)
 
-  aiContract   Json? 
+  aiContract Json?
 
-  active      Boolean           @default(true)
-  createdAt   DateTime          @default(now())
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
 
   // Relations
-  sessions   PracticeSession[]
-  progress   MissionProgress[]
+  sessions PracticeSession[]
+  progress MissionProgress[]
 }
 
 model PowerUpType {
@@ -196,6 +225,10 @@ model PracticeSession {
 
   messages ChatMessage[]
   powerUps PowerUpUsage[]
+
+  // ✅ Rewards ledger relation
+  rewardLedger RewardLedgerEntry[]
+
   persona  AiPersona?               @relation(fields: [personaId], references: [id])
   template PracticeMissionTemplate? @relation(fields: [templateId], references: [id])
   user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -269,16 +302,16 @@ model PowerUpUsage {
 /// Mission progress per user
 /// --------------------------------------
 model MissionProgress {
-  id         String                 @id @default(cuid())
+  id         String                @id @default(cuid())
   userId     String
   templateId String
-  status     MissionProgressStatus  @default(LOCKED)
+  status     MissionProgressStatus @default(LOCKED)
   bestScore  Int?
-  createdAt  DateTime               @default(now())
-  updatedAt  DateTime               @updatedAt
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
 
-  user     User                     @relation(fields: [userId], references: [id])
-  template PracticeMissionTemplate  @relation(fields: [templateId], references: [id])
+  user     User                    @relation(fields: [userId], references: [id])
+  template PracticeMissionTemplate @relation(fields: [templateId], references: [id])
 
   @@unique([userId, templateId])
 }
@@ -359,4 +392,9 @@ enum MissionGoalType {
   BOUNDARY
   LOGISTICS
   SOCIAL
+}
+
+/// ✅ Ledger kinds (extend later)
+enum RewardLedgerKind {
+  SESSION_REWARD
 }

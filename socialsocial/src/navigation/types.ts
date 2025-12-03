@@ -48,8 +48,15 @@ export interface PracticeMessageInput {
 }
 
 export interface PracticeSessionRequest {
+  /**
+   * ✅ Step 8: continue an existing server session while staying in the screen.
+   * IMPORTANT: we do NOT persist this to storage (no pause/resume).
+   */
+  sessionId?: string;
+
   topic: string;
   messages: PracticeMessageInput[];
+
   templateId?: string; // mission template
   personaId?: string; // persona context
 }
@@ -75,7 +82,7 @@ export interface SessionRewards {
   messages: SessionRewardMessageBreakdown[];
 }
 
-// 🔥 NEW – Backend missionState payload
+// 🔥 Backend missionState payload
 export type MissionStateStatus = 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
 
 export interface MissionStatePayload {
@@ -94,7 +101,7 @@ export interface PracticeSessionResponse {
   aiReply?: string;
   aiDebug?: any;
   mission?: any;
-  // NEW: mission state for real-time mission mood / progress UI
+  aiStructured?: any; // backend returns this; FE can ignore for now
   missionState?: MissionStatePayload;
 }
 

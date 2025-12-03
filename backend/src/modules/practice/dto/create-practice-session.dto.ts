@@ -4,6 +4,7 @@ import {
   IsArray,
   IsOptional,
   IsString,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -17,24 +18,30 @@ export class PracticeMessageInput {
 }
 
 export class CreatePracticeSessionDto {
+  /**
+   * ✅ Step 8: continue an existing session by id
+   */
+  @IsOptional()
   @IsString()
-  topic: string;
+  sessionId?: string;
+
+  /**
+   * topic is required only for NEW sessions.
+   * For continuation we fall back to the existing session.topic.
+   */
+  @ValidateIf((o) => !o.sessionId)
+  @IsString()
+  topic!: string;
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => PracticeMessageInput)
-  messages: PracticeMessageInput[];
+  messages!: PracticeMessageInput[];
 
-  /**
-   * ⚡ NEW: mission template context
-   */
   @IsOptional()
   @IsString()
   templateId?: string;
 
-  /**
-   * ⚡ NEW: mission persona context
-   */
   @IsOptional()
   @IsString()
   personaId?: string;

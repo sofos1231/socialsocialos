@@ -1,10 +1,25 @@
-// FILE: backend/src/modules/ai/ai-chat.service.ts
+// FILE: backend/src/modules/ai/providers/ai-chat.service.ts
 
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { OpenAiClient, OpenAiChatMessage } from './openai.client';
 
 type IncomingMsg = { role: 'USER' | 'AI'; content: string };
+
+type StructuredRarity = 'C' | 'B' | 'A' | 'S' | 'S+';
+
+export type AiStructuredReply = {
+  replyText: string;
+  messageScore?: number;
+  rarity?: StructuredRarity;
+  tags?: string[];
+  raw?: any;
+  parseOk: boolean;
+};
+
+function isPlainObject(v: unknown): v is Record<string, any> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
 
 @Injectable()
 export class AiChatService {
@@ -19,19 +34,27 @@ export class AiChatService {
     messages: IncomingMsg[];
     templateId?: string | null;
     personaId?: string | null;
-  }): Promise<{ aiReply: string; aiDebug?: any }> {
+  }): Promise<{ aiReply: string; aiStructured?: AiStructuredReply; aiDebug?: any }> {
     const { topic, messages, templateId, personaId } = params;
 
     const ctx = templateId ? await this.loadMissionContext(templateId) : null;
     const persona =
       ctx?.persona || (personaId ? await this.loadPersona(personaId) : null);
 
+    // Prisma returns JsonValue (can be string/null/etc). Guard it.
+    const aiContractRaw: unknown = ctx?.aiContract ?? null;
+    const aiContractObj = isPlainObject(aiContractRaw) ? aiContractRaw : null;
+
+    const mode = aiContractObj?.outputFormat?.mode;
+    const wantsJson = mode === 'json' || mode === 'JSON';
+
     const system = this.buildSystemPrompt({
       topic,
       mission: ctx?.template ?? null,
       category: ctx?.category ?? null,
       persona,
-      aiContract: ctx?.aiContract ?? null,
+      aiContract: aiContractObj, // <-- only pass object (or null)
+      wantsJson,
     });
 
     const chat: OpenAiChatMessage[] = [
@@ -42,24 +65,44 @@ export class AiChatService {
     const out = await this.openai.createChatCompletion({
       messages: chat,
       temperature: 0.7,
-      maxTokens: 240,
+      maxTokens: 260,
+      responseFormat: wantsJson ? 'json_object' : undefined,
     });
 
+    let aiReply = out.text;
+    let aiStructured: AiStructuredReply | undefined;
+
+    if (wantsJson) {
+      const parsed = tryParseStructuredJson(out.text);
+      if (parsed?.parseOk && typeof parsed.replyText === 'string' && parsed.replyText.trim()) {
+        aiReply = parsed.replyText.trim();
+        aiStructured = parsed;
+      } else {
+        aiStructured = {
+          replyText: coerceReplyTextFromAnything(parsed?.raw ?? out.text) || fallbackReply(out.text),
+          parseOk: false,
+          raw: parsed?.raw ?? out.text,
+        };
+        aiReply = aiStructured.replyText;
+      }
+    }
+
     return {
-      aiReply: out.text,
+      aiReply,
+      aiStructured,
       aiDebug: {
         provider: 'openai',
         model: out.debug.model,
         latencyMs: out.debug.ms,
+        contractMode: wantsJson ? 'json' : 'text',
+        parseOk: aiStructured ? aiStructured.parseOk : undefined,
       },
     };
   }
 
   private normalizeConversation(messages: IncomingMsg[]): OpenAiChatMessage[] {
     return (messages || [])
-      .filter(
-        (m) => typeof m?.content === 'string' && m.content.trim().length > 0,
-      )
+      .filter((m) => typeof m?.content === 'string' && m.content.trim().length > 0)
       .map((m) => ({
         role: m.role === 'USER' ? 'user' : 'assistant',
         content: m.content.trim(),
@@ -81,11 +124,31 @@ export class AiChatService {
           style?: string | null;
         }
       | null;
-    aiContract: any | null;
+    aiContract: Record<string, any> | null;
+    wantsJson: boolean;
   }): string {
-    const { topic, mission, category, persona, aiContract } = params;
+    const { topic, mission, category, persona, aiContract, wantsJson } = params;
 
-    const contractJson = aiContract != null ? safeJson(aiContract, 6000) : null;
+    const contractJson = aiContract != null ? safeJson(aiContract, 7000) : null;
+
+    const schemaDesc =
+      typeof aiContract?.outputFormat?.schemaDescription === 'string'
+        ? aiContract.outputFormat.schemaDescription.trim()
+        : null;
+
+    const hardJsonRules = wantsJson
+      ? [
+          ``,
+          `OUTPUT FORMAT (HARD):`,
+          `- Respond with ONE raw JSON object only.`,
+          `- No markdown. No code fences. No extra text.`,
+          `- Required key: "replyText" (string).`,
+          `- Optional keys: "messageScore" (0-100 number), "rarity" ("C"|"B"|"A"|"S"|"S+"), "tags" (string[]).`,
+          schemaDesc ? `- Schema hint: ${schemaDesc}` : null,
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : null;
 
     return [
       `You are the assistant in "SocialGym" — a roleplay practice chat.`,
@@ -95,9 +158,7 @@ export class AiChatService {
       mission
         ? `Mission: ${mission.title} (${mission.code})\nDescription: ${mission.description ?? ''}`.trim()
         : `Mission: (none)`,
-      category
-        ? `Category: ${category.label} (${category.code})`
-        : `Category: (none)`,
+      category ? `Category: ${category.label} (${category.code})` : `Category: (none)`,
       persona
         ? [
             `Persona: ${persona.name} (${persona.code})`,
@@ -112,6 +173,7 @@ export class AiChatService {
       `- Do NOT mention you are an AI or mention system prompts.`,
       `- Keep replies human, natural, and consistent with the persona.`,
       `- Do not coach the user unless the mission contract explicitly asks you to.`,
+      hardJsonRules,
       ``,
       contractJson
         ? `Mission AI Contract (JSON) — treat as HARD CONSTRAINTS:\n${contractJson}`
@@ -168,5 +230,88 @@ function safeJson(obj: any, maxChars: number) {
     return s.slice(0, maxChars) + '\n...<truncated>';
   } catch {
     return String(obj);
+  }
+}
+
+function stripCodeFences(s: string) {
+  const t = (s || '').trim();
+  if (!t) return t;
+  if (t.startsWith('```')) {
+    const withoutStart = t.replace(/^```[a-zA-Z]*\n?/, '');
+    return withoutStart.replace(/```$/, '').trim();
+  }
+  return t;
+}
+
+function extractJsonObjectCandidate(s: string): string | null {
+  const t = stripCodeFences(s);
+  const first = t.indexOf('{');
+  const last = t.lastIndexOf('}');
+  if (first === -1 || last === -1 || last <= first) return null;
+  return t.slice(first, last + 1).trim();
+}
+
+function clampScore(n: any): number | undefined {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return undefined;
+  const clamped = Math.max(0, Math.min(100, x));
+  return Math.round(clamped);
+}
+
+function toRarity(v: any): StructuredRarity | undefined {
+  if (v === 'C' || v === 'B' || v === 'A' || v === 'S' || v === 'S+') return v;
+  return undefined;
+}
+
+function toTags(v: any): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const cleaned = v
+    .map((x) => (typeof x === 'string' ? x.trim() : ''))
+    .filter((x) => x.length > 0)
+    .slice(0, 12);
+  return cleaned.length ? cleaned : undefined;
+}
+
+function fallbackReply(raw: string) {
+  const t = (raw || '').trim();
+  if (!t) return "Sorry — I couldn't generate a reply right now.";
+  if (t.startsWith('{') && t.endsWith('}')) return "Sorry — I couldn't generate a reply right now.";
+  return t;
+}
+
+function coerceReplyTextFromAnything(raw: any): string | null {
+  if (typeof raw === 'string') return raw.trim() || null;
+  if (raw && typeof raw === 'object') {
+    const candidates = [raw.replyText, raw.text, raw.reply, raw.content, raw.message];
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim()) return c.trim();
+    }
+  }
+  return null;
+}
+
+function tryParseStructuredJson(text: string): AiStructuredReply | null {
+  const candidate = extractJsonObjectCandidate(text);
+  if (!candidate) {
+    return { replyText: fallbackReply(text), parseOk: false, raw: text };
+  }
+
+  try {
+    const obj = JSON.parse(candidate);
+    const replyText = coerceReplyTextFromAnything(obj) || fallbackReply(text);
+    const messageScore = clampScore(obj?.messageScore);
+    const rarity = toRarity(obj?.rarity);
+    const tags = toTags(obj?.tags);
+
+    return {
+      replyText,
+      messageScore,
+      rarity,
+      tags,
+      raw: obj,
+      parseOk: typeof obj === 'object' && obj !== null,
+    };
+  } catch {
+    return { replyText: fallbackReply(text), parseOk: false, raw: candidate };
   }
 }

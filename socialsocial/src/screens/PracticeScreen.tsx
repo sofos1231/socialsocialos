@@ -1,6 +1,6 @@
 // FILE: socialsocial/src/screens/PracticeScreen.tsx
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,15 +18,17 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
+import axios from 'axios';
 
 import {
   PracticeStackParamList,
-  PracticeMessageInput,
   PracticeSessionRequest,
   PracticeSessionResponse,
   RarityTier,
   SessionRewardMessageBreakdown,
   SessionRewards,
+  MissionStatePayload,
+  MissionStateStatus,
 } from '../navigation/types';
 import { createPracticeSession } from '../api/practice';
 
@@ -48,7 +50,7 @@ function makeId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// We don't know the exact API response type shape here, so we normalize safely.
+// We normalize safely because we may ship different backend variants.
 function extractAiReply(res: any): string {
   const maybe =
     res?.aiReply ??
@@ -61,9 +63,33 @@ function extractAiReply(res: any): string {
   return '...';
 }
 
+function pickErrorText(data: any, fallback: string) {
+  const m = data?.message;
+  if (typeof m === 'string' && m.trim()) return m;
+  if (Array.isArray(m) && m.length) return m.join(' ');
+  if (typeof data?.error === 'string' && data.error.trim()) return data.error;
+  return fallback;
+}
+
+function isEnded(status?: MissionStateStatus | null) {
+  return status === 'SUCCESS' || status === 'FAIL';
+}
+
+function clamp01(n: number) {
+  return Math.max(0, Math.min(1, n));
+}
+
+// Step 9 defaults (match backend defaults unless overridden later by contract payload)
+const DEFAULT_SUCCESS_SCORE = 80;
+const DEFAULT_FAIL_SCORE = 60;
+
 export default function PracticeScreen({ route, navigation }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const bounceAnim = useRef(new Animated.Value(1)).current;
+
+  // Step 9: mood background animation
+  const mood01Anim = useRef(new Animated.Value(0.5)).current; // 0 = red, 1 = green
+  const moodOpacityAnim = useRef(new Animated.Value(0)).current; // 0 = off, 1 = visible
 
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
@@ -74,7 +100,16 @@ export default function PracticeScreen({ route, navigation }: Props) {
 
   const [isRecording, setIsRecording] = useState(false);
 
-  // New: mission completion state
+  /**
+   * ✅ Active sessionId is kept IN MEMORY only.
+   * If user leaves the screen, we clear it -> no pause/resume.
+   */
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [missionState, setMissionState] = useState<MissionStatePayload | null>(
+    null,
+  );
+
+  // Mission completion state
   const [sessionRewards, setSessionRewards] = useState<SessionRewards | null>(
     null,
   );
@@ -112,24 +147,45 @@ export default function PracticeScreen({ route, navigation }: Props) {
     ]).start();
   };
 
+  const resetLocalSession = useCallback(() => {
+    setActiveSessionId(null);
+    setMissionState(null);
+    setSessionRewards(null);
+    setIsMissionComplete(false);
+    setIsSending(false);
+    setInput('');
+    setSelectedMessage(null);
+    setShowPersonaCard(false);
+    setIsRecording(false);
+    setMessages([]);
+  }, []);
+
+  const appendAiSystemMessage = (text: string) => {
+    setMessages((prev) => [
+      ...prev,
+      { id: makeId(), role: 'AI', content: text },
+    ]);
+    scrollToBottom();
+  };
+
   const handleBack = () => {
     if (messages.length === 0) {
+      resetLocalSession();
       navigation.goBack();
       return;
     }
 
-    Alert.alert(
-      'Quit mission?',
-      'Are you sure you want to quit this mission?',
-      [
-        { text: 'No, stay', style: 'cancel' },
-        {
-          text: 'Yes, quit',
-          style: 'destructive',
-          onPress: () => navigation.goBack(),
+    Alert.alert('Quit mission?', 'Are you sure you want to quit this mission?', [
+      { text: 'No, stay', style: 'cancel' },
+      {
+        text: 'Yes, quit',
+        style: 'destructive',
+        onPress: () => {
+          resetLocalSession();
+          navigation.goBack();
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const handleMicPress = () => {
@@ -182,13 +238,65 @@ export default function PracticeScreen({ route, navigation }: Props) {
     return updated;
   };
 
-  const markMissionCompleteIfNeeded = (rewards?: SessionRewards) => {
-    if (!rewards) return;
-    // לוגיקה פשוטה: כל פעם שיש rewards אנחנו מציגים מסך סיום משימה.
-    // אפשר להחמיר פה תנאי (למשל rewards.isSuccess !== undefined) אם תרצה.
+  const finalizeMission = (rewards: SessionRewards, state: MissionStatePayload) => {
     setSessionRewards(rewards);
+    setMissionState(state);
     setIsMissionComplete(true);
+    // Lock hard: clear sessionId so nothing can be sent accidentally.
+    setActiveSessionId(null);
   };
+
+  // Step 9: compute mood target (0..1) + how visible the tint is
+  const moodTarget = useMemo(() => {
+    if (!missionState) return { mood01: 0.5, opacity01: 0 };
+
+    // End states: make it obvious (still subtle)
+    if (missionState.status === 'SUCCESS') return { mood01: 1, opacity01: 0.32 };
+    if (missionState.status === 'FAIL') return { mood01: 0, opacity01: 0.34 };
+
+    const avg =
+      typeof missionState.averageScore === 'number' && Number.isFinite(missionState.averageScore)
+        ? missionState.averageScore
+        : 0;
+
+    const denom = Math.max(1, DEFAULT_SUCCESS_SCORE - DEFAULT_FAIL_SCORE);
+    const mood01 = clamp01((avg - DEFAULT_FAIL_SCORE) / denom);
+
+    // Keep subtle early, slightly stronger as the mission advances
+    const turns = typeof missionState.totalMessages === 'number' ? missionState.totalMessages : 0;
+    const intensity = clamp01((turns + 1) / 4); // 1st msg ~0.5, then ramps
+    const opacity01 = 0.12 + 0.18 * intensity; // 0.12..0.30 (subtle)
+
+    return { mood01, opacity01 };
+  }, [missionState]);
+
+  // Step 9: animate mood transitions
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(mood01Anim, {
+        toValue: moodTarget.mood01,
+        duration: 420,
+        useNativeDriver: false,
+      }),
+      Animated.timing(moodOpacityAnim, {
+        toValue: moodTarget.opacity01,
+        duration: 420,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [mood01Anim, moodOpacityAnim, moodTarget.mood01, moodTarget.opacity01]);
+
+  const moodColor = useMemo(() => {
+    // red -> yellow -> green (all with alpha baked in OR controlled by opacityAnim separately)
+    return mood01Anim.interpolate({
+      inputRange: [0, 0.5, 1],
+      outputRange: [
+        'rgba(239,68,68,1)',
+        'rgba(234,179,8,1)',
+        'rgba(34,197,94,1)',
+      ],
+    });
+  }, [mood01Anim]);
 
   const sendMessage = async () => {
     if (!canSend) return;
@@ -206,14 +314,15 @@ export default function PracticeScreen({ route, navigation }: Props) {
     setMessages(nextMessages);
     scrollToBottom();
 
-    const payloadMessages: PracticeMessageInput[] = nextMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
-
+    /**
+     * ✅ IMPORTANT:
+     * We send ONLY the NEW delta message(s), not the entire history.
+     * Backend already has the full transcript stored in the session payload.
+     */
     const payload: PracticeSessionRequest = {
       topic: missionTitle,
-      messages: payloadMessages,
+      sessionId: activeSessionId ?? undefined,
+      messages: [{ role: 'USER', content: text }],
       templateId,
       personaId,
     };
@@ -221,16 +330,22 @@ export default function PracticeScreen({ route, navigation }: Props) {
     try {
       setIsSending(true);
 
-      const res = (await createPracticeSession(
-        payload,
-      )) as PracticeSessionResponse;
+      const res = (await createPracticeSession(payload)) as PracticeSessionResponse;
+
+      // Save sessionId for ongoing sends (in-memory only)
+      if (res?.sessionId) setActiveSessionId(res.sessionId);
 
       const rewards = res?.rewards;
+      const serverState = res?.missionState ?? null;
+      if (serverState) setMissionState(serverState);
+
+      // Map scoring breakdown onto the latest USER message bubble
       let updated: ChatMsg[] = mapRewardsToLatestUserMessage(
         nextMessages,
         rewards?.messages,
       );
 
+      // Append AI reply bubble
       const aiReplyText = extractAiReply(res);
       const aiMsg: ChatMsg = {
         id: makeId(),
@@ -242,21 +357,40 @@ export default function PracticeScreen({ route, navigation }: Props) {
       setMessages(updated);
       scrollToBottom();
 
-      if (rewards) {
-        markMissionCompleteIfNeeded(rewards);
+      // ✅ Mission ends ONLY when backend says it ends.
+      if (rewards && serverState?.status && isEnded(serverState.status)) {
+        finalizeMission(rewards, serverState);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Practice session error:', err);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: makeId(),
-          role: 'AI',
-          content: 'Sorry — something went wrong. Try again.',
-        },
-      ]);
-      scrollToBottom();
+      // Handle specific backend end-state case (user tried to send after end)
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status;
+        const data = err.response?.data as any;
+        const msg = pickErrorText(data, err.message || 'Request failed.');
+
+        const code = data?.code; // may exist in some builds
+        const looksLikeNotInProgress =
+          code === 'SESSION_NOT_IN_PROGRESS' ||
+          (typeof msg === 'string' && msg.toLowerCase().includes('not in_progress')) ||
+          (typeof msg === 'string' && msg.toLowerCase().includes('not in progress'));
+
+        if (status === 400 && looksLikeNotInProgress) {
+          // Lock the UI hard. No more attempts.
+          setIsMissionComplete(true);
+          setActiveSessionId(null);
+          appendAiSystemMessage(
+            'Mission already ended. Start a new mission from the hub.',
+          );
+          return;
+        }
+
+        appendAiSystemMessage(msg || 'Sorry — something went wrong. Try again.');
+        return;
+      }
+
+      appendAiSystemMessage('Sorry — something went wrong. Try again.');
     } finally {
       setIsSending(false);
     }
@@ -292,7 +426,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
         rarityStyle.borderColor = '#eab308';
         rarityStyle.borderWidth = 2;
         rarityStyle.shadowOpacity = 0.35;
-        rarityStyle.shadowRadius = 8;
+        rarityStyle.shadowRadius = 8; // ✅ fixed typo
       } else if (score >= 85) {
         rarityStyle.borderColor = '#4ade80';
         rarityStyle.borderWidth = 1.5;
@@ -339,7 +473,10 @@ export default function PracticeScreen({ route, navigation }: Props) {
     );
   };
 
-  // Hide bottom tab bar while this screen is focused
+  /**
+   * Hide bottom tab bar while this screen is focused.
+   * Also: when leaving focus (switch tab / go back), reset local session => NO PAUSE/RESUME.
+   */
   useFocusEffect(
     useCallback(() => {
       const parent = navigation.getParent();
@@ -356,25 +493,28 @@ export default function PracticeScreen({ route, navigation }: Props) {
             tabBarStyle: undefined, // restore default
           });
         }
+        // No pause/resume: leaving the screen clears the active session locally.
+        resetLocalSession();
       };
-    }, [navigation]),
+    }, [navigation, resetLocalSession]),
   );
 
   const handleViewStatsFromModal = () => {
-    setIsMissionComplete(false);
+    // Mission is over; no resume. Clear local state.
+    resetLocalSession();
     const parent = navigation.getParent();
     parent?.navigate('StatsTab');
   };
 
   const handleBackToHubFromModal = () => {
-    setIsMissionComplete(false);
+    // Mission is over; no resume. Clear local state.
+    resetLocalSession();
     navigation.navigate('PracticeHub');
   };
 
   const handlePracticeAgainFromModal = () => {
-    setIsMissionComplete(false);
-    setMessages([]);
-    setSessionRewards(null);
+    // Start fresh.
+    resetLocalSession();
   };
 
   return (
@@ -384,6 +524,18 @@ export default function PracticeScreen({ route, navigation }: Props) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
       >
+        {/* ✅ Step 9: Mission mood tint background (subtle) */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.moodOverlay,
+            {
+              backgroundColor: moodColor,
+              opacity: moodOpacityAnim,
+            },
+          ]}
+        />
+
         {/* Top bar */}
         <View style={styles.topBar}>
           <TouchableOpacity onPress={handleBack} style={styles.topBarIconLeft}>
@@ -461,10 +613,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
           </TouchableOpacity>
 
           <TextInput
-            style={[
-              styles.input,
-              isMissionComplete && styles.inputDisabled,
-            ]}
+            style={[styles.input, isMissionComplete && styles.inputDisabled]}
             placeholder={
               isMissionComplete
                 ? 'Mission complete — start a new one from the hub'
@@ -503,9 +652,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
               <Text style={styles.detailsTitle}>Message details</Text>
 
               <Text style={styles.detailsLabel}>Your message</Text>
-              <Text style={styles.detailsBody}>
-                {selectedMessage?.content}
-              </Text>
+              <Text style={styles.detailsBody}>{selectedMessage?.content}</Text>
 
               <View style={styles.detailsRow}>
                 <Text style={styles.detailsLabelInline}>Score: </Text>
@@ -569,7 +716,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
 
               {hasPersonaHints ? (
                 <Text style={styles.personaBody}>
-                  In partner / known-person missions you’ll usually see a few
+                  In partner / known-person missions you'll usually see a few
                   hints here: hobbies, current mood, or context from the
                   relationship. For cold approach / boss missions this card
                   stays more mysterious.
@@ -616,6 +763,20 @@ export default function PracticeScreen({ route, navigation }: Props) {
               <Text style={styles.completeTitle}>
                 {sessionRewards?.isSuccess ? 'Mission complete' : 'Mission ended'}
               </Text>
+
+              {!!missionState?.status && (
+                <Text style={[styles.completeLine, { marginBottom: 6 }]}>
+                  Status:{' '}
+                  <Text style={styles.completeHighlight}>
+                    {missionState.status}
+                  </Text>{' '}
+                  · Progress:{' '}
+                  <Text style={styles.completeHighlight}>
+                    {missionState.progressPct}%
+                  </Text>
+                </Text>
+              )}
+
               <Text style={styles.completeLine}>
                 Score:{' '}
                 <Text style={styles.completeHighlight}>
@@ -626,6 +787,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
                   {sessionRewards?.messageScore ?? '—'}
                 </Text>
               </Text>
+
               <Text style={styles.completeLine}>
                 XP:{' '}
                 <Text style={styles.completeHighlight}>
@@ -660,9 +822,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
                 style={styles.completePracticeAgain}
                 onPress={handlePracticeAgainFromModal}
               >
-                <Text style={styles.completePracticeAgainText}>
-                  Practice again
-                </Text>
+                <Text style={styles.completePracticeAgainText}>Practice again</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -675,6 +835,11 @@ export default function PracticeScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#020617' },
   container: { flex: 1, backgroundColor: '#020617' },
+
+  // Step 9: mood overlay (tint)
+  moodOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
 
   // Top bar
   topBar: {
@@ -1016,4 +1181,3 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 });
-

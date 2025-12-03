@@ -1,3 +1,5 @@
+// FILE: backend/src/modules/sessions/sessions.service.ts
+
 import {
   Injectable,
   UnauthorizedException,
@@ -11,7 +13,13 @@ import {
   SessionRewardsSummary,
   MessageRarity,
 } from './scoring';
-import { MessageGrade, MessageRole, MissionProgressStatus } from '@prisma/client';
+import {
+  MessageGrade,
+  MessageRole,
+  MissionProgressStatus,
+  MissionStatus,
+  RewardLedgerKind,
+} from '@prisma/client';
 import { AiSessionResult } from '../ai/ai-scoring.types';
 import { buildAiInsightSummary } from '../ai/ai-insights';
 
@@ -29,43 +37,6 @@ const RARITY_TO_GRADE: Record<MessageRarity, MessageGrade> = {
 
 // NOTE: keep role as string for flexibility; we still *expect* "USER"/"AI".
 type TranscriptMsg = { role: string; content: string };
-
-/**
- * Helper to safely pick enum values even if names change slightly between schema versions.
- */
-function pickEnumValue<T extends Record<string, any>>(
-  enumObj: T,
-  preferredKeys: string[],
-): T[keyof T] {
-  for (const k of preferredKeys) {
-    if ((enumObj as any)[k] !== undefined) return (enumObj as any)[k];
-  }
-  const vals = Object.values(enumObj);
-  if (!vals.length) throw new Error('Enum has no values');
-  return vals[0] as any;
-}
-
-// Defensive mapping for MissionProgressStatus
-const STATUS_NOT_STARTED = pickEnumValue(MissionProgressStatus as any, [
-  'NOT_STARTED',
-  'PENDING',
-  'NEW',
-  'STARTED',
-]);
-
-const STATUS_COMPLETED = pickEnumValue(MissionProgressStatus as any, [
-  'COMPLETED',
-  'DONE',
-  'FINISHED',
-  'SUCCESS',
-]);
-
-const STATUS_IN_PROGRESS = pickEnumValue(MissionProgressStatus as any, [
-  'IN_PROGRESS',
-  'ACTIVE',
-  'ONGOING',
-  'STARTED',
-]);
 
 @Injectable()
 export class SessionsService {
@@ -106,30 +77,51 @@ export class SessionsService {
   }
 
   /**
-   * Core transaction: creates PracticeSession + ChatMessages + stats + wallet.
-   * If transcript is provided: persist REAL messages (USER + AI).
-   * If transcript is missing: keep legacy behavior (mock messages) for mock endpoints.
+   * ✅ Core: save/update ONE in-progress mission session per (userId, templateId),
+   * persist ChatMessages, and FINALIZE + GRANT rewards only once with ledger.
+   *
+   * Step 8 addition:
+   * - If sessionId is provided: update THAT exact session (validate ownership + IN_PROGRESS)
    */
-  private async runScoredSession(params: {
+  private async saveOrUpdateScoredSession(params: {
     userId: string;
+    sessionId?: string | null; // ✅ Step 8
     topic: string;
     messageScores: number[];
     templateId?: string | null;
     personaId?: string | null;
-    transcript?: TranscriptMsg[];
+    transcript: TranscriptMsg[];
+    // Mission status coming from missionState engine (PracticeService)
+    missionStatus?: 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
   }): Promise<{
     summary: SessionRewardsSummary;
     finalScore: number;
-    isSuccess: boolean;
     sessionId: string;
+    didFinalize: boolean;
+    didGrant: boolean;
+    isSuccess: boolean | null;
   }> {
-    const { userId, topic, messageScores, templateId, personaId, transcript } =
-      params;
+    const {
+      userId,
+      sessionId: explicitSessionId,
+      topic,
+      messageScores,
+      templateId,
+      personaId,
+      transcript,
+      missionStatus,
+    } = params;
 
     if (!messageScores || !Array.isArray(messageScores) || messageScores.length === 0) {
       throw new BadRequestException({
         code: 'SESSION_EMPTY',
         message: 'messageScores must contain at least one score',
+      });
+    }
+    if (!transcript || transcript.length === 0) {
+      throw new BadRequestException({
+        code: 'TRANSCRIPT_EMPTY',
+        message: 'transcript must contain at least one message',
       });
     }
 
@@ -139,7 +131,6 @@ export class SessionsService {
     const inputs: MessageEvaluationInput[] = messageScores.map((score) => ({ score }));
     const summary: SessionRewardsSummary = computeSessionRewards(inputs);
     const finalScore = Math.round(summary.finalScore);
-    const isSuccess = finalScore >= 60;
 
     const perMessageScores = summary.messages.map((m) => m.score);
     const sessionMessageAvg =
@@ -147,10 +138,28 @@ export class SessionsService {
         ? perMessageScores.reduce((sum, s) => sum + s, 0) / perMessageScores.length
         : 0;
 
-    // 2) Transaction
-    const createdSession = await this.prisma.$transaction(async (tx) => {
-      const stats = await tx.userStats.findUnique({ where: { userId } });
-      const wallet = await tx.userWallet.findUnique({ where: { userId } });
+    // 2) Determine "should finalize" and success flag
+    const shouldFinalize =
+      missionStatus === 'SUCCESS' || missionStatus === 'FAIL' || !templateId;
+
+    const isSuccess: boolean | null = shouldFinalize
+      ? templateId
+        ? missionStatus === 'SUCCESS'
+        : finalScore >= 60
+      : null;
+
+    const targetStatus: MissionStatus = shouldFinalize
+      ? isSuccess
+        ? MissionStatus.SUCCESS
+        : MissionStatus.FAIL
+      : MissionStatus.IN_PROGRESS;
+
+    // 3) Transaction: upsert session, replace messages, maybe finalize+grant once
+    const result = await this.prisma.$transaction(async (tx) => {
+      const [stats, wallet] = await Promise.all([
+        tx.userStats.findUnique({ where: { userId } }),
+        tx.userWallet.findUnique({ where: { userId } }),
+      ]);
 
       if (!stats || !wallet) {
         throw new Error(
@@ -158,164 +167,279 @@ export class SessionsService {
         );
       }
 
-      // 2.1) Create PracticeSession
-      const session = await tx.practiceSession.create({
-        data: {
-          userId,
-          topic,
-          score: finalScore,
+      // 3.1) Determine session id to use
+      let sessionIdToUse: string | null = null;
 
-          xpGained: summary.totalXp,
-          coinsGained: summary.totalCoins,
-          gemsGained: summary.totalGems,
+      // ✅ Step 8: explicit sessionId wins
+      if (explicitSessionId) {
+        const existingById = await tx.practiceSession.findUnique({
+          where: { id: explicitSessionId },
+          select: { id: true, userId: true, status: true, endedAt: true },
+        });
 
-          messageCount: messageScores.length,
-          rarityCounts: summary.rarityCounts as any,
-          payload: {
-            messageScores,
-            transcript: transcript ?? null,
-          } as any,
-          durationSec: 60,
+        if (!existingById) {
+          throw new BadRequestException({
+            code: 'SESSION_NOT_FOUND',
+            message: 'sessionId not found',
+          });
+        }
+        if (existingById.userId !== userId) {
+          throw new UnauthorizedException({
+            code: 'SESSION_FORBIDDEN',
+            message: 'session does not belong to user',
+          });
+        }
+        if (existingById.status !== MissionStatus.IN_PROGRESS || existingById.endedAt) {
+          throw new BadRequestException({
+            code: 'SESSION_NOT_IN_PROGRESS',
+            message: 'session is not IN_PROGRESS',
+          });
+        }
 
-          status: isSuccess ? 'SUCCESS' : 'FAIL',
-          templateId: templateId ?? null,
-          personaId: personaId ?? null,
+        sessionIdToUse = existingById.id;
+      }
 
-          overallScore: finalScore,
-          endedAt: now,
-          isSuccess,
-        },
-      });
+      // Existing behavior: by (userId, templateId, IN_PROGRESS)
+      if (!sessionIdToUse && templateId) {
+        const existing = await tx.practiceSession.findFirst({
+          where: {
+            userId,
+            templateId,
+            status: MissionStatus.IN_PROGRESS,
+            endedAt: null,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        });
+        if (existing?.id) sessionIdToUse = existing.id;
+      }
 
-      // 2.2) Create ChatMessage rows
-      if (transcript && transcript.length > 0) {
-        // Map reward deltas onto USER messages in order
-        const userRewards = summary.messages; // aligns with messageScores (USER-only)
-        let userIdx = 0;
+      const baseSessionData = {
+        userId,
+        topic,
+        score: finalScore,
 
-        const rows = transcript
-          .filter((m) => typeof m?.content === 'string' && m.content.trim().length > 0)
-          .map((m, i) => {
-            if (m.role === 'USER') {
-              const r = userRewards[userIdx];
-              const score = r?.score ?? null;
-              const rarity = r?.rarity ?? null;
+        // store computed totals on the session (wallet grant is ledger-controlled)
+        xpGained: summary.totalXp,
+        coinsGained: summary.totalCoins,
+        gemsGained: summary.totalGems,
 
-              const row = {
-                sessionId: session.id,
-                userId,
-                role: MessageRole.USER,
-                content: m.content.trim(),
-                grade: rarity ? RARITY_TO_GRADE[rarity] : null,
-                xpDelta: r?.xp ?? 0,
-                coinsDelta: r?.coins ?? 0,
-                gemsDelta: r?.gems ?? 0,
-                isBrilliant: rarity === 'S+',
-                isLifesaver: false,
-                meta: {
-                  index: i,
-                  userIndex: userIdx,
-                  score,
-                  rarity,
-                } as any,
-              };
-              userIdx += 1;
-              return row;
-            }
+        messageCount: messageScores.length,
+        rarityCounts: summary.rarityCounts as any,
+        payload: {
+          messageScores,
+          transcript,
+        } as any,
 
-            // AI/assistant rows: no deltas
-            return {
+        durationSec: 60,
+        templateId: templateId ?? null,
+        personaId: personaId ?? null,
+
+        overallScore: finalScore,
+
+        status: targetStatus,
+        endedAt: shouldFinalize ? now : null,
+        isSuccess: shouldFinalize ? isSuccess : null,
+      };
+
+      const session = sessionIdToUse
+        ? await tx.practiceSession.update({
+            where: { id: sessionIdToUse },
+            data: baseSessionData as any,
+          })
+        : await tx.practiceSession.create({
+            data: baseSessionData as any,
+          });
+
+      // 3.2) Replace ChatMessage rows (MVP safe approach)
+      await tx.chatMessage.deleteMany({ where: { sessionId: session.id } });
+
+      // Map reward deltas onto USER messages in order
+      const userRewards = summary.messages; // aligns with messageScores (USER-only)
+      let userIdx = 0;
+
+      const rows = transcript
+        .filter((m) => typeof m?.content === 'string' && m.content.trim().length > 0)
+        .map((m, i) => {
+          if (m.role === 'USER') {
+            const r = userRewards[userIdx];
+            const score = r?.score ?? null;
+            const rarity = r?.rarity ?? null;
+
+            const row = {
               sessionId: session.id,
               userId,
-              role: MessageRole.AI,
+              role: MessageRole.USER,
               content: m.content.trim(),
-              grade: null,
-              xpDelta: 0,
-              coinsDelta: 0,
-              gemsDelta: 0,
-              isBrilliant: false,
+              grade: rarity ? RARITY_TO_GRADE[rarity] : null,
+              xpDelta: r?.xp ?? 0,
+              coinsDelta: r?.coins ?? 0,
+              gemsDelta: r?.gems ?? 0,
+              isBrilliant: rarity === 'S+',
               isLifesaver: false,
               meta: {
                 index: i,
-                generated: true,
+                userIndex: userIdx,
+                score,
+                rarity,
               } as any,
             };
+            userIdx += 1;
+            return row;
+          }
+
+          return {
+            sessionId: session.id,
+            userId,
+            role: MessageRole.AI,
+            content: m.content.trim(),
+            grade: null,
+            xpDelta: 0,
+            coinsDelta: 0,
+            gemsDelta: 0,
+            isBrilliant: false,
+            isLifesaver: false,
+            meta: {
+              index: i,
+              generated: true,
+            } as any,
+          };
+        });
+
+      if (rows.length > 0) {
+        await tx.chatMessage.createMany({ data: rows as any });
+      }
+
+      // 3.3) Finalize + grant rewards ONCE (ledger)
+      let didGrant = false;
+
+      if (shouldFinalize) {
+        const existingGrant = await tx.rewardLedgerEntry.findUnique({
+          where: {
+            sessionId_kind: {
+              sessionId: session.id,
+              kind: RewardLedgerKind.SESSION_REWARD,
+            },
+          },
+        });
+
+        if (!existingGrant) {
+          // Create ledger entry first (this is the "once" guard)
+          await tx.rewardLedgerEntry.create({
+            data: {
+              userId,
+              sessionId: session.id,
+              templateId: templateId ?? null,
+              kind: RewardLedgerKind.SESSION_REWARD,
+              xpDelta: summary.totalXp,
+              coinsDelta: summary.totalCoins,
+              gemsDelta: summary.totalGems,
+              score: finalScore,
+              isSuccess: isSuccess ?? null,
+              meta: {
+                rarityCounts: summary.rarityCounts,
+                messageCount: messageScores.length,
+              } as any,
+            },
           });
 
-        if (rows.length > 0) {
-          await tx.chatMessage.createMany({ data: rows as any });
-        }
-      } else {
-        // Legacy behavior for mock endpoints
-        const messagesData = summary.messages.map((m, index) => ({
-          sessionId: session.id,
-          userId,
-          role: MessageRole.USER,
-          content: `Mock message #${index + 1}`,
-          grade: RARITY_TO_GRADE[m.rarity],
-          xpDelta: m.xp,
-          coinsDelta: m.coins,
-          gemsDelta: m.gems,
-          isBrilliant: m.rarity === 'S+',
-          isLifesaver: false,
-          meta: {
-            index,
-            score: m.score,
-            rarity: m.rarity,
-          } as any,
-        }));
+          didGrant = true;
 
-        if (messagesData.length > 0) {
-          await tx.chatMessage.createMany({ data: messagesData });
+          // Update UserStats
+          const newSessionsCount = stats.sessionsCount + 1;
+          const newSuccessCount = stats.successCount + (isSuccess ? 1 : 0);
+          const newFailCount = stats.failCount + (isSuccess ? 0 : 1);
+
+          const prevAvgScore = stats.averageScore ?? 0;
+          const newAverageScore =
+            (prevAvgScore * stats.sessionsCount + finalScore) / newSessionsCount;
+
+          const prevAvgMessageScore = stats.averageMessageScore ?? 0;
+          const newAverageMessageScore =
+            (prevAvgMessageScore * stats.sessionsCount + sessionMessageAvg) /
+            newSessionsCount;
+
+          await tx.userStats.update({
+            where: { userId },
+            data: {
+              sessionsCount: newSessionsCount,
+              successCount: newSuccessCount,
+              failCount: newFailCount,
+              averageScore: newAverageScore,
+              averageMessageScore: newAverageMessageScore,
+              lastSessionAt: now,
+              lastUpdatedAt: now,
+            },
+          });
+
+          // Update wallet
+          await tx.userWallet.update({
+            where: { userId },
+            data: {
+              xp: wallet.xp + summary.totalXp,
+              lifetimeXp: wallet.lifetimeXp + summary.totalXp,
+              coins: wallet.coins + summary.totalCoins,
+              gems: wallet.gems + summary.totalGems,
+            },
+          });
+
+          // Mission progress update
+          if (templateId) {
+            const existing = await tx.missionProgress.findUnique({
+              where: {
+                userId_templateId: { userId, templateId },
+              },
+            });
+
+            if (!existing) {
+              await tx.missionProgress.create({
+                data: {
+                  userId,
+                  templateId,
+                  status: isSuccess
+                    ? MissionProgressStatus.COMPLETED
+                    : MissionProgressStatus.UNLOCKED,
+                  bestScore: finalScore,
+                },
+              });
+            } else {
+              const newBest =
+                typeof existing.bestScore === 'number'
+                  ? Math.max(existing.bestScore, finalScore)
+                  : finalScore;
+
+              const nextStatus = isSuccess
+                ? MissionProgressStatus.COMPLETED
+                : existing.status === MissionProgressStatus.COMPLETED
+                  ? MissionProgressStatus.COMPLETED
+                  : MissionProgressStatus.UNLOCKED;
+
+              await tx.missionProgress.update({
+                where: { id: existing.id },
+                data: {
+                  status: nextStatus,
+                  bestScore: newBest,
+                },
+              });
+            }
+          }
         }
       }
 
-      // 2.3) Update UserStats
-      const newSessionsCount = stats.sessionsCount + 1;
-      const newSuccessCount = stats.successCount + (isSuccess ? 1 : 0);
-      const newFailCount = stats.failCount + (isSuccess ? 0 : 1);
-
-      const prevAvgScore = stats.averageScore ?? 0;
-      const newAverageScore =
-        (prevAvgScore * stats.sessionsCount + finalScore) / newSessionsCount;
-
-      const prevAvgMessageScore = stats.averageMessageScore ?? 0;
-      const newAverageMessageScore =
-        (prevAvgMessageScore * stats.sessionsCount + sessionMessageAvg) /
-        newSessionsCount;
-
-      await tx.userStats.update({
-        where: { userId },
-        data: {
-          sessionsCount: newSessionsCount,
-          successCount: newSuccessCount,
-          failCount: newFailCount,
-          averageScore: newAverageScore,
-          averageMessageScore: newAverageMessageScore,
-          lastSessionAt: now,
-          lastUpdatedAt: now,
-        },
-      });
-
-      // 2.4) Update wallet
-      await tx.userWallet.update({
-        where: { userId },
-        data: {
-          xp: wallet.xp + summary.totalXp,
-          lifetimeXp: wallet.lifetimeXp + summary.totalXp,
-          coins: wallet.coins + summary.totalCoins,
-          gems: wallet.gems + summary.totalGems,
-        },
-      });
-
-      return session;
+      return {
+        sessionId: session.id,
+        didFinalize: shouldFinalize,
+        didGrant,
+      };
     });
 
     return {
       summary,
       finalScore,
+      sessionId: result.sessionId,
+      didFinalize: result.didFinalize,
+      didGrant: result.didGrant,
       isSuccess,
-      sessionId: createdSession.id,
     };
   }
 
@@ -326,24 +450,29 @@ export class SessionsService {
    */
   async createScoredSessionFromScores(params: {
     userId: string;
+    sessionId?: string | null; // ✅ Step 8
     topic: string;
     messageScores: number[];
     aiCoreResult?: AiSessionResult;
 
-    // NEW (optional):
     templateId?: string | null;
     personaId?: string | null;
-    transcript?: TranscriptMsg[];
-    assistantReply?: string; // currently stored via transcript; kept for future
+    transcript: TranscriptMsg[];
+    assistantReply?: string;
+
+    // ✅ Step 6: mission end state (from PracticeService.missionState.status)
+    missionStatus?: 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
   }) {
     const {
       userId,
+      sessionId,
       topic,
       messageScores,
       aiCoreResult,
       templateId,
       personaId,
       transcript,
+      missionStatus,
     } = params;
 
     if (!userId) {
@@ -355,23 +484,25 @@ export class SessionsService {
 
     await this.ensureUserProfilePrimitives(userId);
 
-    const { summary, finalScore, isSuccess, sessionId } =
-      await this.runScoredSession({
+    const { summary, finalScore, sessionId: usedSessionId, isSuccess } =
+      await this.saveOrUpdateScoredSession({
         userId,
+        sessionId: sessionId ?? null,
         topic,
         messageScores,
         templateId: templateId ?? null,
         personaId: personaId ?? null,
         transcript,
+        missionStatus,
       });
 
-    // Option B: persist metrics + insights
+    // Option B: persist metrics + insights (update the SAME session we used)
     if (aiCoreResult?.metrics) {
       const m = aiCoreResult.metrics;
       const aiSummary = buildAiInsightSummary(aiCoreResult);
 
       await this.prisma.practiceSession.update({
-        where: { id: sessionId },
+        where: { id: usedSessionId },
         data: {
           charismaIndex: m.charismaIndex ?? null,
           confidenceScore: m.confidence ?? null,
@@ -393,48 +524,6 @@ export class SessionsService {
       });
     }
 
-    // --- Mission progress update (NO attempts column usage) ---
-    if (templateId) {
-      const now = new Date();
-
-      const existing = await this.prisma.missionProgress.findFirst({
-        where: {
-          userId,
-          templateId,
-        },
-      });
-
-      if (!existing) {
-        await this.prisma.missionProgress.create({
-          data: {
-            userId,
-            templateId,
-            status: isSuccess ? STATUS_COMPLETED : STATUS_IN_PROGRESS,
-            bestScore: finalScore,
-          } as any,
-        });
-      } else {
-        const newBest =
-          typeof existing.bestScore === 'number'
-            ? Math.max(existing.bestScore, finalScore)
-            : finalScore;
-
-        await this.prisma.missionProgress.updateMany({
-          where: {
-            userId,
-            templateId,
-          },
-          data: {
-            status: isSuccess
-              ? STATUS_COMPLETED
-              : existing.status ?? STATUS_IN_PROGRESS,
-            bestScore: newBest,
-            updatedAt: now,
-          } as any,
-        });
-      }
-    }
-
     const dashboard = await this.statsService.getDashboardForUser(userId);
 
     return {
@@ -442,7 +531,7 @@ export class SessionsService {
       rewards: {
         score: finalScore,
         messageScore: finalScore,
-        isSuccess,
+        isSuccess: isSuccess ?? false,
         xpGained: summary.totalXp,
         coinsGained: summary.totalCoins,
         gemsGained: summary.totalGems,
@@ -457,7 +546,7 @@ export class SessionsService {
         })),
       },
       dashboard,
-      sessionId,
+      sessionId: usedSessionId,
     };
   }
 
@@ -466,6 +555,11 @@ export class SessionsService {
       userId,
       topic: 'Mock practice session',
       messageScores: MOCK_MESSAGE_SCORES,
+      transcript: MOCK_MESSAGE_SCORES.map((_, i) => ({
+        role: 'USER',
+        content: `Mock message #${i + 1}`,
+      })),
+      missionStatus: 'SUCCESS',
     });
   }
 
