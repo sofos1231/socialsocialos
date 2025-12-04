@@ -1,5 +1,3 @@
-// FILE: backend/src/modules/practice/practice.service.ts
-
 import {
   Injectable,
   NotFoundException,
@@ -16,6 +14,7 @@ import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
 import type { PracticeMessageInput as AiPracticeMessageInput } from '../ai/ai.types';
 import type { TranscriptMessage } from '../ai/ai-scoring.types';
 import {
+  AiStyle,
   MessageRole,
   MissionStatus,
   MissionDifficulty,
@@ -132,15 +131,11 @@ function resolvePolicy(params: {
   };
 }
 
-/**
- * Normalize user text for deterministic moderation checks.
- * This is not "AI safety moderation" — it's game-rule disqualification only.
- */
 function normalizeForRules(input: string): string {
   return input
     .toLowerCase()
-    .replace(/[\u200B-\u200D\uFEFF]/g, '') // zero-width chars
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ') // keep letters/numbers (including hebrew), drop punctuation
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -153,11 +148,6 @@ function firstRegexHit(text: string, patterns: RegExp[]): string | null {
   return null;
 }
 
-/**
- * Server-authoritative disqualify detector.
- * - Independent of aiContract (matches your architecture)
- * - Uses deterministic pattern rules
- */
 function detectDisqualify(
   userTextRaw: string,
   userMsgIndex: number,
@@ -166,32 +156,23 @@ function detectDisqualify(
   const text = normalizeForRules(userTextRaw);
   if (!text) return null;
 
-  // NOTE: keep these strict to reduce false positives.
-  // Add more only after you see real false negatives in testing.
-
   const sexualPatterns: RegExp[] = [
     /\b(send\s+nudes|nudes|nude\s+pics)\b/i,
     /\b(fuck|blowjob|bj|anal|cum|orgasm)\b/i,
     /\b(pussy|dick|cock)\b/i,
-    // Hebrew (basic)
     /\b(סקס|לזיין|זין|כוס|תמצצי|תמצוץ)\b/iu,
   ];
 
   const harassmentSlurs: RegExp[] = [
     /\b(bitch|whore|slut|cunt)\b/i,
-    // Hebrew slurs (basic)
     /\b(זונה|שרמוטה|כלבה)\b/iu,
   ];
 
   const violenceThreatPatterns: RegExp[] = [
     /\b(i\s*will\s*kill\s*you|kill\s*you|i\s*will\s*hurt\s*you|hurt\s*you)\b/i,
     /\b(stab|shoot|rape)\b/i,
-    // Hebrew (basic)
     /\b(אני\s*אהרוג|להרוג|לרצוח|לדקור|לאנוס)\b/iu,
   ];
-
-  // Optional strictness dial (future): for now, disqualify conditions are global.
-  // Keeping ctx here because you'll likely want category/difficulty-specific rules later.
 
   const sexualHit = firstRegexHit(text, sexualPatterns);
   if (sexualHit) {
@@ -223,10 +204,6 @@ function detectDisqualify(
   return null;
 }
 
-/**
- * Deterministic mission state calculator (frontend-facing).
- * Ends when total USER messages reaches policy.maxMessages.
- */
 function computeMissionState(
   messageScores: number[],
   policy: Required<MissionStatePayload>['policy'],
@@ -290,7 +267,7 @@ function buildFallbackScoresOnDisqualify(params: {
       ? params.existingScores
       : Array(params.existingUserCount).fill(0);
 
-  const delta = Array(params.deltaUserCount).fill(0); // disqualified ⇒ no reward farming
+  const delta = Array(params.deltaUserCount).fill(0);
   return [...base, ...delta];
 }
 
@@ -312,7 +289,6 @@ export class PracticeService {
 
     const isContinuation = !!dto.sessionId;
 
-    // Load existing session for continuation
     const existingSession = isContinuation
       ? await this.prisma.practiceSession.findUnique({
           where: { id: dto.sessionId! },
@@ -340,7 +316,6 @@ export class PracticeService {
     const templateId = dto.templateId ?? existingSession?.templateId ?? null;
     const personaId = dto.personaId ?? existingSession?.personaId ?? null;
 
-    // Load template details (NOT only aiContract) so backend rules can be label-driven
     const template = templateId
       ? await this.prisma.practiceMissionTemplate.findUnique({
           where: { id: templateId },
@@ -352,6 +327,7 @@ export class PracticeService {
             timeLimitSec: true,
             wordLimit: true,
             aiContract: true,
+            aiStyle: true, // ✅ NEW
           },
         })
       : null;
@@ -370,7 +346,6 @@ export class PracticeService {
           templateMaxMessages: 5,
         });
 
-    // Build existing transcript (payload first)
     let existingTranscript: TranscriptMsg[] = [];
     let existingScores: number[] = [];
 
@@ -391,7 +366,6 @@ export class PracticeService {
         : [];
     }
 
-    // Fallback: reconstruct transcript from ChatMessage rows (if payload missing)
     if (isContinuation && existingTranscript.length === 0) {
       const rows = await this.prisma.chatMessage.findMany({
         where: { sessionId: existingSession!.id },
@@ -407,7 +381,6 @@ export class PracticeService {
         .filter((m) => m.content.length > 0);
     }
 
-    // Incoming delta messages (append)
     const deltaMessages: TranscriptMsg[] = dto.messages
       .filter((m: any) => m && typeof m.content === 'string')
       .map((m: any) => {
@@ -416,13 +389,11 @@ export class PracticeService {
       })
       .filter((m: TranscriptMsg) => m.content.length > 0);
 
-    // Basic guard: must include at least one USER message in the delta
     const deltaUser = deltaMessages.filter((m) => m.role === 'USER');
     if (deltaUser.length === 0) {
       throw new BadRequestException('No USER messages provided.');
     }
 
-    // Small de-dupe: if delta repeats the last message(s), drop them
     const fullTranscript: TranscriptMsg[] = [...existingTranscript];
     for (const dm of deltaMessages) {
       const last = fullTranscript[fullTranscript.length - 1];
@@ -430,15 +401,12 @@ export class PracticeService {
       fullTranscript.push(dm);
     }
 
-    // ---------
-    // ✅ DISQUALIFY GATE (server-authoritative, before any AI calls)
-    // ---------
     const existingUserCount = existingTranscript.filter((m) => m.role === 'USER').length;
 
     let disqualify: DisqualifyResult | null = null;
     for (let i = 0; i < deltaUser.length; i++) {
       const userMsg = deltaUser[i]?.content ?? '';
-      const userMsgIndex = existingUserCount + i; // index among USER messages
+      const userMsgIndex = existingUserCount + i;
       const hit = detectDisqualify(userMsg, userMsgIndex, {
         difficulty: template?.difficulty ?? effectivePolicy.difficulty,
         goalType: template?.goalType ?? null,
@@ -449,7 +417,6 @@ export class PracticeService {
       }
     }
 
-    // Topic: for new sessions must exist; for continuation fallback to existing topic
     const topic =
       safeTrim((dto as any).topic) ||
       safeTrim(existingSession?.topic) ||
@@ -460,14 +427,12 @@ export class PracticeService {
     }
 
     if (disqualify) {
-      // Build fallback messageScores WITHOUT calling AI scoring (fast, no farming)
       const scores = buildFallbackScoresOnDisqualify({
         existingScores,
         existingUserCount,
         deltaUserCount: deltaUser.length,
       });
 
-      // Build missionState that ends immediately
       const avg =
         scores.length > 0
           ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
@@ -492,7 +457,6 @@ export class PracticeService {
             ? '⚠️ Mission ended: disqualified (harassment/insult).'
             : '⚠️ Mission ended: disqualified (threat/violence).';
 
-      // Persist a clean transcript including a final AI note (deterministic)
       const transcriptToPersist: TranscriptMsg[] = [
         ...fullTranscript,
         { role: 'AI', content: aiReply },
@@ -527,6 +491,7 @@ export class PracticeService {
                 successScore: effectivePolicy.successScore,
                 failScore: effectivePolicy.failScore,
               },
+              aiStyle: (template?.aiStyle ?? null) as AiStyle | null, // ✅ NEW
               aiContract: template?.aiContract ?? null,
             }
           : null,
@@ -534,11 +499,6 @@ export class PracticeService {
       };
     }
 
-    // ---------
-    // Normal path (no disqualify): do AI scoring + AI reply + core metrics
-    // ---------
-
-    // Scoring: prefer incremental (existingScores + score(deltaUser)) if consistent
     let messageScores: number[] = [];
 
     if (isContinuation && existingScores.length === existingUserCount && existingScores.length > 0) {
@@ -580,7 +540,6 @@ export class PracticeService {
 
     const missionState = computeMissionState(messageScores, effectivePolicy);
 
-    // Generate AI reply with FULL transcript (Step 8)
     const { aiReply, aiDebug, aiStructured } = await this.aiChat.generateReply({
       userId,
       topic,
@@ -594,7 +553,6 @@ export class PracticeService {
       { role: 'AI', content: aiReply },
     ];
 
-    // Core metrics on full transcript INCLUDING the generated reply
     const transcriptForCore: TranscriptMessage[] = transcriptToPersist.map((m) => ({
       text: m.content,
       sentBy: m.role === 'USER' ? 'user' : 'ai',
@@ -629,7 +587,8 @@ export class PracticeService {
               successScore: effectivePolicy.successScore,
               failScore: effectivePolicy.failScore,
             },
-            aiContract: template?.aiContract ?? null, // AI behavior only
+            aiStyle: (template?.aiStyle ?? null) as AiStyle | null, // ✅ NEW
+            aiContract: template?.aiContract ?? null,
           }
         : null,
       missionState,

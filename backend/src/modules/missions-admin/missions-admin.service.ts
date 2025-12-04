@@ -1,11 +1,15 @@
-// FILE: backend/src/modules/missions-admin/missions-admin.service.ts
 import {
   BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
-import { MissionDifficulty, MissionGoalType, Prisma } from '@prisma/client';
+import {
+  AiStyleKey,
+  MissionDifficulty,
+  MissionGoalType,
+  Prisma,
+} from '@prisma/client';
 import { CreateMissionDto, UpdateMissionDto } from './dto/admin-mission.dto';
 import {
   CreateMissionCategoryDto,
@@ -107,19 +111,97 @@ export class MissionsAdminService {
     return (normalized.slice(0, 35) + '_' + tail).slice(0, 40);
   }
 
+  private normalizeAiStyleKey(raw: any): string | undefined | null {
+    if (raw === undefined) return undefined; // not provided -> don't change on update
+    if (raw === null) return null; // explicit null -> clear style
+    const s = String(raw).trim();
+    if (!s.length) return null; // empty string -> clear style
+    const key = s
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    return key.length ? key : null;
+  }
+
+  private assertAiStyleKeyIsValidEnum(key: string) {
+    const allowed = Object.values(AiStyleKey) as string[];
+    if (!allowed.includes(key)) {
+      throw new BadRequestException({
+        code: 'VALIDATION',
+        message: `Invalid aiStyleKey "${key}". Must be one of: ${allowed.join(', ')}`,
+      });
+    }
+  }
+
+  private async resolveAiStyleIdByKeyOrThrow(key: string) {
+    this.assertAiStyleKeyIsValidEnum(key);
+
+    const style = await this.prisma.aiStyle.findUnique({
+      where: { key: key as any },
+      select: { id: true, key: true, name: true, isActive: true },
+    });
+
+    if (!style) {
+      throw new BadRequestException({
+        code: 'INVALID_AI_STYLE',
+        message: `aiStyleKey "${key}" does not exist in DB`,
+      });
+    }
+
+    if (!style.isActive) {
+      throw new BadRequestException({
+        code: 'AI_STYLE_INACTIVE',
+        message: `aiStyleKey "${key}" is inactive`,
+      });
+    }
+
+    return style.id;
+  }
+
+  private missionInclude() {
+    return {
+      category: true,
+      persona: true,
+      aiStyle: {
+        select: {
+          id: true,
+          key: true,
+          name: true,
+          description: true,
+          isActive: true,
+        },
+      },
+    } as const;
+  }
+
   async getMeta() {
-    const [categories, personas] = await Promise.all([
+    const [categories, personas, aiStyles] = await Promise.all([
       this.prisma.missionCategory.findMany({ orderBy: [{ label: 'asc' }] }),
       this.prisma.aiPersona.findMany({ orderBy: [{ name: 'asc' }] }),
+      this.prisma.aiStyle.findMany({
+        where: { isActive: true },
+        orderBy: [{ name: 'asc' }],
+        select: {
+          id: true,
+          key: true,
+          name: true,
+          description: true,
+          isActive: true,
+        },
+      }),
     ]);
 
+    // Keep backward-compat for dashboards that expect enums.aiStyles
     return {
       ok: true,
       categories,
       personas,
+      aiStyles, // ✅ DB-synced dropdown data
       enums: {
         difficulties: Object.values(MissionDifficulty),
         goalTypes: Object.values(MissionGoalType),
+        aiStyles: aiStyles.map((s) => s.key), // ✅ compat: list of keys
+        aiStyleKeys: Object.values(AiStyleKey), // ✅ useful for debugging
       },
     };
   }
@@ -129,7 +211,7 @@ export class MissionsAdminService {
   async getRoad() {
     const templates = await this.prisma.practiceMissionTemplate.findMany({
       where: { active: true },
-      include: { category: true, persona: true },
+      include: this.missionInclude(),
       orderBy: [{ laneIndex: 'asc' }, { orderIndex: 'asc' }],
     });
 
@@ -144,20 +226,15 @@ export class MissionsAdminService {
     return {
       ok: true,
       templates: normalized,
-      missions: normalized, // compat
-      items: normalized, // compat
+      missions: normalized,
+      items: normalized,
       count: normalized.length,
     };
   }
 
-  /**
-   * ✅ New: flat array list for dashboards
-   * This is what GET /v1/admin/missions will return (controller uses this).
-   */
   async listMissionsFlat() {
     const templates = await this.prisma.practiceMissionTemplate.findMany({
-      include: { category: true, persona: true },
-      // Better for “road ordering” UIs than createdAt:
+      include: this.missionInclude(),
       orderBy: [{ laneIndex: 'asc' }, { orderIndex: 'asc' }, { createdAt: 'asc' }],
     });
 
@@ -170,7 +247,7 @@ export class MissionsAdminService {
 
   async listMissions() {
     const templates = await this.prisma.practiceMissionTemplate.findMany({
-      include: { category: true, persona: true },
+      include: this.missionInclude(),
       orderBy: [{ createdAt: 'desc' }],
     });
 
@@ -184,11 +261,10 @@ export class MissionsAdminService {
   }
 
   // -------- PUBLIC (mobile app) --------
-  // (unchanged)
   async getPublicRoad() {
     const templates = await this.prisma.practiceMissionTemplate.findMany({
       where: { active: true },
-      include: { category: true, persona: true },
+      include: this.missionInclude(),
       orderBy: [{ laneIndex: 'asc' }, { orderIndex: 'asc' }],
     });
 
@@ -244,6 +320,14 @@ export class MissionsAdminService {
                 gems: t.baseGemsReward,
               },
 
+              aiStyle: t.aiStyle
+                ? {
+                    key: t.aiStyle.key,
+                    name: t.aiStyle.name,
+                    description: t.aiStyle.description,
+                  }
+                : null,
+
               category: t.category
                 ? {
                     id: t.category.id,
@@ -297,7 +381,7 @@ export class MissionsAdminService {
     };
   }
 
-  // -------- create/update/delete/reorder (unchanged) --------
+  // -------- create/update/delete/reorder --------
 
   async createMission(dto: CreateMissionDto) {
     const title = pickTitle(dto);
@@ -308,10 +392,13 @@ export class MissionsAdminService {
       });
     }
 
-    const laneIndex = Number.isFinite(dto.laneIndex as any) ? (dto.laneIndex as number) : 0;
+    const laneIndex =
+      Number.isFinite(dto.laneIndex as any) ? (dto.laneIndex as number) : 0;
 
     let orderIndex =
-      Number.isFinite(dto.orderIndex as any) ? (dto.orderIndex as number) : undefined;
+      Number.isFinite(dto.orderIndex as any)
+        ? (dto.orderIndex as number)
+        : undefined;
 
     if (orderIndex === undefined) {
       const last = await this.prisma.practiceMissionTemplate.findFirst({
@@ -342,6 +429,11 @@ export class MissionsAdminService {
     }
 
     const aiContract = this.sanitizeAiContract(dto.aiContract);
+
+    // ✅ aiStyleKey (new) + legacy alias dto.aiStyle
+    const normalizedStyleKey = this.normalizeAiStyleKey(
+      (dto as any).aiStyleKey ?? (dto as any).aiStyle,
+    );
 
     const data: Prisma.PracticeMissionTemplateCreateInput = {
       code,
@@ -380,10 +472,15 @@ export class MissionsAdminService {
           : {}),
     };
 
+    if (normalizedStyleKey && normalizedStyleKey !== null) {
+      const aiStyleId = await this.resolveAiStyleIdByKeyOrThrow(normalizedStyleKey);
+      (data as any).aiStyle = { connect: { id: aiStyleId } };
+    }
+
     try {
       const created = await this.prisma.practiceMissionTemplate.create({
         data,
-        include: { category: true, persona: true },
+        include: this.missionInclude(),
       });
       return { ok: true, template: created };
     } catch (e) {
@@ -397,7 +494,10 @@ export class MissionsAdminService {
       select: { id: true },
     });
     if (!existing) {
-      throw new NotFoundException({ code: 'NOT_FOUND', message: 'mission not found' });
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'mission not found',
+      });
     }
 
     const title = pickTitle(dto);
@@ -418,7 +518,9 @@ export class MissionsAdminService {
       ...(dto.orderIndex !== undefined ? { orderIndex: dto.orderIndex } : {}),
 
       ...(dto.timeLimitSec !== undefined ? { timeLimitSec: dto.timeLimitSec } : {}),
-      ...(dto.maxMessages !== undefined ? { maxMessages: dto.maxMessages ?? null } : {}),
+      ...(dto.maxMessages !== undefined
+        ? { maxMessages: dto.maxMessages ?? null }
+        : {}),
       ...(dto.wordLimit !== undefined ? { wordLimit: dto.wordLimit ?? null } : {}),
 
       ...(dto.isVoiceSupported !== undefined
@@ -426,8 +528,12 @@ export class MissionsAdminService {
         : {}),
 
       ...(dto.baseXpReward !== undefined ? { baseXpReward: dto.baseXpReward } : {}),
-      ...(dto.baseCoinsReward !== undefined ? { baseCoinsReward: dto.baseCoinsReward } : {}),
-      ...(dto.baseGemsReward !== undefined ? { baseGemsReward: dto.baseGemsReward } : {}),
+      ...(dto.baseCoinsReward !== undefined
+        ? { baseCoinsReward: dto.baseCoinsReward }
+        : {}),
+      ...(dto.baseGemsReward !== undefined
+        ? { baseGemsReward: dto.baseGemsReward }
+        : {}),
 
       ...(dto.difficulty !== undefined ? { difficulty: dto.difficulty } : {}),
       ...(dto.goalType !== undefined ? { goalType: dto.goalType ?? null } : {}),
@@ -454,11 +560,28 @@ export class MissionsAdminService {
           : { disconnect: true };
     }
 
+    // ✅ aiStyleKey update rules:
+    // - undefined -> do nothing
+    // - null / '' -> disconnect (clear)
+    // - otherwise -> connect by DB key
+    const normalizedStyleKey = this.normalizeAiStyleKey(
+      (dto as any).aiStyleKey ?? (dto as any).aiStyle,
+    );
+
+    if (normalizedStyleKey !== undefined) {
+      if (normalizedStyleKey === null) {
+        (data as any).aiStyle = { disconnect: true };
+      } else {
+        const aiStyleId = await this.resolveAiStyleIdByKeyOrThrow(normalizedStyleKey);
+        (data as any).aiStyle = { connect: { id: aiStyleId } };
+      }
+    }
+
     try {
       const updated = await this.prisma.practiceMissionTemplate.update({
         where: { id },
         data,
-        include: { category: true, persona: true },
+        include: this.missionInclude(),
       });
       return { ok: true, template: updated };
     } catch (e) {
@@ -475,8 +598,14 @@ export class MissionsAdminService {
       });
       return { ok: true, template: updated };
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-        throw new NotFoundException({ code: 'NOT_FOUND', message: 'mission not found' });
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2025'
+      ) {
+        throw new NotFoundException({
+          code: 'NOT_FOUND',
+          message: 'mission not found',
+        });
       }
       throw this.mapPrismaError(e);
     }
@@ -589,11 +718,20 @@ export class MissionsAdminService {
     };
 
     try {
-      const updated = await this.prisma.missionCategory.update({ where: { id }, data });
+      const updated = await this.prisma.missionCategory.update({
+        where: { id },
+        data,
+      });
       return { ok: true, category: updated };
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-        throw new NotFoundException({ code: 'NOT_FOUND', message: 'category not found' });
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2025'
+      ) {
+        throw new NotFoundException({
+          code: 'NOT_FOUND',
+          message: 'category not found',
+        });
       }
       throw this.mapPrismaError(e);
     }

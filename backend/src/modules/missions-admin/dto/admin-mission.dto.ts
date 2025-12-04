@@ -1,4 +1,3 @@
-// FILE: backend/src/modules/missions-admin/dto/admin-mission.dto.ts
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
@@ -10,6 +9,11 @@ import {
   Min,
 } from 'class-validator';
 import { MissionDifficulty, MissionGoalType } from '@prisma/client';
+
+function trimKeepEmpty({ value }: { value: any }) {
+  if (value === null || value === undefined) return undefined;
+  return String(value).trim(); // can be ''
+}
 
 function trimToUndef({ value }: { value: any }) {
   if (value === null || value === undefined) return undefined;
@@ -34,14 +38,12 @@ function boolToUndef({ value }: { value: any }) {
 }
 
 export class CreateMissionDto {
-  // Some dashboards don't send code — backend will generate if missing
   @IsOptional()
   @Transform(trimToUndef)
   @IsString()
   @MaxLength(40)
   code?: string;
 
-  // dashboards sometimes use "name" instead of "title"
   @IsOptional()
   @Transform(trimToUndef)
   @IsString()
@@ -60,7 +62,6 @@ export class CreateMissionDto {
   @MaxLength(2000)
   description?: string;
 
-  // allow either categoryId or categoryCode
   @IsOptional()
   @Transform(trimToUndef)
   @IsString()
@@ -71,7 +72,6 @@ export class CreateMissionDto {
   @IsString()
   categoryCode?: string;
 
-  // allow either personaId or personaCode
   @IsOptional()
   @Transform(trimToUndef)
   @IsString()
@@ -89,6 +89,29 @@ export class CreateMissionDto {
   @IsOptional()
   @IsEnum(MissionDifficulty)
   difficulty?: MissionDifficulty;
+
+  /**
+   * ✅ DB-synced AI style selection
+   * - Send aiStyleKey: "NEUTRAL" | "FLIRTY" | ...
+   * - To CLEAR style on update: send aiStyleKey: "" (empty string)
+   *
+   * NOTE: We don't use @IsEnum(AiStyle) because AiStyle is a Prisma model (runtime undefined).
+   */
+  @IsOptional()
+  @Transform(trimKeepEmpty)
+  @IsString()
+  @MaxLength(40)
+  aiStyleKey?: string;
+
+  /**
+   * ✅ Legacy alias (some dashboards already send "aiStyle")
+   * We treat it exactly like aiStyleKey.
+   */
+  @IsOptional()
+  @Transform(trimKeepEmpty)
+  @IsString()
+  @MaxLength(40)
+  aiStyle?: string;
 
   @IsOptional()
   @Transform(intToUndef)
@@ -143,7 +166,6 @@ export class CreateMissionDto {
   @Min(0)
   baseGemsReward?: number;
 
-  // may arrive as object OR JSON string; service normalizes
   @IsOptional()
   aiContract?: any;
 

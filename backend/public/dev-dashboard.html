@@ -21,6 +21,19 @@
         --btn: rgba(255, 255, 255, 0.1);
         --btn2: rgba(255, 255, 255, 0.16);
         --shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+
+        /* controls */
+        --controlBg: rgba(255, 255, 255, 0.07);
+        --controlBgHover: rgba(255, 255, 255, 0.09);
+        --controlBorder: rgba(255, 255, 255, 0.12);
+        --controlFocus: rgba(77, 97, 255, 0.32);
+
+        /* dropdown menu (options list) */
+        --optionBg: #0f1733;
+        --optionBgHover: #16204a;
+        --optionBgSelected: #24306a;
+        --optionText: rgba(255, 255, 255, 0.93);
+        --optionTextMuted: rgba(255, 255, 255, 0.6);
       }
 
       * {
@@ -47,6 +60,9 @@
           ),
           var(--bg);
         color: var(--text);
+
+        /* IMPORTANT: make native form controls prefer dark UI where supported */
+        color-scheme: dark;
       }
       .wrap {
         max-width: 1320px;
@@ -164,17 +180,49 @@
         font-size: 12px;
         color: var(--muted);
       }
+
       input,
       select,
       textarea {
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid var(--line);
+        background: var(--controlBg);
+        border: 1px solid var(--controlBorder);
         border-radius: 12px;
         color: var(--text);
         padding: 10px 10px;
         outline: none;
         font-size: 13px;
       }
+
+      input:hover,
+      select:hover,
+      textarea:hover {
+        background: var(--controlBgHover);
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        border-color: rgba(77, 97, 255, 0.45);
+        box-shadow: 0 0 0 3px rgba(77, 97, 255, 0.14);
+      }
+
+      /* IMPORTANT: force readable dropdown menus (options list) */
+      select {
+        color-scheme: dark;
+      }
+      select option,
+      select optgroup {
+        background-color: var(--optionBg);
+        color: var(--optionText);
+      }
+      select option:checked {
+        background-color: var(--optionBgSelected);
+        color: var(--optionText);
+      }
+      select option[disabled] {
+        color: var(--optionTextMuted);
+      }
+
       textarea {
         min-height: 280px;
         line-height: 1.35;
@@ -240,6 +288,7 @@
         display: flex;
         gap: 8px;
         flex-wrap: wrap;
+        align-items: center;
       }
 
       .footerLog {
@@ -344,6 +393,7 @@
             Notes:
             <ul>
               <li>Difficulty enum must match DB: <b>EASY / MEDIUM / HARD / ELITE</b></li>
+              <li><b>AI Styles</b> are loaded from DB (AiStyle table). Select “(default)” to not override.</li>
               <li>AI Contract is parsed as JSON object and sent as <code>aiContract</code></li>
               <li>All failures are shown below; nothing is silent.</li>
             </ul>
@@ -423,7 +473,7 @@
               </div>
             </div>
 
-            <div class="split">
+            <div class="split3">
               <div class="field">
                 <label>Active</label>
                 <select id="activeSelect">
@@ -435,6 +485,14 @@
               <div class="field">
                 <label>Code (optional)</label>
                 <input id="codeInput" placeholder="optional short code / slug" />
+              </div>
+
+              <div class="field">
+                <label>AI Style (optional)</label>
+                <select id="aiStyleSelect">
+                  <option value="">(default / none)</option>
+                  <option value="__meta__" disabled>— load meta to see styles —</option>
+                </select>
               </div>
             </div>
 
@@ -465,7 +523,7 @@
           </div>
           <div class="right">
             <span class="mini"
-              >Tip: open DevTools Console too — but this log makes sure you’ll
+              >Tip: open DevTools Console too — but this log makes sure you'll
               see errors even if JS breaks.</span
             >
           </div>
@@ -489,8 +547,13 @@
           missionsLoaded: false,
           categories: [],
           personas: [],
+          aiStyles: [],
           missions: [],
           selectedMissionId: null,
+
+          // Backend DTO expects aiStyleKey (never aiStyleId)
+          aiStyleSendField: "aiStyleKey",
+          aiStyleTouched: false,
         };
 
         const ui = {
@@ -529,6 +592,7 @@
           personaSelect: document.getElementById("personaSelect"),
           activeSelect: document.getElementById("activeSelect"),
           codeInput: document.getElementById("codeInput"),
+          aiStyleSelect: document.getElementById("aiStyleSelect"),
 
           // Contract
           aiContractJsonTextarea: document.getElementById("aiContractJsonTextarea"),
@@ -605,7 +669,6 @@
 
         function buildUrl(path) {
           const base = getApiBase() || "";
-          // If base empty, relative to current origin
           const prefix = "/v1";
           if (!path.startsWith("/")) path = "/" + path;
           if (path.startsWith(prefix)) return base + path;
@@ -653,7 +716,6 @@
         }
 
         function normalizeMeta(resp) {
-          // tolerant parsing: meta might be {categories, personas} or nested
           const root = resp && typeof resp === "object" ? resp : {};
           const data = root.data && typeof root.data === "object" ? root.data : root;
 
@@ -664,10 +726,43 @@
             [];
           const personas = data.personas || data.aiPersonas || data.personaList || [];
 
+          // Optional: meta may include ai styles too
+          const aiStyles = data.aiStyles || data.styles || data.aiStyleList || [];
+
           return {
             categories: Array.isArray(categories) ? categories : [],
             personas: Array.isArray(personas) ? personas : [],
+            aiStyles: Array.isArray(aiStyles) ? aiStyles : [],
           };
+        }
+
+        function normalizeAiStyles(resp) {
+          const root = resp && typeof resp === "object" ? resp : {};
+          const data = root.data && typeof root.data === "object" ? root.data : root;
+
+          const list =
+            data.aiStyles ||
+            data.styles ||
+            data.items ||
+            (Array.isArray(data) ? data : null) ||
+            (Array.isArray(root) ? root : null) ||
+            [];
+          const arr = Array.isArray(list) ? list : [];
+
+          // normalize shapes
+          return arr
+            .map((s) => {
+              if (!s) return null;
+              if (typeof s === "string") {
+                return { id: null, key: s, name: s, isActive: true };
+              }
+              const id = s.id ?? null;
+              const key = s.key ?? s.code ?? s.slug ?? s.name ?? null;
+              const name = s.name ?? s.title ?? key ?? "(unnamed)";
+              const isActive = s.isActive ?? s.active ?? true;
+              return { id, key, name, isActive };
+            })
+            .filter(Boolean);
         }
 
         function normalizeMissions(resp) {
@@ -706,13 +801,11 @@
             updateContractValidity();
             return;
           }
-          // if already string try parse, else stringify
           try {
             const obj =
               typeof contract === "string" ? JSON.parse(contract) : contract;
             ui.aiContractJsonTextarea.value = JSON.stringify(obj, null, 2);
           } catch {
-            // fallback raw
             ui.aiContractJsonTextarea.value =
               typeof contract === "string" ? contract : safeStringify(contract);
           }
@@ -805,16 +898,72 @@
         }
 
         // ---------------------------
+        // AiStyles helpers
+        // ---------------------------
+        function findStyleById(id) {
+          return (state.aiStyles || []).find((s) => s && s.id === id) || null;
+        }
+
+        function findStyleByKey(key) {
+          if (!key) return null;
+          const kk = String(key).trim().toUpperCase();
+          return (state.aiStyles || []).find((s) => String(s.key || "").trim().toUpperCase() === kk) || null;
+        }
+
+        function getSelectedStyle() {
+          const val = ui.aiStyleSelect.value || "";
+          if (!val) return null;
+          // options use style.key as value
+          return findStyleByKey(val);
+        }
+
+        function getMissionStyleKey(m) {
+          if (!m) return "";
+          // possible shapes
+          if (typeof m.aiStyle === "string") return m.aiStyle;
+          if (m.aiStyleKey) return m.aiStyleKey;
+          if (m.aiStyle && typeof m.aiStyle === "object") return m.aiStyle.key || m.aiStyle.name || "";
+          if (m.aiStyleId) {
+            const s = findStyleById(m.aiStyleId);
+            return s?.key || "";
+          }
+          return "";
+        }
+
+        function getMissionStyleId(m) {
+          if (!m) return "";
+          if (m.aiStyleId) return m.aiStyleId;
+          if (m.aiStyle && typeof m.aiStyle === "object" && m.aiStyle.id) return m.aiStyle.id;
+          // if backend returns a string key, map to id if possible
+          const key = getMissionStyleKey(m);
+          const s = findStyleByKey(key);
+          return s?.id || "";
+        }
+
+        function detectAiStyleSendFieldFromMissions(missions) {
+          for (const m of missions || []) {
+            if (!m) continue;
+            if (m.aiStyleId) return "aiStyleId";
+            if (m.aiStyle && typeof m.aiStyle === "object" && m.aiStyle.id) return "aiStyleId";
+            if (m.aiStyleKey) return "aiStyleKey";
+            if (typeof m.aiStyle === "string") return "aiStyle";
+          }
+          return null;
+        }
+
+        // ---------------------------
         // Mission form helpers
         // ---------------------------
         function clearMissionForm() {
           state.selectedMissionId = null;
+          state.aiStyleTouched = false;
           ui.missionTitleInput.value = "";
           ui.difficultySelect.value = "EASY";
           ui.categorySelect.value = "";
           ui.personaSelect.value = "";
           ui.activeSelect.value = "true";
           ui.codeInput.value = "";
+          ui.aiStyleSelect.value = "";
           setAiContractTextarea(null);
 
           updateSelectionUI();
@@ -849,6 +998,18 @@
             aiContract: parsed.value
           };
 
+          // AI Style (optional) — NEVER send aiStyleId, only aiStyleKey
+          // If style selected: send uppercase key
+          // Else if updating AND user touched dropdown: send empty string to clear
+          // Else: omit field entirely
+          const sel = getSelectedStyle();
+          if (sel && sel.key) {
+            payload.aiStyleKey = String(sel.key).trim().toUpperCase();
+          } else if (state.selectedMissionId && state.aiStyleTouched) {
+            payload.aiStyleKey = ""; // explicit clear on update
+          }
+          // Otherwise: no aiStyle field in payload
+
           return { ok: true, value: payload };
         }
 
@@ -870,10 +1031,15 @@
           const name = (ui.missionTitleInput.value || "").trim() || "—";
           const difficulty = ui.difficultySelect.value || "—";
           const active = ui.activeSelect.value === "true" ? "active" : "inactive";
+
+          const sel = getSelectedStyle();
+          const styleLabel = sel ? (sel.key || sel.name || "style") : "default";
+
           const contractParsed = getAiContractJsonOrNull();
           const contractOk = contractParsed && contractParsed.ok;
 
-          ui.previewChip.textContent = `${difficulty} • ${active} • ${name}`;
+          ui.previewChip.textContent = `${difficulty} • ${styleLabel} • ${active} • ${name}`;
+
           if (!ui.aiContractJsonTextarea.value.trim()) {
             setChip(ui.contractValidityChip, "AI Contract: empty", "warn");
             return;
@@ -885,7 +1051,7 @@
           );
         }
 
-        function mapIdToName(list, id, keys = ["name", "title"]) {
+        function mapIdToName(list, id, keys = ["name", "title", "label"]) {
           const item = (list || []).find((x) => x?.id === id);
           if (!item) return id;
           for (const k of keys) if (item[k]) return item[k];
@@ -895,11 +1061,35 @@
         // ---------------------------
         // Rendering
         // ---------------------------
+        function renderAiStyleSelect() {
+          ui.aiStyleSelect.innerHTML = `<option value="">(default / none)</option>`;
+
+          const styles = (state.aiStyles || []).filter((s) => s && (s.isActive !== false));
+          if (!styles.length) {
+            ui.aiStyleSelect.insertAdjacentHTML(
+              "beforeend",
+              `<option value="__none__" disabled>(no styles found)</option>`
+            );
+            return;
+          }
+
+          for (const s of styles) {
+            // Use key as value (backend expects aiStyleKey, not aiStyleId)
+            const value = s.key || "";
+            if (!value) continue; // skip styles without key
+            const label = `${s.key || s.name || value} — ${s.name || ""}`.trim().replace(/\s+—\s*$/, "");
+            ui.aiStyleSelect.insertAdjacentHTML(
+              "beforeend",
+              `<option value="${escapeHtmlAttr(value)}">${escapeHtml(label)}</option>`
+            );
+          }
+        }
+
         function renderMetaSelects() {
           // categories
           ui.categorySelect.innerHTML = `<option value="">(select)</option>`;
           for (const c of state.categories) {
-            const label = c.name || c.title || c.code || c.id;
+            const label = c.name || c.title || c.label || c.code || c.id;
             ui.categorySelect.insertAdjacentHTML(
               "beforeend",
               `<option value="${escapeHtmlAttr(c.id)}">${escapeHtml(label)}</option>`
@@ -915,13 +1105,17 @@
               `<option value="${escapeHtmlAttr(p.id)}">${escapeHtml(label)}</option>`
             );
           }
+
+          // styles
+          renderAiStyleSelect();
         }
 
         function renderMissionsList() {
           const q = (ui.searchInput.value || "").trim().toLowerCase();
           const missions = (state.missions || []).filter((m) => {
             if (!q) return true;
-            const hay = `${m.name || ""} ${m.code || ""}`.toLowerCase();
+            const styleKey = getMissionStyleKey(m) || "";
+            const hay = `${m.name || ""} ${m.code || ""} ${styleKey}`.toLowerCase();
             return hay.includes(q);
           });
 
@@ -931,6 +1125,7 @@
             const title = m.name || "(untitled)";
             const diff = m.difficulty || "—";
             const active = m.active ? "active" : "inactive";
+            const styleKey = getMissionStyleKey(m);
             const catName = m.categoryId ? mapIdToName(state.categories, m.categoryId) : "—";
             const personaName = m.personaId ? mapIdToName(state.personas, m.personaId) : "—";
 
@@ -945,6 +1140,7 @@
               </div>
               <div class="itemMeta">
                 <span class="chip" style="padding:4px 10px">${escapeHtml(diff)}</span>
+                ${styleKey ? `<span class="chip" style="padding:4px 10px">${escapeHtml(styleKey)}</span>` : ""}
                 <span>${escapeHtml(catName)}</span>
                 <span>•</span>
                 <span>${escapeHtml(personaName)}</span>
@@ -975,7 +1171,6 @@
         // Core actions
         // ---------------------------
         async function pingApi() {
-          // We don’t know your exact health endpoint, so we try a few.
           setChip(ui.apiStatusChip, "API: pinging...", "warn");
           const tries = [
             "/health",
@@ -999,27 +1194,68 @@
           return false;
         }
 
+        async function loadAiStylesFallback() {
+          // If meta didn't include styles, try dedicated endpoints.
+          const candidates = [
+            "/admin/ai-styles",
+            "/admin/ai-styles/list",
+            "/admin/styles",
+            "/ai-styles",
+          ];
+
+          for (const path of candidates) {
+            try {
+              const resp = await apiFetch(path, { method: "GET" });
+              const list = normalizeAiStyles(resp);
+              if (list.length) {
+                state.aiStyles = list;
+                log(`Loaded aiStyles from ${path}`, { count: list.length });
+                return true;
+              }
+            } catch {
+              // keep trying
+            }
+          }
+
+          log("aiStyles fallback: no endpoint returned styles. (OK if your meta includes them)");
+          return false;
+        }
+
         async function loadMeta() {
           setChip(ui.metaStatusChip, "Meta: loading...", "warn");
 
-          // expected endpoint per your report:
-          // GET /v1/admin/missions/meta
           const resp = await apiFetch("/admin/missions/meta", { method: "GET" });
           const meta = normalizeMeta(resp);
 
           state.categories = meta.categories;
           state.personas = meta.personas;
+
+          // styles from meta (optional) or fallback
+          const stylesFromMeta = normalizeAiStyles({ data: { aiStyles: meta.aiStyles } });
+          if (stylesFromMeta.length) {
+            state.aiStyles = stylesFromMeta;
+            log("Loaded aiStyles from meta", { count: stylesFromMeta.length });
+          } else {
+            await loadAiStylesFallback();
+          }
+
           state.metaLoaded = true;
 
           renderMetaSelects();
-          setChip(ui.metaStatusChip, `Meta: ${state.categories.length} cats, ${state.personas.length} personas`, "ok");
+
+          const extras = state.aiStyles.length ? `, ${state.aiStyles.length} styles` : "";
+          setChip(
+            ui.metaStatusChip,
+            `Meta: ${state.categories.length} cats, ${state.personas.length} personas${extras}`,
+            "ok"
+          );
           showOk("Meta loaded.");
+          updateMissionPreview();
         }
 
         async function loadMissions() {
           setChip(ui.missionsStatusChip, "Missions: loading...", "warn");
 
-          // common patterns: GET /v1/admin/missions or /v1/admin/missions/list
           let resp = null;
           try {
             resp = await apiFetch("/admin/missions", { method: "GET" });
@@ -1050,6 +1286,20 @@
           ui.activeSelect.value = String(!!m.active);
           ui.codeInput.value = m.code || "";
 
+          // AI Style: find by key and set dropdown value to key
+          const styleKey = getMissionStyleKey(m);
+          if (styleKey) {
+            const style = findStyleByKey(styleKey);
+            if (style && style.key) {
+              ui.aiStyleSelect.value = style.key;
+            } else {
+              ui.aiStyleSelect.value = "";
+            }
+          } else {
+            ui.aiStyleSelect.value = "";
+          }
+          state.aiStyleTouched = false;
+
           setAiContractTextarea(m.aiContract);
           updateSelectionUI();
           updateMissionPreview();
@@ -1062,13 +1312,24 @@
           const m = (state.missions || []).find((x) => x.id === sid);
           if (!m) return;
 
-          state.selectedMissionId = null; // important: will create NEW on save
+          state.selectedMissionId = null; // create NEW on save
           ui.missionTitleInput.value = (m.name || "Mission") + " (copy)";
           ui.difficultySelect.value = m.difficulty || "EASY";
           ui.categorySelect.value = m.categoryId || "";
           ui.personaSelect.value = m.personaId || "";
           ui.activeSelect.value = String(!!m.active);
           ui.codeInput.value = ""; // cleared intentionally
+
+          // Use key-based selection (not ID)
+          const styleKey = getMissionStyleKey(m);
+          if (styleKey) {
+            const style = findStyleByKey(styleKey);
+            ui.aiStyleSelect.value = (style && style.key) ? style.key : "";
+          } else {
+            ui.aiStyleSelect.value = "";
+          }
+          state.aiStyleTouched = false;
+
           setAiContractTextarea(m.aiContract);
 
           updateSelectionUI();
@@ -1114,9 +1375,12 @@
             showOk("Mission created.");
           }
 
+          state.aiStyleTouched = false;
           await loadMissions();
-          // try to reselect the created/updated mission by matching name+code best-effort
-          const best = (state.missions || []).find((m) => m.name === payload.name && (payload.code ? m.code === payload.code : true));
+
+          const best = (state.missions || []).find(
+            (m) => m.name === payload.name && (payload.code ? m.code === payload.code : true)
+          );
           if (best?.id) selectMission(best.id);
           else clearMissionForm();
         }
@@ -1184,6 +1448,11 @@
 
           ui.pasteSampleBtn.addEventListener("click", pasteSampleContract);
 
+          // Track when user touches AI Style dropdown
+          ui.aiStyleSelect.addEventListener("change", () => {
+            state.aiStyleTouched = true;
+          });
+
           // Live preview updates
           const previewInputs = [
             ui.missionTitleInput,
@@ -1192,6 +1461,7 @@
             ui.personaSelect,
             ui.activeSelect,
             ui.codeInput,
+            ui.aiStyleSelect,
             ui.aiContractJsonTextarea
           ];
           previewInputs.forEach((el) => el.addEventListener("input", updateMissionPreview));
@@ -1218,11 +1488,15 @@
           setChip(ui.metaStatusChip, "Meta: not loaded", "");
           setChip(ui.missionsStatusChip, "Missions: not loaded", "");
 
-          log("Dashboard booted. (Single script, single ui)");
+          log("Dashboard booted. (Single script, single ui object)");
           log("Tip: Click 'Ping API' then 'Load Meta' then 'Load Missions'.");
         }
 
-        document.addEventListener("DOMContentLoaded", boot);
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", boot);
+        } else {
+          boot();
+        }
       })();
     </script>
   </body>

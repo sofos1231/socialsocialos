@@ -1,3 +1,4 @@
+// FILE: backend/prisma/schema.prisma
 // NOTE: Practice/Chat stats are currently Option A (rarity/xp-based). Option B trait metrics will be added alongside and gradually replace this.
 
 generator client {
@@ -123,6 +124,42 @@ model MissionCategory {
 }
 
 /// --------------------------------------
+/// AI Styles – stable mapped "moods"
+/// --------------------------------------
+model AiStyle {
+  id          String     @id @default(cuid())
+  key         AiStyleKey @unique
+  name        String
+  description String
+  tags        String[]   @default([])
+
+  stylePrompt       String @db.Text
+  forbiddenBehavior String @db.Text
+  fewShotExamples   Json?
+
+  // Hard constraints / dials
+  maxChars     Int
+  maxLines     Int
+  questionRate Int // 0..100
+  emojiRate    Int // 0..100
+  initiative   Int // 0..5
+  warmth       Int // 0..5
+  judgment     Int // 0..5
+  flirtTension Int // 0..5
+  formality    Int // 0..5
+
+  // Optional model knobs
+  temperature Float?
+  topP        Float?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  missions PracticeMissionTemplate[]
+}
+
+/// --------------------------------------
 /// Mission template = "practice mission definition"
 /// --------------------------------------
 model PracticeMissionTemplate {
@@ -159,6 +196,10 @@ model PracticeMissionTemplate {
   baseCoinsReward Int @default(10)
   baseGemsReward  Int @default(0)
 
+  // ✅ Optional AI style override for this mission (DB-mapped)
+  aiStyleId String?
+  aiStyle   AiStyle? @relation(fields: [aiStyleId], references: [id], onDelete: SetNull)
+
   aiContract Json?
 
   active    Boolean  @default(true)
@@ -167,6 +208,8 @@ model PracticeMissionTemplate {
   // Relations
   sessions PracticeSession[]
   progress MissionProgress[]
+
+  @@index([aiStyleId])
 }
 
 model PowerUpType {
@@ -392,6 +435,20 @@ enum MissionGoalType {
   BOUNDARY
   LOGISTICS
   SOCIAL
+}
+
+/// ✅ Stable AI Style keys (used by DB row `AiStyle.key`)
+enum AiStyleKey {
+  NEUTRAL
+  FLIRTY
+  PLAYFUL
+  CHALLENGING
+  WARM
+  COLD
+  SHY
+  DIRECT
+  JUDGMENTAL
+  CHAOTIC
 }
 
 /// ✅ Ledger kinds (extend later)

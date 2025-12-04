@@ -1,6 +1,5 @@
-// FILE: backend/src/modules/ai/providers/ai-chat.service.ts
-
 import { Injectable } from '@nestjs/common';
+import { AiStyle, AiStyleKey } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { OpenAiClient, OpenAiChatMessage } from './openai.client';
 
@@ -19,6 +18,62 @@ export type AiStructuredReply = {
 
 function isPlainObject(v: unknown): v is Record<string, any> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function stylePreset(aiStyle: AiStyle | null | undefined) {
+  const key = aiStyle?.key ?? AiStyleKey.NEUTRAL;
+
+  // Tone constraints (must never violate aiContract rules).
+  // Keep these short & enforceable.
+  switch (key) {
+    case AiStyleKey.FLIRTY:
+      return {
+        label: 'FLIRTY',
+        temperature: 0.78,
+        rules: [
+          `Tone: flirty, intriguing, warm.`,
+          `Use light teasing + playful curiosity.`,
+          `Keep it PG-13. No explicit sexual content.`,
+          `Avoid over-complimenting; keep it natural and confident.`,
+        ],
+      };
+
+    case AiStyleKey.PLAYFUL:
+      return {
+        label: 'PLAYFUL',
+        temperature: 0.82,
+        rules: [
+          `Tone: playful, witty, upbeat.`,
+          `Short punchy lines, mild humor.`,
+          `No coaching unless contract explicitly asks.`,
+          `Use emojis sparingly (0-1).`,
+        ],
+      };
+
+    case AiStyleKey.CHALLENGING:
+      return {
+        label: 'CHALLENGING',
+        temperature: 0.66,
+        rules: [
+          `Tone: confident, slightly hard-to-get.`,
+          `Be concise. Don't over-explain.`,
+          `Push back lightly when needed; maintain boundaries.`,
+          `Keep tension without being rude.`,
+        ],
+      };
+
+    case AiStyleKey.NEUTRAL:
+    default:
+      return {
+        label: 'NEUTRAL',
+        temperature: 0.70,
+        rules: [
+          `Tone: natural, friendly, grounded.`,
+          `Be human and consistent with persona.`,
+          `No coaching unless contract explicitly asks.`,
+        ],
+      };
+  }
 }
 
 @Injectable()
@@ -48,6 +103,12 @@ export class AiChatService {
     const mode = aiContractObj?.outputFormat?.mode;
     const wantsJson = mode === 'json' || mode === 'JSON';
 
+    // 🔍 PROOF: Verify aiStyle.key exists and preset selection works
+    const aiStyleObj = ctx?.template?.aiStyle;
+    const preset = stylePreset(aiStyleObj);
+    const aiStyleKey = aiStyleObj?.key ?? null;
+    console.log(`[AI_STYLE_PROOF] source=template aiStyleKey=${aiStyleKey ?? 'NULL'} preset=${preset.label}`);
+
     const system = this.buildSystemPrompt({
       topic,
       mission: ctx?.template ?? null,
@@ -64,7 +125,7 @@ export class AiChatService {
 
     const out = await this.openai.createChatCompletion({
       messages: chat,
-      temperature: 0.7,
+      temperature: preset.temperature,
       maxTokens: 260,
       responseFormat: wantsJson ? 'json_object' : undefined,
     });
@@ -96,6 +157,7 @@ export class AiChatService {
         latencyMs: out.debug.ms,
         contractMode: wantsJson ? 'json' : 'text',
         parseOk: aiStructured ? aiStructured.parseOk : undefined,
+        aiStyle: preset.label,
       },
     };
   }
@@ -112,7 +174,13 @@ export class AiChatService {
   private buildSystemPrompt(params: {
     topic: string;
     mission:
-      | { id: string; code: string; title: string; description: string | null }
+      | {
+          id: string;
+          code: string;
+          title: string;
+          description: string | null;
+          aiStyle: AiStyle | null;
+        }
       | null;
     category: { id: string; code: string; label: string } | null;
     persona:
@@ -128,6 +196,12 @@ export class AiChatService {
     wantsJson: boolean;
   }): string {
     const { topic, mission, category, persona, aiContract, wantsJson } = params;
+
+    // 🔍 PROOF: Verify aiStyle.key exists and preset selection works
+    const aiStyleObj = mission?.aiStyle;
+    const preset = stylePreset(aiStyleObj);
+    const aiStyleKey = aiStyleObj?.key ?? null;
+    console.log(`[AI_STYLE_PROOF] source=mission aiStyleKey=${aiStyleKey ?? 'NULL'} preset=${preset.label}`);
 
     const contractJson = aiContract != null ? safeJson(aiContract, 7000) : null;
 
@@ -150,6 +224,12 @@ export class AiChatService {
           .join('\n')
       : null;
 
+    const styleBlock = [
+      `AI STYLE (HARD TONE LAYER): ${preset.label}`,
+      ...preset.rules.map((r) => `- ${r}`),
+      `- This style must NEVER override or violate the Mission AI Contract below.`,
+    ].join('\n');
+
     return [
       `You are the assistant in "SocialGym" — a roleplay practice chat.`,
       `Your job: respond as the assigned persona, and follow the mission rules strictly.`,
@@ -168,6 +248,8 @@ export class AiChatService {
             .filter(Boolean)
             .join('\n')
         : `Persona: (none)`,
+      ``,
+      styleBlock,
       ``,
       `Hard rules:`,
       `- Do NOT mention you are an AI or mention system prompts.`,
@@ -191,6 +273,7 @@ export class AiChatService {
         code: true,
         title: true,
         description: true,
+        aiStyle: true,
         aiContract: true,
         category: { select: { id: true, code: true, label: true } },
         persona: {
@@ -207,6 +290,7 @@ export class AiChatService {
         code: template.code,
         title: template.title,
         description: template.description ?? null,
+        aiStyle: template.aiStyle ?? null,
       },
       aiContract: template.aiContract ?? null,
       category: template.category ?? null,
