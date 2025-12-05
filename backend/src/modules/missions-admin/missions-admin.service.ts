@@ -16,6 +16,10 @@ import {
   UpdateMissionCategoryDto,
 } from './dto/admin-category.dto';
 import { ReorderMissionsDto } from './dto/admin-missions-reorder.dto';
+import {
+  validateMissionConfigV1Shape,
+  MissionConfigValidationError,
+} from './mission-config-v1.schema';
 
 function slugify(input: string) {
   return input
@@ -430,6 +434,17 @@ export class MissionsAdminService {
 
     const aiContract = this.sanitizeAiContract(dto.aiContract);
 
+    // Phase 0: Validate missionConfigV1 for create
+    // For create, aiContract must exist and be valid (no undefined/null allowed)
+    const validationErrors = validateMissionConfigV1Shape(aiContract);
+    if (validationErrors.length > 0) {
+      throw new BadRequestException({
+        code: 'VALIDATION',
+        message: 'Invalid aiContract.missionConfigV1',
+        details: validationErrors,
+      });
+    }
+
     // ✅ aiStyleKey (new) + legacy alias dto.aiStyle
     const normalizedStyleKey = this.normalizeAiStyleKey(
       (dto as any).aiStyleKey ?? (dto as any).aiStyle,
@@ -507,6 +522,21 @@ export class MissionsAdminService {
     const personaCode = normalizeCode(dto.personaCode);
 
     const aiContract = this.sanitizeAiContract(dto.aiContract);
+
+    // Phase 0: Validate missionConfigV1 for update (only if aiContract is being updated)
+    if (dto.aiContract !== undefined) {
+      // For updates, allow explicit null to clear aiContract without enforcing missionConfigV1
+      if (aiContract !== null) {
+        const validationErrors = validateMissionConfigV1Shape(aiContract);
+        if (validationErrors.length > 0) {
+          throw new BadRequestException({
+            code: 'VALIDATION',
+            message: 'Invalid aiContract.missionConfigV1',
+            details: validationErrors,
+          });
+        }
+      }
+    }
 
     const data: Prisma.PracticeMissionTemplateUpdateInput = {
       ...(title ? { title } : {}),
