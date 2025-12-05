@@ -146,8 +146,9 @@ export class SessionsService {
         : 0;
 
     // 2) Determine "should finalize" and success flag
-    const shouldFinalize =
-      missionStatus === 'SUCCESS' || missionStatus === 'FAIL' || !templateId;
+    // ✅ Step 6: Finalize ONLY when missionStatus is SUCCESS or FAIL (ended).
+    // Do NOT finalize on IN_PROGRESS for either missions or FreePlay.
+    const shouldFinalize = missionStatus === 'SUCCESS' || missionStatus === 'FAIL';
 
     const isSuccess: boolean | null = shouldFinalize
       ? templateId

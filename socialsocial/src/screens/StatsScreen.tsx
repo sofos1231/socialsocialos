@@ -1,5 +1,5 @@
 // FILE: socialsocial/src/screens/StatsScreen.tsx
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -8,12 +8,20 @@ import {
   View,
   TouchableOpacity,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useDashboardLoop } from '../hooks/useDashboardLoop';
 import TopBarWalletStrip from '../app/components/TopBarWalletStrip';
 
 export default function StatsScreen() {
   const { summary, isLoading, error, reload } = useDashboardLoop();
   const [showRaw, setShowRaw] = useState(false);
+
+  // ✅ Step 6: Refresh stats when screen gains focus (e.g., after completing a session)
+  useFocusEffect(
+    useCallback(() => {
+      reload();
+    }, [reload]),
+  );
 
   const dashboard: any = summary || {};
   const wallet = dashboard.wallet || {};

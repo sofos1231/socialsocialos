@@ -133,8 +133,13 @@ export class StatsService {
         }),
 
         // Latest session for Option-B metrics (and fallback score)
+        // ✅ Step 6: Only include finalized sessions (endedAt IS NOT NULL) to prevent
+        // unfinished sessions from polluting "latest completed" metrics.
         this.prisma.practiceSession.findFirst({
-          where: { userId },
+          where: {
+            userId,
+            endedAt: { not: null }, // Only finalized sessions
+          },
           orderBy: { createdAt: 'desc' },
           select: {
             id: true,
