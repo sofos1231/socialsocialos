@@ -29,6 +29,7 @@ import {
   SessionRewards,
   MissionStatePayload,
   MissionStateStatus,
+  FreePlayConfig,
 } from '../navigation/types';
 import { createPracticeSession } from '../api/practice';
 
@@ -50,7 +51,6 @@ function makeId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// We normalize safely because we may ship different backend variants.
 function extractAiReply(res: any): string {
   const maybe =
     res?.aiReply ??
@@ -79,17 +79,21 @@ function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
 }
 
-// Step 9 defaults (match backend defaults unless overridden later by contract payload)
 const DEFAULT_SUCCESS_SCORE = 80;
 const DEFAULT_FAIL_SCORE = 60;
+
+function formatFreePlaySubtitle(fp?: FreePlayConfig) {
+  if (!fp) return 'Free play • Custom scenario';
+  const place = fp.place.replace('_', ' ');
+  return `Free play • ${place} • ${fp.difficulty}`;
+}
 
 export default function PracticeScreen({ route, navigation }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const bounceAnim = useRef(new Animated.Value(1)).current;
 
-  // Step 9: mood background animation
-  const mood01Anim = useRef(new Animated.Value(0.5)).current; // 0 = red, 1 = green
-  const moodOpacityAnim = useRef(new Animated.Value(0)).current; // 0 = off, 1 = visible
+  const mood01Anim = useRef(new Animated.Value(0.5)).current;
+  const moodOpacityAnim = useRef(new Animated.Value(0)).current;
 
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
@@ -100,22 +104,19 @@ export default function PracticeScreen({ route, navigation }: Props) {
 
   const [isRecording, setIsRecording] = useState(false);
 
-  /**
-   * ✅ Active sessionId is kept IN MEMORY only.
-   * If user leaves the screen, we clear it -> no pause/resume.
-   */
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [missionState, setMissionState] = useState<MissionStatePayload | null>(
-    null,
-  );
+  const [missionState, setMissionState] = useState<MissionStatePayload | null>(null);
 
-  // Mission completion state
-  const [sessionRewards, setSessionRewards] = useState<SessionRewards | null>(
-    null,
-  );
+  const [sessionRewards, setSessionRewards] = useState<SessionRewards | null>(null);
   const [isMissionComplete, setIsMissionComplete] = useState(false);
+  const [isPreviewOnly, setIsPreviewOnly] = useState(false);
 
-  const missionTitle = route.params?.title ?? 'Practice Mission';
+  const freeplay = route.params?.freeplay;
+  const isFreePlay = route.params?.mode === 'freeplay' || !!freeplay;
+
+  const missionTitle = route.params?.title ?? (isFreePlay ? 'Free Play' : 'Practice Mission');
+  const topicForBackend = route.params?.topic ?? missionTitle;
+
   const templateId = route.params?.templateId;
   const personaId = route.params?.personaId;
   const missionId = route.params?.missionId;
@@ -152,6 +153,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
     setMissionState(null);
     setSessionRewards(null);
     setIsMissionComplete(false);
+    setIsPreviewOnly(false);
     setIsSending(false);
     setInput('');
     setSelectedMessage(null);
@@ -161,10 +163,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
   }, []);
 
   const appendAiSystemMessage = (text: string) => {
-    setMessages((prev) => [
-      ...prev,
-      { id: makeId(), role: 'AI', content: text },
-    ]);
+    setMessages((prev) => [...prev, { id: makeId(), role: 'AI', content: text }]);
     scrollToBottom();
   };
 
@@ -190,14 +189,9 @@ export default function PracticeScreen({ route, navigation }: Props) {
 
   const handleMicPress = () => {
     if (isRecording) {
-      // stop recording (stub)
       setIsRecording(false);
       return;
     }
-
-    // NOTE:
-    // כדי להפוך את זה ל-speech-to-text אמיתי נצטרך להוסיף ספרייה ייעודית
-    // ולחבר אותה כאן. כרגע זה רק UX stub כדי שלא ישבור את שאר המסך.
     setIsRecording(true);
     Alert.alert(
       'Voice input',
@@ -242,15 +236,12 @@ export default function PracticeScreen({ route, navigation }: Props) {
     setSessionRewards(rewards);
     setMissionState(state);
     setIsMissionComplete(true);
-    // Lock hard: clear sessionId so nothing can be sent accidentally.
     setActiveSessionId(null);
   };
 
-  // Step 9: compute mood target (0..1) + how visible the tint is
   const moodTarget = useMemo(() => {
     if (!missionState) return { mood01: 0.5, opacity01: 0 };
 
-    // End states: make it obvious (still subtle)
     if (missionState.status === 'SUCCESS') return { mood01: 1, opacity01: 0.32 };
     if (missionState.status === 'FAIL') return { mood01: 0, opacity01: 0.34 };
 
@@ -262,15 +253,13 @@ export default function PracticeScreen({ route, navigation }: Props) {
     const denom = Math.max(1, DEFAULT_SUCCESS_SCORE - DEFAULT_FAIL_SCORE);
     const mood01 = clamp01((avg - DEFAULT_FAIL_SCORE) / denom);
 
-    // Keep subtle early, slightly stronger as the mission advances
     const turns = typeof missionState.totalMessages === 'number' ? missionState.totalMessages : 0;
-    const intensity = clamp01((turns + 1) / 4); // 1st msg ~0.5, then ramps
-    const opacity01 = 0.12 + 0.18 * intensity; // 0.12..0.30 (subtle)
+    const intensity = clamp01((turns + 1) / 4);
+    const opacity01 = 0.12 + 0.18 * intensity;
 
     return { mood01, opacity01 };
   }, [missionState]);
 
-  // Step 9: animate mood transitions
   useEffect(() => {
     Animated.parallel([
       Animated.timing(mood01Anim, {
@@ -287,7 +276,6 @@ export default function PracticeScreen({ route, navigation }: Props) {
   }, [mood01Anim, moodOpacityAnim, moodTarget.mood01, moodTarget.opacity01]);
 
   const moodColor = useMemo(() => {
-    // red -> yellow -> green (all with alpha baked in OR controlled by opacityAnim separately)
     return mood01Anim.interpolate({
       inputRange: [0, 0.5, 1],
       outputRange: [
@@ -299,28 +287,18 @@ export default function PracticeScreen({ route, navigation }: Props) {
   }, [mood01Anim]);
 
   const sendMessage = async () => {
-    if (!canSend) return;
+    if (!canSend || isPreviewOnly) return;
 
     const text = input.trim();
     setInput('');
 
-    const userMsg: ChatMsg = {
-      id: makeId(),
-      role: 'USER',
-      content: text,
-    };
-
+    const userMsg: ChatMsg = { id: makeId(), role: 'USER', content: text };
     const nextMessages: ChatMsg[] = [...messages, userMsg];
     setMessages(nextMessages);
     scrollToBottom();
 
-    /**
-     * ✅ IMPORTANT:
-     * We send ONLY the NEW delta message(s), not the entire history.
-     * Backend already has the full transcript stored in the session payload.
-     */
     const payload: PracticeSessionRequest = {
-      topic: missionTitle,
+      topic: topicForBackend,
       sessionId: activeSessionId ?? undefined,
       messages: [{ role: 'USER', content: text }],
       templateId,
@@ -332,57 +310,42 @@ export default function PracticeScreen({ route, navigation }: Props) {
 
       const res = (await createPracticeSession(payload)) as PracticeSessionResponse;
 
-      // Save sessionId for ongoing sends (in-memory only)
       if (res?.sessionId) setActiveSessionId(res.sessionId);
 
       const rewards = res?.rewards;
       const serverState = res?.missionState ?? null;
       if (serverState) setMissionState(serverState);
 
-      // Map scoring breakdown onto the latest USER message bubble
-      let updated: ChatMsg[] = mapRewardsToLatestUserMessage(
-        nextMessages,
-        rewards?.messages,
-      );
+      let updated: ChatMsg[] = mapRewardsToLatestUserMessage(nextMessages, rewards?.messages);
 
-      // Append AI reply bubble
       const aiReplyText = extractAiReply(res);
-      const aiMsg: ChatMsg = {
-        id: makeId(),
-        role: 'AI',
-        content: aiReplyText,
-      };
+      const aiMsg: ChatMsg = { id: makeId(), role: 'AI', content: aiReplyText };
 
       updated = [...updated, aiMsg];
       setMessages(updated);
       scrollToBottom();
 
-      // ✅ Mission ends ONLY when backend says it ends.
       if (rewards && serverState?.status && isEnded(serverState.status)) {
         finalizeMission(rewards, serverState);
       }
     } catch (err: any) {
       console.error('Practice session error:', err);
 
-      // Handle specific backend end-state case (user tried to send after end)
       if (axios.isAxiosError(err)) {
         const status = err.response?.status;
         const data = err.response?.data as any;
         const msg = pickErrorText(data, err.message || 'Request failed.');
 
-        const code = data?.code; // may exist in some builds
+        const code = data?.code;
         const looksLikeNotInProgress =
           code === 'SESSION_NOT_IN_PROGRESS' ||
           (typeof msg === 'string' && msg.toLowerCase().includes('not in_progress')) ||
           (typeof msg === 'string' && msg.toLowerCase().includes('not in progress'));
 
         if (status === 400 && looksLikeNotInProgress) {
-          // Lock the UI hard. No more attempts.
           setIsMissionComplete(true);
           setActiveSessionId(null);
-          appendAiSystemMessage(
-            'Mission already ended. Start a new mission from the hub.',
-          );
+          appendAiSystemMessage('Mission already ended. Start a new mission from the hub.');
           return;
         }
 
@@ -398,21 +361,19 @@ export default function PracticeScreen({ route, navigation }: Props) {
 
   const handleMessagePress = (msg: ChatMsg) => {
     if (msg.role !== 'USER') return;
-
     runBounce();
     setSelectedMessage(msg);
   };
 
-  const closeSelectedMessage = () => {
-    setSelectedMessage(null);
-  };
+  const closeSelectedMessage = () => setSelectedMessage(null);
 
-  const hasPersonaHints = !!missionId && !!personaId;
+  // This now reflects freeplay vs mission more correctly
+  const hasPersonaHints = !isFreePlay && !!missionId && !!personaId;
+
+  const topSubtitle = isFreePlay ? formatFreePlaySubtitle(freeplay) : (hasPersonaHints ? 'Guided mission • AI coach' : 'Practice • No hints');
 
   const renderMessageBubble = (m: ChatMsg, index: number) => {
     const isUser = m.role === 'USER';
-
-    const rarity = m.rarity;
     const score = m.score ?? null;
 
     const rarityStyle: any = {};
@@ -426,7 +387,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
         rarityStyle.borderColor = '#eab308';
         rarityStyle.borderWidth = 2;
         rarityStyle.shadowOpacity = 0.35;
-        rarityStyle.shadowRadius = 8; // ✅ fixed typo
+        rarityStyle.shadowRadius = 8;
       } else if (score >= 85) {
         rarityStyle.borderColor = '#4ade80';
         rarityStyle.borderWidth = 1.5;
@@ -435,10 +396,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
 
     const Wrapper = isUser ? TouchableOpacity : View;
     const wrapperProps: any = isUser
-      ? {
-          activeOpacity: 0.9,
-          onPress: () => handleMessagePress(m),
-        }
+      ? { activeOpacity: 0.9, onPress: () => handleMessagePress(m) }
       : {};
 
     const bubble = (
@@ -452,9 +410,9 @@ export default function PracticeScreen({ route, navigation }: Props) {
       >
         <Text style={styles.msgText}>{m.content}</Text>
 
-        {isUser && rarity && (
+        {isUser && m.rarity && (
           <View style={styles.rarityTag}>
-            <Text style={styles.rarityText}>{rarity}</Text>
+            <Text style={styles.rarityText}>{m.rarity}</Text>
           </View>
         )}
       </Animated.View>
@@ -463,59 +421,47 @@ export default function PracticeScreen({ route, navigation }: Props) {
     return (
       <View
         key={m.id || index}
-        style={[
-          styles.msgRow,
-          isUser ? styles.msgRowUser : styles.msgRowAi,
-        ]}
+        style={[styles.msgRow, isUser ? styles.msgRowUser : styles.msgRowAi]}
       >
         <Wrapper {...wrapperProps}>{bubble}</Wrapper>
       </View>
     );
   };
 
-  /**
-   * Hide bottom tab bar while this screen is focused.
-   * Also: when leaving focus (switch tab / go back), reset local session => NO PAUSE/RESUME.
-   */
   useFocusEffect(
     useCallback(() => {
       const parent = navigation.getParent();
       if (parent) {
-        parent.setOptions({
-          tabBarStyle: { display: 'none' },
-        });
+        parent.setOptions({ tabBarStyle: { display: 'none' } });
       }
 
       return () => {
         const parentNav = navigation.getParent();
         if (parentNav) {
-          parentNav.setOptions({
-            tabBarStyle: undefined, // restore default
-          });
+          parentNav.setOptions({ tabBarStyle: undefined });
         }
-        // No pause/resume: leaving the screen clears the active session locally.
         resetLocalSession();
       };
     }, [navigation, resetLocalSession]),
   );
 
   const handleViewStatsFromModal = () => {
-    // Mission is over; no resume. Clear local state.
     resetLocalSession();
     const parent = navigation.getParent();
     parent?.navigate('StatsTab');
   };
 
   const handleBackToHubFromModal = () => {
-    // Mission is over; no resume. Clear local state.
     resetLocalSession();
     navigation.navigate('PracticeHub');
   };
 
   const handlePracticeAgainFromModal = () => {
-    // Start fresh.
+    setIsPreviewOnly(false);
     resetLocalSession();
   };
+
+  const handleCloseMissionEndModal = () => setIsPreviewOnly(true);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -524,7 +470,6 @@ export default function PracticeScreen({ route, navigation }: Props) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
       >
-        {/* ✅ Step 9: Mission mood tint background (subtle) */}
         <Animated.View
           pointerEvents="none"
           style={[
@@ -536,7 +481,6 @@ export default function PracticeScreen({ route, navigation }: Props) {
           ]}
         />
 
-        {/* Top bar */}
         <View style={styles.topBar}>
           <TouchableOpacity onPress={handleBack} style={styles.topBarIconLeft}>
             <Text style={styles.topBarIconText}>{'←'}</Text>
@@ -547,9 +491,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
               {missionTitle}
             </Text>
             <Text style={styles.topBarSubtitle} numberOfLines={1}>
-              {hasPersonaHints
-                ? 'Guided mission • AI coach'
-                : 'Free play • No hints'}
+              {topSubtitle}
             </Text>
           </View>
 
@@ -563,10 +505,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
 
             <TouchableOpacity
               onPress={() =>
-                Alert.alert(
-                  'Video mode',
-                  'Video missions are not wired yet in this build.',
-                )
+                Alert.alert('Video mode', 'Video missions are not wired yet in this build.')
               }
               style={styles.topBarIconButton}
             >
@@ -575,7 +514,6 @@ export default function PracticeScreen({ route, navigation }: Props) {
           </View>
         </View>
 
-        {/* Chat list */}
         <ScrollView
           ref={scrollRef}
           style={styles.chat}
@@ -586,8 +524,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>Start the mission</Text>
               <Text style={styles.emptyText}>
-                Type your first message below. The AI will reply and score you
-                in real-time.
+                Type your first message below. The AI will reply and score you in real-time.
               </Text>
             </View>
           )}
@@ -595,52 +532,55 @@ export default function PracticeScreen({ route, navigation }: Props) {
           {messages.map(renderMessageBubble)}
         </ScrollView>
 
-        {/* Input row */}
-        <View style={styles.inputRow}>
-          <TouchableOpacity
-            style={[
-              styles.micButton,
-              isRecording && styles.micButtonRecording,
-            ]}
-            onPress={handleMicPress}
-            disabled={isMissionComplete}
-          >
-            {isRecording ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.micIcon}>🎤</Text>
-            )}
-          </TouchableOpacity>
+        {isPreviewOnly ? (
+          <View style={styles.previewFooter}>
+            <Text
+              style={[
+                styles.previewFooterStatus,
+                sessionRewards?.isSuccess
+                  ? styles.previewFooterStatusSuccess
+                  : styles.previewFooterStatusFailed,
+              ]}
+            >
+              {sessionRewards?.isSuccess ? 'Mission PASSED' : 'Mission FAILED'}
+            </Text>
+            <Text style={styles.previewFooterSubtext}>chat is for preview only</Text>
+          </View>
+        ) : (
+          <View style={styles.inputRow}>
+            <TouchableOpacity
+              style={[styles.micButton, isRecording && styles.micButtonRecording]}
+              onPress={handleMicPress}
+              disabled={isMissionComplete}
+            >
+              {isRecording ? <ActivityIndicator color="#fff" /> : <Text style={styles.micIcon}>🎤</Text>}
+            </TouchableOpacity>
 
-          <TextInput
-            style={[styles.input, isMissionComplete && styles.inputDisabled]}
-            placeholder={
-              isMissionComplete
-                ? 'Mission complete — start a new one from the hub'
-                : 'Type your message...'
-            }
-            placeholderTextColor="#777"
-            value={input}
-            onChangeText={setInput}
-            editable={!isSending && !isMissionComplete}
-            onSubmitEditing={sendMessage}
-            returnKeyType="send"
-          />
+            <TextInput
+              style={[styles.input, isMissionComplete && styles.inputDisabled]}
+              placeholder={
+                isMissionComplete
+                  ? 'Mission complete — start a new one from the hub'
+                  : 'Type your message...'
+              }
+              placeholderTextColor="#777"
+              value={input}
+              onChangeText={setInput}
+              editable={!isSending && !isMissionComplete}
+              onSubmitEditing={sendMessage}
+              returnKeyType="send"
+            />
 
-          <TouchableOpacity
-            style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
-            onPress={sendMessage}
-            disabled={!canSend}
-          >
-            {isSending ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.sendBtnText}>Send</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
+              onPress={sendMessage}
+              disabled={!canSend}
+            >
+              {isSending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.sendBtnText}>Send</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
 
-        {/* Message details card */}
         <Modal
           visible={!!selectedMessage}
           transparent
@@ -656,49 +596,34 @@ export default function PracticeScreen({ route, navigation }: Props) {
 
               <View style={styles.detailsRow}>
                 <Text style={styles.detailsLabelInline}>Score: </Text>
-                <Text style={styles.detailsValue}>
-                  {selectedMessage?.score ?? '—'}
-                </Text>
+                <Text style={styles.detailsValue}>{selectedMessage?.score ?? '—'}</Text>
               </View>
 
               <View style={styles.detailsRow}>
                 <Text style={styles.detailsLabelInline}>Rarity: </Text>
-                <Text style={styles.detailsValue}>
-                  {selectedMessage?.rarity ?? '—'}
-                </Text>
+                <Text style={styles.detailsValue}>{selectedMessage?.rarity ?? '—'}</Text>
               </View>
 
               <View style={styles.detailsRow}>
                 <Text style={styles.detailsLabelInline}>Rewards: </Text>
                 <Text style={styles.detailsValue}>
-                  {selectedMessage?.xpDelta != null
-                    ? `+${selectedMessage.xpDelta} XP`
-                    : '—'}
-                  {selectedMessage?.coinsDelta != null
-                    ? ` · +${selectedMessage.coinsDelta} coins`
-                    : ''}
-                  {selectedMessage?.gemsDelta != null
-                    ? ` · +${selectedMessage.gemsDelta} gems`
-                    : ''}
+                  {selectedMessage?.xpDelta != null ? `+${selectedMessage.xpDelta} XP` : '—'}
+                  {selectedMessage?.coinsDelta != null ? ` · +${selectedMessage.coinsDelta} coins` : ''}
+                  {selectedMessage?.gemsDelta != null ? ` · +${selectedMessage.gemsDelta} gems` : ''}
                 </Text>
               </View>
 
               <Text style={styles.detailsHint}>
-                Higher scores unlock stronger animations and better rewards. Aim
-                for 85+ and 90+ tiers.
+                Higher scores unlock stronger animations and better rewards. Aim for 85+ and 90+ tiers.
               </Text>
 
-              <TouchableOpacity
-                style={styles.detailsCloseBtn}
-                onPress={closeSelectedMessage}
-              >
+              <TouchableOpacity style={styles.detailsCloseBtn} onPress={closeSelectedMessage}>
                 <Text style={styles.detailsCloseText}>Close</Text>
               </TouchableOpacity>
             </View>
           </View>
         </Modal>
 
-        {/* Persona / mission info card */}
         <Modal
           visible={showPersonaCard}
           transparent
@@ -708,120 +633,128 @@ export default function PracticeScreen({ route, navigation }: Props) {
           <View style={styles.personaOverlay}>
             <View style={styles.personaCard}>
               <Text style={styles.personaTitle}>{missionTitle}</Text>
-              <Text style={styles.personaSubtitle}>
-                {hasPersonaHints
-                  ? 'Guided mission based on a specific persona.'
-                  : 'Free-play practice – no hidden info, just like real life.'}
-              </Text>
 
-              {hasPersonaHints ? (
-                <Text style={styles.personaBody}>
-                  In partner / known-person missions you'll usually see a few
-                  hints here: hobbies, current mood, or context from the
-                  relationship. For cold approach / boss missions this card
-                  stays more mysterious.
-                </Text>
+              {isFreePlay ? (
+                <>
+                  <Text style={styles.personaSubtitle}>Custom FreePlay scenario.</Text>
+
+                  {!!freeplay?.aiStyleName && (
+                    <Text style={styles.personaMeta}>
+                      Style: <Text style={styles.personaMetaStrong}>{freeplay.aiStyleName}</Text>
+                    </Text>
+                  )}
+                  {!!freeplay?.place && (
+                    <Text style={styles.personaMeta}>
+                      Place: <Text style={styles.personaMetaStrong}>{freeplay.place}</Text>
+                    </Text>
+                  )}
+                  {!!freeplay?.difficulty && (
+                    <Text style={styles.personaMeta}>
+                      Difficulty: <Text style={styles.personaMetaStrong}>{freeplay.difficulty}</Text>
+                    </Text>
+                  )}
+                  {!!personaId && (
+                    <Text style={styles.personaMeta}>
+                      Persona ID: <Text style={styles.personaMetaStrong}>{personaId}</Text>
+                    </Text>
+                  )}
+
+                  {!!freeplay?.situation && (
+                    <>
+                      <Text style={[styles.personaMeta, { marginTop: 10 }]}>Situation:</Text>
+                      <Text style={styles.personaBody}>{freeplay.situation}</Text>
+                    </>
+                  )}
+
+                  <Text style={[styles.personaBody, { marginTop: 8 }]}>
+                    Note: style/difficulty/place are encoded into the topic in Part 1. True server-side
+                    enforcement is done in Part 2.
+                  </Text>
+                </>
               ) : (
-                <Text style={styles.personaBody}>
-                  This mission has no extra hints. Treat it like a real-world
-                  first interaction: you only know what you see in the chat.
-                </Text>
+                <>
+                  <Text style={styles.personaSubtitle}>
+                    {hasPersonaHints
+                      ? 'Guided mission based on a specific persona.'
+                      : 'Practice mission – no hidden info.'}
+                  </Text>
+
+                  {hasPersonaHints ? (
+                    <Text style={styles.personaBody}>
+                      In partner / known-person missions you'll usually see hints here. For cold approach / boss missions
+                      this card stays more mysterious.
+                    </Text>
+                  ) : (
+                    <Text style={styles.personaBody}>
+                      This mission has no extra hints. Treat it like a real-world first interaction.
+                    </Text>
+                  )}
+
+                  {!!missionId && (
+                    <Text style={styles.personaMeta}>
+                      Mission ID: <Text style={styles.personaMetaStrong}>{missionId}</Text>
+                    </Text>
+                  )}
+                  {!!personaId && (
+                    <Text style={styles.personaMeta}>
+                      Persona ID: <Text style={styles.personaMetaStrong}>{personaId}</Text>
+                    </Text>
+                  )}
+                </>
               )}
 
-              {!!missionId && (
-                <Text style={styles.personaMeta}>
-                  Mission ID:{' '}
-                  <Text style={styles.personaMetaStrong}>{missionId}</Text>
-                </Text>
-              )}
-              {!!personaId && (
-                <Text style={styles.personaMeta}>
-                  Persona ID:{' '}
-                  <Text style={styles.personaMetaStrong}>{personaId}</Text>
-                </Text>
-              )}
-
-              <TouchableOpacity
-                style={styles.personaCloseBtn}
-                onPress={() => setShowPersonaCard(false)}
-              >
+              <TouchableOpacity style={styles.personaCloseBtn} onPress={() => setShowPersonaCard(false)}>
                 <Text style={styles.personaCloseText}>Close</Text>
               </TouchableOpacity>
             </View>
           </View>
         </Modal>
 
-        {/* Mission complete modal */}
         <Modal
-          visible={isMissionComplete && !!sessionRewards}
+          visible={isMissionComplete && !!sessionRewards && !isPreviewOnly}
           transparent
           animationType="fade"
           onRequestClose={handleBackToHubFromModal}
         >
           <View style={styles.completeOverlay}>
             <View style={styles.completeCard}>
-              <Text style={styles.completeTitle}>
-                {sessionRewards?.isSuccess ? 'Mission complete' : 'Mission ended'}
-              </Text>
+              <View style={styles.completeCardHeader}>
+                <Text style={styles.completeTitle}>
+                  {sessionRewards?.isSuccess ? 'Mission complete' : 'Mission ended'}
+                </Text>
+                <TouchableOpacity style={styles.completeCloseButton} onPress={handleCloseMissionEndModal}>
+                  <Text style={styles.completeCloseText}>×</Text>
+                </TouchableOpacity>
+              </View>
 
               {!!missionState?.status && (
                 <Text style={[styles.completeLine, { marginBottom: 6 }]}>
-                  Status:{' '}
-                  <Text style={styles.completeHighlight}>
-                    {missionState.status}
-                  </Text>{' '}
-                  · Progress:{' '}
-                  <Text style={styles.completeHighlight}>
-                    {missionState.progressPct}%
-                  </Text>
+                  Status: <Text style={styles.completeHighlight}>{missionState.status}</Text> · Progress:{' '}
+                  <Text style={styles.completeHighlight}>{missionState.progressPct}%</Text>
                 </Text>
               )}
 
               <Text style={styles.completeLine}>
-                Score:{' '}
-                <Text style={styles.completeHighlight}>
-                  {sessionRewards?.score ?? '—'}
-                </Text>{' '}
-                · Message score:{' '}
-                <Text style={styles.completeHighlight}>
-                  {sessionRewards?.messageScore ?? '—'}
-                </Text>
+                Score: <Text style={styles.completeHighlight}>{sessionRewards?.score ?? '—'}</Text> · Message score:{' '}
+                <Text style={styles.completeHighlight}>{sessionRewards?.messageScore ?? '—'}</Text>
               </Text>
 
               <Text style={styles.completeLine}>
-                XP:{' '}
-                <Text style={styles.completeHighlight}>
-                  {sessionRewards?.xpGained ?? 0}
-                </Text>{' '}
-                · Coins:{' '}
-                <Text style={styles.completeHighlight}>
-                  {sessionRewards?.coinsGained ?? 0}
-                </Text>{' '}
-                · Gems:{' '}
-                <Text style={styles.completeHighlight}>
-                  {sessionRewards?.gemsGained ?? 0}
-                </Text>
+                XP: <Text style={styles.completeHighlight}>{sessionRewards?.xpGained ?? 0}</Text> · Coins:{' '}
+                <Text style={styles.completeHighlight}>{sessionRewards?.coinsGained ?? 0}</Text> · Gems:{' '}
+                <Text style={styles.completeHighlight}>{sessionRewards?.gemsGained ?? 0}</Text>
               </Text>
 
               <View style={styles.completeButtonsRow}>
-                <TouchableOpacity
-                  style={[styles.completeButton, styles.completePrimary]}
-                  onPress={handleViewStatsFromModal}
-                >
+                <TouchableOpacity style={[styles.completeButton, styles.completePrimary]} onPress={handleViewStatsFromModal}>
                   <Text style={styles.completeButtonText}>View stats</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.completeButton, styles.completeSecondary]}
-                  onPress={handleBackToHubFromModal}
-                >
+                <TouchableOpacity style={[styles.completeButton, styles.completeSecondary]} onPress={handleBackToHubFromModal}>
                   <Text style={styles.completeButtonText}>Back to missions</Text>
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                style={styles.completePracticeAgain}
-                onPress={handlePracticeAgainFromModal}
-              >
+              <TouchableOpacity style={styles.completePracticeAgain} onPress={handlePracticeAgainFromModal}>
                 <Text style={styles.completePracticeAgainText}>Practice again</Text>
               </TouchableOpacity>
             </View>
@@ -836,12 +769,10 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#020617' },
   container: { flex: 1, backgroundColor: '#020617' },
 
-  // Step 9: mood overlay (tint)
   moodOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
 
-  // Top bar
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -883,7 +814,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
 
-  // Chat
   chat: { flex: 1 },
   chatContent: {
     paddingHorizontal: 12,
@@ -893,12 +823,8 @@ const styles = StyleSheet.create({
     marginVertical: 4,
     flexDirection: 'row',
   },
-  msgRowUser: {
-    justifyContent: 'flex-end',
-  },
-  msgRowAi: {
-    justifyContent: 'flex-start',
-  },
+  msgRowUser: { justifyContent: 'flex-end' },
+  msgRowAi: { justifyContent: 'flex-start' },
   msgBubble: {
     maxWidth: '85%',
     paddingHorizontal: 12,
@@ -910,16 +836,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3,
   },
-  userBubble: {
-    backgroundColor: '#22c55e',
-  },
-  aiBubble: {
-    backgroundColor: '#111827',
-  },
-  msgText: {
-    color: '#f9fafb',
-    fontSize: 15,
-  },
+  userBubble: { backgroundColor: '#22c55e' },
+  aiBubble: { backgroundColor: '#111827' },
+  msgText: { color: '#f9fafb', fontSize: 15 },
   rarityTag: {
     position: 'absolute',
     top: -8,
@@ -929,30 +848,16 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#0f172a',
   },
-  rarityText: {
-    color: '#fbbf24',
-    fontSize: 10,
-    fontWeight: '700',
-  },
+  rarityText: { color: '#fbbf24', fontSize: 10, fontWeight: '700' },
 
   emptyState: {
     alignItems: 'center',
     marginTop: 32,
     paddingHorizontal: 12,
   },
-  emptyTitle: {
-    color: '#e5e7eb',
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  emptyText: {
-    color: '#9ca3af',
-    fontSize: 13,
-    textAlign: 'center',
-  },
+  emptyTitle: { color: '#e5e7eb', fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  emptyText: { color: '#9ca3af', fontSize: 13, textAlign: 'center' },
 
-  // Input row
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -970,13 +875,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
     marginRight: 8,
   },
-  micButtonRecording: {
-    backgroundColor: '#b91c1c',
-  },
-  micIcon: {
-    color: '#e5e7eb',
-    fontSize: 20,
-  },
+  micButtonRecording: { backgroundColor: '#b91c1c' },
+  micIcon: { color: '#e5e7eb', fontSize: 20 },
   input: {
     flex: 1,
     backgroundColor: '#020617',
@@ -989,9 +889,7 @@ const styles = StyleSheet.create({
     borderColor: '#1f2937',
     fontSize: 14,
   },
-  inputDisabled: {
-    opacity: 0.5,
-  },
+  inputDisabled: { opacity: 0.5 },
   sendBtn: {
     backgroundColor: '#22c55e',
     paddingHorizontal: 16,
@@ -1000,16 +898,9 @@ const styles = StyleSheet.create({
     minWidth: 70,
     alignItems: 'center',
   },
-  sendBtnDisabled: {
-    opacity: 0.5,
-  },
-  sendBtnText: {
-    color: '#022c22',
-    fontWeight: '700',
-    fontSize: 14,
-  },
+  sendBtnDisabled: { opacity: 0.5 },
+  sendBtnText: { color: '#022c22', fontWeight: '700', fontSize: 14 },
 
-  // Message details modal
   detailsOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
@@ -1023,41 +914,13 @@ const styles = StyleSheet.create({
     padding: 16,
     width: '100%',
   },
-  detailsTitle: {
-    color: '#f9fafb',
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  detailsLabel: {
-    color: '#9ca3af',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  detailsBody: {
-    color: '#e5e7eb',
-    fontSize: 14,
-    marginTop: 2,
-    marginBottom: 8,
-  },
-  detailsRow: {
-    flexDirection: 'row',
-    marginTop: 4,
-  },
-  detailsLabelInline: {
-    color: '#9ca3af',
-    fontSize: 13,
-  },
-  detailsValue: {
-    color: '#f9fafb',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  detailsHint: {
-    color: '#9ca3af',
-    fontSize: 12,
-    marginTop: 10,
-  },
+  detailsTitle: { color: '#f9fafb', fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  detailsLabel: { color: '#9ca3af', fontSize: 12, marginTop: 4 },
+  detailsBody: { color: '#e5e7eb', fontSize: 14, marginTop: 2, marginBottom: 8 },
+  detailsRow: { flexDirection: 'row', marginTop: 4 },
+  detailsLabelInline: { color: '#9ca3af', fontSize: 13 },
+  detailsValue: { color: '#f9fafb', fontSize: 13, fontWeight: '600' },
+  detailsHint: { color: '#9ca3af', fontSize: 12, marginTop: 10 },
   detailsCloseBtn: {
     marginTop: 14,
     paddingVertical: 10,
@@ -1065,12 +928,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
     alignItems: 'center',
   },
-  detailsCloseText: {
-    color: '#e5e7eb',
-    fontWeight: '600',
-  },
+  detailsCloseText: { color: '#e5e7eb', fontWeight: '600' },
 
-  // Persona modal
   personaOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -1084,30 +943,11 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 22,
   },
-  personaTitle: {
-    color: '#f9fafb',
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  personaSubtitle: {
-    color: '#9ca3af',
-    fontSize: 13,
-    marginBottom: 10,
-  },
-  personaBody: {
-    color: '#e5e7eb',
-    fontSize: 13,
-    marginBottom: 10,
-  },
-  personaMeta: {
-    color: '#9ca3af',
-    fontSize: 12,
-  },
-  personaMetaStrong: {
-    color: '#f9fafb',
-    fontWeight: '600',
-  },
+  personaTitle: { color: '#f9fafb', fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  personaSubtitle: { color: '#9ca3af', fontSize: 13, marginBottom: 10 },
+  personaBody: { color: '#e5e7eb', fontSize: 13, marginBottom: 10 },
+  personaMeta: { color: '#9ca3af', fontSize: 12 },
+  personaMetaStrong: { color: '#f9fafb', fontWeight: '600' },
   personaCloseBtn: {
     marginTop: 12,
     paddingVertical: 10,
@@ -1115,12 +955,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
     alignItems: 'center',
   },
-  personaCloseText: {
-    color: '#e5e7eb',
-    fontWeight: '600',
-  },
+  personaCloseText: { color: '#e5e7eb', fontWeight: '600' },
 
-  // Mission complete modal
   completeOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.65)',
@@ -1128,56 +964,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
-  completeCard: {
-    width: '100%',
-    backgroundColor: '#020617',
-    borderRadius: 18,
-    padding: 18,
-  },
-  completeTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#f9fafb',
+  completeCard: { width: '100%', backgroundColor: '#020617', borderRadius: 18, padding: 18 },
+  completeCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 6,
   },
-  completeLine: {
-    fontSize: 14,
-    color: '#e5e7eb',
-    marginBottom: 4,
-  },
-  completeHighlight: {
-    color: '#4ade80',
-    fontWeight: '600',
-  },
-  completeButtonsRow: {
-    flexDirection: 'row',
-    marginTop: 14,
-    gap: 8,
-  },
-  completeButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 999,
-    alignItems: 'center',
-  },
-  completePrimary: {
-    backgroundColor: '#22c55e',
-  },
-  completeSecondary: {
+  completeTitle: { fontSize: 20, fontWeight: '700', color: '#f9fafb', flex: 1 },
+  completeCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
   },
-  completeButtonText: {
-    color: '#f9fafb',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  completePracticeAgain: {
-    marginTop: 10,
+  completeCloseText: { color: '#e5e7eb', fontSize: 24, fontWeight: '300', lineHeight: 24 },
+  completeLine: { fontSize: 14, color: '#e5e7eb', marginBottom: 4 },
+  completeHighlight: { color: '#4ade80', fontWeight: '600' },
+  completeButtonsRow: { flexDirection: 'row', marginTop: 14, gap: 8 },
+  completeButton: { flex: 1, paddingVertical: 10, borderRadius: 999, alignItems: 'center' },
+  completePrimary: { backgroundColor: '#22c55e' },
+  completeSecondary: { backgroundColor: '#111827' },
+  completeButtonText: { color: '#f9fafb', fontSize: 14, fontWeight: '600' },
+  completePracticeAgain: { marginTop: 10, alignItems: 'center' },
+  completePracticeAgainText: { color: '#9ca3af', fontSize: 13, textDecorationLine: 'underline' },
+
+  previewFooter: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+    borderTopColor: '#111827',
+    borderTopWidth: 1,
+    backgroundColor: '#020617',
     alignItems: 'center',
   },
-  completePracticeAgainText: {
-    color: '#9ca3af',
-    fontSize: 13,
-    textDecorationLine: 'underline',
-  },
+  previewFooterStatus: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  previewFooterStatusSuccess: { color: '#4ade80' },
+  previewFooterStatusFailed: { color: '#ef4444' },
+  previewFooterSubtext: { fontSize: 12, color: '#9ca3af' },
 });

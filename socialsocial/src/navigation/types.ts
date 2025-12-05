@@ -13,6 +13,33 @@ export type MainTabParamList = {
   ProfileTab: undefined;
 };
 
+// ----- FreePlay types -----
+
+export type FreePlayPlace =
+  | 'TINDER'
+  | 'WHATSAPP'
+  | 'BAR'
+  | 'INSTAGRAM'
+  | 'DM'
+  | 'COLD_APPROACH';
+
+export type FreePlayDifficulty = 'EASY' | 'MEDIUM' | 'HARD' | 'ELITE';
+
+export type FreePlayMode = 'freeplay' | 'mission';
+
+export interface FreePlayConfig {
+  place: FreePlayPlace;
+  difficulty: FreePlayDifficulty;
+  situation: string;
+
+  /**
+   * ✅ Part 2: sent to backend as a real field (not just encoded in topic)
+   * Should match backend AiStyle.key (usually AiStyleKey enum strings).
+   */
+  aiStyleKey?: string;
+  aiStyleName?: string;
+}
+
 // ----- Practice stack -----
 
 export type PracticeStackParamList = {
@@ -20,12 +47,28 @@ export type PracticeStackParamList = {
 
   MissionRoad: undefined;
 
+  FreePlayConfig: undefined;
+
   PracticeSession:
     | {
+        // existing mission params
         missionId?: string;
         templateId?: string;
         personaId?: string;
+
+        // display
         title?: string;
+
+        // NEW: optional overrides (safe additions)
+        mode?: FreePlayMode;
+
+        /**
+         * What we send to backend as "topic".
+         * FreePlay sends the built multi-line scenario here.
+         */
+        topic?: string;
+
+        freeplay?: FreePlayConfig;
       }
     | undefined;
 
@@ -59,6 +102,12 @@ export interface PracticeSessionRequest {
 
   templateId?: string; // mission template
   personaId?: string; // persona context
+
+  /**
+   * ✅ Part 2: real style selector for FreePlay (optional).
+   * Backend should ignore it when templateId exists (missions have style on template).
+   */
+  aiStyleKey?: string;
 }
 
 // Per-message breakdown inside rewards.messages

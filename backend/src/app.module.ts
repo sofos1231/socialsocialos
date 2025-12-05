@@ -10,13 +10,17 @@ import { PrismaModule } from './db/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { HealthModule } from './health/health.module';
+import { PersonasModule } from './modules/personas/personas.module';
 
 import { PracticeModule } from './modules/practice/practice.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ProfileModule } from './modules/profile/profile.module';
 
 import { MissionsAdminModule } from './modules/missions-admin/missions-admin.module';
-import { MissionsModule } from './modules/missions/missions.module'; // ✅ NEW (player-facing)
+import { MissionsModule } from './modules/missions/missions.module'; // ✅ player-facing
+
+// backend/src/app.module.ts – RECOMMENDED
+import { AiStylesModule } from './modules/ai-styles/ai-styles.module';
 
 @Module({
   imports: [
@@ -33,7 +37,9 @@ import { MissionsModule } from './modules/missions/missions.module'; // ✅ NEW 
     ProfileModule,
 
     MissionsAdminModule,
-    MissionsModule, // ✅ /v1/missions/*
+    MissionsModule,
+    PersonasModule,
+    AiStylesModule, // ✅ GET /v1/ai-styles
   ],
   controllers: [],
   providers: [

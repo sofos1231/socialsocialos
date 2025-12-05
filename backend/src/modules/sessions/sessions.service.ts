@@ -1,5 +1,3 @@
-// FILE: backend/src/modules/sessions/sessions.service.ts
-
 import {
   Injectable,
   UnauthorizedException,
@@ -82,6 +80,9 @@ export class SessionsService {
    *
    * Step 8 addition:
    * - If sessionId is provided: update THAT exact session (validate ownership + IN_PROGRESS)
+   *
+   * Step 3 addition:
+   * - aiMode + extraPayload (e.g. freeplay.aiStyleKey) are stored on PracticeSession.
    */
   private async saveOrUpdateScoredSession(params: {
     userId: string;
@@ -93,6 +94,10 @@ export class SessionsService {
     transcript: TranscriptMsg[];
     // Mission status coming from missionState engine (PracticeService)
     missionStatus?: 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
+
+    // NEW – FreePlay / mode metadata
+    aiMode?: string | null;
+    extraPayload?: Record<string, any> | null;
   }): Promise<{
     summary: SessionRewardsSummary;
     finalScore: number;
@@ -110,6 +115,8 @@ export class SessionsService {
       personaId,
       transcript,
       missionStatus,
+      aiMode,
+      extraPayload,
     } = params;
 
     if (!messageScores || !Array.isArray(messageScores) || messageScores.length === 0) {
@@ -214,6 +221,12 @@ export class SessionsService {
         if (existing?.id) sessionIdToUse = existing.id;
       }
 
+      const basePayload: Record<string, any> = {
+        ...(extraPayload && typeof extraPayload === 'object' ? extraPayload : {}),
+        messageScores,
+        transcript,
+      };
+
       const baseSessionData = {
         userId,
         topic,
@@ -226,10 +239,7 @@ export class SessionsService {
 
         messageCount: messageScores.length,
         rarityCounts: summary.rarityCounts as any,
-        payload: {
-          messageScores,
-          transcript,
-        } as any,
+        payload: basePayload as any,
 
         durationSec: 60,
         templateId: templateId ?? null,
@@ -240,6 +250,9 @@ export class SessionsService {
         status: targetStatus,
         endedAt: shouldFinalize ? now : null,
         isSuccess: shouldFinalize ? isSuccess : null,
+
+        // ✅ NEW – store logical mode on the session ("MISSION" / "FREEPLAY")
+        aiMode: aiMode ?? (templateId ? 'MISSION' : null),
       };
 
       const session = sessionIdToUse
@@ -462,6 +475,10 @@ export class SessionsService {
 
     // ✅ Step 6: mission end state (from PracticeService.missionState.status)
     missionStatus?: 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
+
+    // ✅ Step 3: FreePlay / mode metadata
+    aiMode?: string | null;
+    extraPayload?: Record<string, any> | null;
   }) {
     const {
       userId,
@@ -473,6 +490,8 @@ export class SessionsService {
       personaId,
       transcript,
       missionStatus,
+      aiMode,
+      extraPayload,
     } = params;
 
     if (!userId) {
@@ -494,6 +513,8 @@ export class SessionsService {
         personaId: personaId ?? null,
         transcript,
         missionStatus,
+        aiMode: aiMode ?? null,
+        extraPayload: extraPayload ?? null,
       });
 
     // Option B: persist metrics + insights (update the SAME session we used)
@@ -573,3 +594,4 @@ export class SessionsService {
     return this.statsService.getDashboardForUser(userId);
   }
 }
+                                        

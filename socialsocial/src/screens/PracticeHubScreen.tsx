@@ -14,11 +14,11 @@ type Props = NativeStackScreenProps<PracticeStackParamList, 'PracticeHub'>;
 
 export default function PracticeHubScreen({ navigation }: Props) {
   const handleFreePlay = () => {
-    navigation.navigate('PracticeSession', undefined);
+    navigation.navigate('FreePlayConfig');
   };
 
   const handleABPractice = () => {
-    navigation.navigate('ABPracticeSession');
+    navigation.navigate('ABPracticeSession', { topic: 'Tinder A/B Practice' });
   };
 
   const handleMissionRoad = () => {
@@ -36,7 +36,7 @@ export default function PracticeHubScreen({ navigation }: Props) {
           <Text style={styles.cardTag}>FREE PLAY</Text>
           <Text style={styles.cardTitle}>Chat Freely</Text>
           <Text style={styles.cardBody}>
-            Practice any opener or conversation with AI in a free mode.
+            Build your own scenario: persona, style, difficulty, and place.
           </Text>
         </TouchableOpacity>
 
@@ -55,8 +55,8 @@ export default function PracticeHubScreen({ navigation }: Props) {
         <Text style={styles.cardTag}>MISSION ROAD</Text>
         <Text style={styles.storyTitle}>Main Story Mode</Text>
         <Text style={styles.cardBody}>
-          Follow a long progression of missions. Start from the basics and
-          climb through advanced scenarios.
+          Follow a long progression of missions. Start from the basics and climb
+          through advanced scenarios.
         </Text>
 
         {/* Simple progress bar – real progression later from backend */}
@@ -149,4 +149,3 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
   },
 });
-

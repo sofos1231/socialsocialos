@@ -66,7 +66,7 @@ function stylePreset(aiStyle: AiStyle | null | undefined) {
     default:
       return {
         label: 'NEUTRAL',
-        temperature: 0.70,
+        temperature: 0.7,
         rules: [
           `Tone: natural, friendly, grounded.`,
           `Be human and consistent with persona.`,
@@ -89,6 +89,13 @@ export class AiChatService {
     messages: IncomingMsg[];
     templateId?: string | null;
     personaId?: string | null;
+
+    /**
+     * ✅ NEW – allow explicit aiStyle from FreePlay / other callers.
+     * If provided, this overrides mission template style.
+     */
+    aiStyleKey?: string | AiStyleKey;
+    aiStyle?: AiStyle | null;
   }): Promise<{ aiReply: string; aiStructured?: AiStructuredReply; aiDebug?: any }> {
     const { topic, messages, templateId, personaId } = params;
 
@@ -103,17 +110,39 @@ export class AiChatService {
     const mode = aiContractObj?.outputFormat?.mode;
     const wantsJson = mode === 'json' || mode === 'JSON';
 
-    // 🔍 PROOF: Verify aiStyle.key exists and preset selection works
-    const aiStyleObj = ctx?.template?.aiStyle;
-    const preset = stylePreset(aiStyleObj);
-    const aiStyleKey = aiStyleObj?.key ?? null;
-    console.log(`[AI_STYLE_PROOF] source=template aiStyleKey=${aiStyleKey ?? 'NULL'} preset=${preset.label}`);
+    // ✅ Effective AiStyle resolution:
+    // 1) explicit param (FreePlay / override)
+    // 2) template.aiStyle
+    // 3) fallback NEUTRAL
+    const explicitStyle = params.aiStyle ?? null;
+    const templateStyle = ctx?.template?.aiStyle ?? null;
+
+    let effectiveAiStyle: AiStyle | null = null;
+    let styleSource: 'EXPLICIT' | 'TEMPLATE' | 'NONE' = 'NONE';
+
+    if (explicitStyle) {
+      effectiveAiStyle = explicitStyle;
+      styleSource = 'EXPLICIT';
+    } else if (templateStyle) {
+      effectiveAiStyle = templateStyle;
+      styleSource = 'TEMPLATE';
+    }
+
+    const preset = stylePreset(effectiveAiStyle);
+    const effectiveKey = effectiveAiStyle?.key ?? null;
+    // DEBUG: shows whether style came from FreePlay or mission template
+    // (keep for now, can be removed later)
+    // eslint-disable-next-line no-console
+    console.log(
+      `[AI_STYLE_PROOF] source=${styleSource} aiStyleKey=${effectiveKey ?? 'NULL'} preset=${preset.label}`,
+    );
 
     const system = this.buildSystemPrompt({
       topic,
       mission: ctx?.template ?? null,
       category: ctx?.category ?? null,
       persona,
+      aiStyle: effectiveAiStyle,
       aiContract: aiContractObj, // <-- only pass object (or null)
       wantsJson,
     });
@@ -158,6 +187,8 @@ export class AiChatService {
         contractMode: wantsJson ? 'json' : 'text',
         parseOk: aiStructured ? aiStructured.parseOk : undefined,
         aiStyle: preset.label,
+        aiStyleKey: effectiveKey ?? null,
+        aiStyleSource: styleSource,
       },
     };
   }
@@ -192,16 +223,14 @@ export class AiChatService {
           style?: string | null;
         }
       | null;
+    aiStyle: AiStyle | null;
     aiContract: Record<string, any> | null;
     wantsJson: boolean;
   }): string {
-    const { topic, mission, category, persona, aiContract, wantsJson } = params;
+    const { topic, mission, category, persona, aiStyle, aiContract, wantsJson } = params;
 
-    // 🔍 PROOF: Verify aiStyle.key exists and preset selection works
-    const aiStyleObj = mission?.aiStyle;
-    const preset = stylePreset(aiStyleObj);
-    const aiStyleKey = aiStyleObj?.key ?? null;
-    console.log(`[AI_STYLE_PROOF] source=mission aiStyleKey=${aiStyleKey ?? 'NULL'} preset=${preset.label}`);
+    const preset = stylePreset(aiStyle);
+    const aiStyleKey = aiStyle?.key ?? null;
 
     const contractJson = aiContract != null ? safeJson(aiContract, 7000) : null;
 
@@ -225,7 +254,7 @@ export class AiChatService {
       : null;
 
     const styleBlock = [
-      `AI STYLE (HARD TONE LAYER): ${preset.label}`,
+      `AI STYLE (HARD TONE LAYER): ${preset.label} (${aiStyleKey ?? 'NEUTRAL'})`,
       ...preset.rules.map((r) => `- ${r}`),
       `- This style must NEVER override or violate the Mission AI Contract below.`,
     ].join('\n');

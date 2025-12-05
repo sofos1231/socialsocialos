@@ -13,6 +13,7 @@ import ABPracticeScreen from '../screens/ABPracticeScreen';
 import StatsScreen from '../screens/StatsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import MissionRoadScreen from '../screens/MissionRoadScreen';
+import FreePlayConfigScreen from '../screens/FreePlayConfigScreen';
 
 import {
   RootStackParamList,
@@ -34,18 +35,18 @@ function PracticeStackNavigator() {
     >
       <PracticeStack.Screen name="PracticeHub" component={PracticeHubScreen} />
       <PracticeStack.Screen name="MissionRoad" component={MissionRoadScreen} />
-      <PracticeStack.Screen
-        name="PracticeSession"
-        component={PracticeScreen}
-      />
+
+      {/* NEW: FreePlay configuration */}
+      <PracticeStack.Screen name="FreePlayConfig" component={FreePlayConfigScreen} />
+
+      {/* Existing chat screen (used by missions + freeplay after config) */}
+      <PracticeStack.Screen name="PracticeSession" component={PracticeScreen} />
+
       <PracticeStack.Screen
         name="VoicePracticeSession"
         component={VoicePracticeScreen}
       />
-      <PracticeStack.Screen
-        name="ABPracticeSession"
-        component={ABPracticeScreen}
-      />
+      <PracticeStack.Screen name="ABPracticeSession" component={ABPracticeScreen} />
     </PracticeStack.Navigator>
   );
 }
@@ -78,9 +79,7 @@ function MainTabsNavigator() {
         component={StatsScreen}
         options={{
           title: 'Stats',
-          tabBarLabel: ({ color }) => (
-            <Text style={{ color, fontSize: 12 }}>Stats</Text>
-          ),
+          tabBarLabel: ({ color }) => <Text style={{ color, fontSize: 12 }}>Stats</Text>,
         }}
       />
       <Tab.Screen
@@ -117,7 +116,6 @@ export default function NavigationRoot() {
       } catch (e) {
         console.log('[NavigationRoot] bootstrap error', e);
         if (!cancelled) {
-          // fallback to Auth on any bootstrap error
           setInitialRoute('Auth');
         }
       }
@@ -129,7 +127,6 @@ export default function NavigationRoot() {
     };
   }, []);
 
-  // Bootstrap loading state
   if (!initialRoute) {
     return (
       <View

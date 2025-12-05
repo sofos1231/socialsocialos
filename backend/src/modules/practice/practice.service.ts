@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
-import { AiScoringService } from '../ai/ai-scoring.service';
+  import { AiScoringService } from '../ai/ai-scoring.service';
 import { AiCoreScoringService } from '../ai/ai-core-scoring.service';
 import { AiChatService } from '../ai/providers/ai-chat.service';
 import { SessionsService } from '../sessions/sessions.service';
@@ -15,6 +15,7 @@ import type { PracticeMessageInput as AiPracticeMessageInput } from '../ai/ai.ty
 import type { TranscriptMessage } from '../ai/ai-scoring.types';
 import {
   AiStyle,
+  AiStyleKey,
   MessageRole,
   MissionStatus,
   MissionDifficulty,
@@ -25,10 +26,7 @@ type MissionStateStatus = 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
 type MissionMood = 'SAFE' | 'WARNING' | 'DANGER' | 'GOOD';
 type TranscriptMsg = { role: 'USER' | 'AI'; content: string };
 
-type DisqualifyCode =
-  | 'SEXUAL_EXPLICIT'
-  | 'HARASSMENT_SLUR'
-  | 'THREAT_VIOLENCE';
+type DisqualifyCode = 'SEXUAL_EXPLICIT' | 'HARASSMENT_SLUR' | 'THREAT_VIOLENCE';
 
 type DisqualifyResult = {
   code: DisqualifyCode;
@@ -151,7 +149,7 @@ function firstRegexHit(text: string, patterns: RegExp[]): string | null {
 function detectDisqualify(
   userTextRaw: string,
   userMsgIndex: number,
-  ctx: { difficulty: MissionDifficulty; goalType: MissionGoalType | null },
+  _ctx: { difficulty: MissionDifficulty; goalType: MissionGoalType | null },
 ): DisqualifyResult | null {
   const text = normalizeForRules(userTextRaw);
   if (!text) return null;
@@ -281,11 +279,42 @@ export class PracticeService {
     private readonly sessions: SessionsService,
   ) {}
 
+  private async resolveFreePlayAiStyle(params: {
+    templateId: string | null;
+    dtoAiStyleKey: string | null;
+    existingPayload: any | null;
+  }): Promise<{ aiStyle: AiStyle | null; aiStyleKey: AiStyleKey | null }> {
+    // If a real mission template is used, style comes from the template (NOT freeplay).
+    if (params.templateId) return { aiStyle: null, aiStyleKey: null };
+
+    const payloadKey =
+      safeTrim(params.existingPayload?.freeplay?.aiStyleKey) ||
+      safeTrim(params.existingPayload?.aiStyleKey);
+
+    const rawKey = safeTrim(params.dtoAiStyleKey) || payloadKey;
+    if (!rawKey) return { aiStyle: null, aiStyleKey: null };
+
+    // DB key is enum AiStyleKey; accept string input from FE and validate via DB.
+    const found = await this.prisma.aiStyle.findUnique({
+      where: { key: rawKey as any },
+    });
+
+    if (!found) {
+      throw new BadRequestException(`Unknown aiStyleKey: ${rawKey}`);
+    }
+
+    return { aiStyle: found, aiStyleKey: found.key };
+  }
+
   async runPracticeSession(userId: string, dto: CreatePracticeSessionDto) {
     if (!userId) throw new BadRequestException('Missing userId.');
     if (!dto?.messages || dto.messages.length === 0) {
       throw new BadRequestException('No messages provided.');
     }
+
+    // Part-2 compatibility: dto may (soon) include aiStyleKey; keep backward compatible for now.
+    type DtoV2 = CreatePracticeSessionDto & { aiStyleKey?: string | null; mode?: string | null };
+    const dtoV2 = dto as DtoV2;
 
     const isContinuation = !!dto.sessionId;
 
@@ -307,7 +336,8 @@ export class PracticeService {
 
     if (isContinuation) {
       if (!existingSession) throw new NotFoundException('Session not found.');
-      if (existingSession.userId !== userId) throw new UnauthorizedException('Session does not belong to user.');
+      if (existingSession.userId !== userId)
+        throw new UnauthorizedException('Session does not belong to user.');
       if (existingSession.status !== MissionStatus.IN_PROGRESS || existingSession.endedAt) {
         throw new BadRequestException('Session is not IN_PROGRESS.');
       }
@@ -327,7 +357,7 @@ export class PracticeService {
             timeLimitSec: true,
             wordLimit: true,
             aiContract: true,
-            aiStyle: true, // ✅ NEW
+            aiStyle: true, // ✅ mission style
           },
         })
       : null;
@@ -417,14 +447,48 @@ export class PracticeService {
       }
     }
 
-    const topic =
-      safeTrim((dto as any).topic) ||
-      safeTrim(existingSession?.topic) ||
-      'Practice';
-
+    const topic = safeTrim((dto as any).topic) || safeTrim(existingSession?.topic) || 'Practice';
     if (!isContinuation && !topic) {
       throw new BadRequestException('topic is required for new sessions.');
     }
+
+    // ✅ Step 3: resolve FreePlay aiStyleKey (server validation + pass-through to AI provider)
+    const existingPayload =
+      existingSession?.payload && typeof existingSession.payload === 'object'
+        ? (existingSession.payload as any)
+        : null;
+
+    const mergedDtoStyleKey =
+      safeTrim((dto as any)?.freeplay?.aiStyleKey ?? null) ||
+      safeTrim(dtoV2.aiStyleKey ?? null) ||
+      null;
+
+    const freePlayStyle = await this.resolveFreePlayAiStyle({
+      templateId,
+      dtoAiStyleKey: mergedDtoStyleKey,
+      existingPayload,
+    });
+
+    // ✅ Step 3: determine aiMode = "MISSION" | "FREEPLAY"
+    const rawMode = safeTrim(dtoV2.mode ?? null);
+    let aiMode: 'MISSION' | 'FREEPLAY';
+
+    if (templateId) {
+      aiMode = 'MISSION';
+    } else if (rawMode === 'MISSION' || rawMode === 'FREEPLAY') {
+      aiMode = rawMode;
+    } else {
+      aiMode = 'FREEPLAY';
+    }
+
+    const payloadExtras = {
+      mode: aiMode,
+      freeplay: {
+        aiStyleKey: freePlayStyle.aiStyleKey ?? null,
+      },
+      // root-level for backwards compat
+      aiStyleKey: freePlayStyle.aiStyleKey ?? null,
+    };
 
     if (disqualify) {
       const scores = buildFallbackScoresOnDisqualify({
@@ -457,10 +521,7 @@ export class PracticeService {
             ? '⚠️ Mission ended: disqualified (harassment/insult).'
             : '⚠️ Mission ended: disqualified (threat/violence).';
 
-      const transcriptToPersist: TranscriptMsg[] = [
-        ...fullTranscript,
-        { role: 'AI', content: aiReply },
-      ];
+      const transcriptToPersist: TranscriptMsg[] = [...fullTranscript, { role: 'AI', content: aiReply }];
 
       const saved = await this.sessions.createScoredSessionFromScores({
         userId,
@@ -472,15 +533,18 @@ export class PracticeService {
         transcript: transcriptToPersist,
         assistantReply: aiReply,
         missionStatus: 'FAIL',
+        aiMode,
+        extraPayload: payloadExtras,
       });
 
       return {
         ...saved,
         aiReply,
         aiStructured: null,
-        aiDebug: process.env.NODE_ENV !== 'production'
-          ? { disqualify, note: 'Disqualified before AI calls. No LLM used.' }
-          : undefined,
+        aiDebug:
+          process.env.NODE_ENV !== 'production'
+            ? { disqualify, note: 'Disqualified before AI calls. No LLM used.' }
+            : undefined,
         mission: templateId
           ? {
               templateId,
@@ -491,7 +555,7 @@ export class PracticeService {
                 successScore: effectivePolicy.successScore,
                 failScore: effectivePolicy.failScore,
               },
-              aiStyle: (template?.aiStyle ?? null) as AiStyle | null, // ✅ NEW
+              aiStyle: (template?.aiStyle ?? null) as AiStyle | null,
               aiContract: template?.aiContract ?? null,
             }
           : null,
@@ -516,7 +580,8 @@ export class PracticeService {
       });
 
       const deltaScores = (aiDelta?.perMessage ?? []).map((m) => m.score);
-      if (deltaScores.length === 0) throw new BadRequestException('AI scoring produced no message scores.');
+      if (deltaScores.length === 0)
+        throw new BadRequestException('AI scoring produced no message scores.');
 
       messageScores = [...existingScores, ...deltaScores];
     } else {
@@ -535,23 +600,24 @@ export class PracticeService {
       });
 
       messageScores = (aiAll?.perMessage ?? []).map((m) => m.score);
-      if (messageScores.length === 0) throw new BadRequestException('AI scoring produced no message scores.');
+      if (messageScores.length === 0)
+        throw new BadRequestException('AI scoring produced no message scores.');
     }
 
     const missionState = computeMissionState(messageScores, effectivePolicy);
 
+    // ✅ Step 4: pass aiStyleKey / aiStyle to AiChatService (FreePlay-aware)
     const { aiReply, aiDebug, aiStructured } = await this.aiChat.generateReply({
       userId,
       topic,
       messages: fullTranscript,
       templateId,
       personaId,
+      aiStyleKey: freePlayStyle.aiStyleKey ?? undefined,
+      aiStyle: freePlayStyle.aiStyle ?? undefined,
     });
 
-    const transcriptToPersist: TranscriptMsg[] = [
-      ...fullTranscript,
-      { role: 'AI', content: aiReply },
-    ];
+    const transcriptToPersist: TranscriptMsg[] = [...fullTranscript, { role: 'AI', content: aiReply }];
 
     const transcriptForCore: TranscriptMessage[] = transcriptToPersist.map((m) => ({
       text: m.content,
@@ -570,6 +636,8 @@ export class PracticeService {
       transcript: transcriptToPersist,
       assistantReply: aiReply,
       missionStatus: missionState.status,
+      aiMode,
+      extraPayload: payloadExtras,
     });
 
     return {
@@ -587,7 +655,7 @@ export class PracticeService {
               successScore: effectivePolicy.successScore,
               failScore: effectivePolicy.failScore,
             },
-            aiStyle: (template?.aiStyle ?? null) as AiStyle | null, // ✅ NEW
+            aiStyle: (template?.aiStyle ?? null) as AiStyle | null,
             aiContract: template?.aiContract ?? null,
           }
         : null,

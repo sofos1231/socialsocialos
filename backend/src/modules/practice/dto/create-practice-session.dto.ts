@@ -1,11 +1,10 @@
-// FILE: backend/src/modules/practice/dto/create-practice-session.dto.ts
-
 import {
   IsArray,
   IsOptional,
   IsString,
   ValidateIf,
   ValidateNested,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -15,6 +14,16 @@ export class PracticeMessageInput {
 
   @IsString()
   content: string;
+}
+
+/**
+ * FreePlay-specific config object.
+ * FE should send: freeplay: { aiStyleKey }
+ */
+export class FreePlayConfig {
+  @IsOptional()
+  @IsString()
+  aiStyleKey?: string;
 }
 
 export class CreatePracticeSessionDto {
@@ -45,4 +54,33 @@ export class CreatePracticeSessionDto {
   @IsOptional()
   @IsString()
   personaId?: string;
+
+  /**
+   * ✅ NEW – mode:
+   * - "MISSION"  => using mission template
+   * - "FREEPLAY" => free play with explicit aiStyleKey
+   *
+   * Backward compatible: if omitted, backend infers from templateId.
+   */
+  @IsOptional()
+  @IsString()
+  @IsIn(['MISSION', 'FREEPLAY'])
+  mode?: 'MISSION' | 'FREEPLAY';
+
+  /**
+   * ✅ NEW – FreePlay object wrapper:
+   * freeplay: { aiStyleKey }
+   */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FreePlayConfig)
+  freeplay?: FreePlayConfig;
+
+  /**
+   * ✅ Legacy root-level aiStyleKey (kept for compatibility).
+   * FE SHOULD prefer: freeplay.aiStyleKey
+   */
+  @IsOptional()
+  @IsString()
+  aiStyleKey?: string;
 }
