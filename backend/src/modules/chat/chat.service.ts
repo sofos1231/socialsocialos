@@ -3,6 +3,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { MessageRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service';
+import { normalizeChatMessageRead } from '../sessions/sessions.service';
 
 /**
  * ✅ Step 5.1 Migration B: Safe traitData helper
@@ -70,6 +71,17 @@ export class ChatService {
 
     const message = await createMessage();
 
-    return { message };
+    // ✅ Step 5.4: Normalize returned message (preserve backwards compatibility)
+    // Merge normalized fields with existing message fields in case callers rely on them
+    const normalized = normalizeChatMessageRead(
+      message,
+      message.turnIndex ?? 0,
+    );
+    return {
+      message: {
+        ...message,
+        ...normalized,
+      },
+    };
   }
 }

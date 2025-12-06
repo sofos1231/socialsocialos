@@ -8,5 +8,5 @@ ALTER TABLE "ChatMessage" ALTER COLUMN "traitData" SET NOT NULL;
 DROP INDEX IF EXISTS "ChatMessage_sessionId_turnIndex_idx";
 
 -- CreateUniqueConstraint: Add unique constraint on (sessionId, turnIndex)
-CREATE UNIQUE INDEX "ChatMessage_sessionId_turnIndex_key" ON "ChatMessage"("sessionId","turnIndex");
+CREATE UNIQUE INDEX "ChatMessage_sessionId_turnIndex_key" ON "ChatMessage"("sessionId", "turnIndex");
 

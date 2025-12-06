@@ -1,5 +1,7 @@
 // FILE: socialsocial/src/navigation/types.ts
 
+import type { MissionEndReasonCode, EndReasonMeta } from '../logic/missionEndReasons';
+
 // ----- Root + Tabs -----
 
 export type RootStackParamList = {
@@ -139,6 +141,25 @@ export interface MissionStatePayload {
   progressPct: number; // 0–100
   averageScore: number;
   totalMessages: number;
+  endReasonCode?: MissionEndReasonCode | null;
+  endReasonMeta?: EndReasonMeta;
+}
+
+// ✅ Step 5.2: Normalized ChatMessage fields
+export type ApiMessageRole = 'USER' | 'AI' | 'SYSTEM';
+
+export type ApiTraitData = {
+  traits: Record<string, any>;
+  flags: string[];
+  label: string | null;
+};
+
+export interface ApiChatMessage {
+  turnIndex: number;
+  role: ApiMessageRole;
+  content: string;
+  score: number | null;
+  traitData: ApiTraitData;
 }
 
 // Base response shape from /v1/practice/session
@@ -152,6 +173,7 @@ export interface PracticeSessionResponse {
   mission?: any;
   aiStructured?: any; // backend returns this; FE can ignore for now
   missionState?: MissionStatePayload;
+  messages?: ApiChatMessage[];
 }
 
 // ----- Voice practice -----

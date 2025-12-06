@@ -66,12 +66,84 @@ function safeTraitData(aiCoreMsg: MessageEvaluation | undefined | null): Prisma.
   return { traits, flags, label };
 }
 
+/**
+ * ✅ Step 5.2: Normalize traitData from DB (defensive normalization)
+ * Handles null, undefined, malformed objects, and ensures consistent shape.
+ */
+function normalizeTraitData(v: any): { traits: Record<string, any>; flags: string[]; label: string | null } {
+  const okObj = v && typeof v === 'object' && !Array.isArray(v);
+  const traits = okObj && typeof v.traits === 'object' && v.traits ? v.traits : {};
+  const flags = okObj && Array.isArray(v.flags) ? v.flags : [];
+  const label = okObj && typeof v.label === 'string' ? v.label : null;
+  return { traits, flags, label };
+}
+
 function normalizeRole(role: any): MessageRole {
   if (role === 'USER' || role === MessageRole.USER) return MessageRole.USER;
   if (role === 'AI' || role === MessageRole.AI) return MessageRole.AI;
   if (role === 'SYSTEM' || role === MessageRole.SYSTEM) return MessageRole.SYSTEM;
   // default: treat unknown as SYSTEM (safer than AI)
   return MessageRole.SYSTEM;
+}
+
+/**
+ * ✅ Step 5.4: Normalize ChatMessage fields on READ (defensive normalization)
+ * Ensures turnIndex and score are properly normalized before returning to FE.
+ * @param m Raw message object from DB (may have undefined/null/invalid values)
+ * @param fallbackIndex Required fallback if m.turnIndex is missing/invalid
+ * @returns Normalized message matching ApiChatMessage contract
+ */
+export function normalizeChatMessageRead(
+  m: any,
+  fallbackIndex: number,
+): {
+  turnIndex: number;
+  role: MessageRole;
+  content: string;
+  score: number | null;
+  traitData: { traits: Record<string, any>; flags: string[]; label: string | null };
+} {
+  // Normalize turnIndex: if m.turnIndex is a finite number >= 0 → Math.trunc(m.turnIndex)
+  // else → Math.trunc(fallbackIndex) (always provided)
+  let normalizedTurnIndex: number;
+  if (
+    typeof m.turnIndex === 'number' &&
+    Number.isFinite(m.turnIndex) &&
+    m.turnIndex >= 0
+  ) {
+    normalizedTurnIndex = Math.trunc(m.turnIndex);
+  } else {
+    normalizedTurnIndex = Math.trunc(fallbackIndex);
+  }
+
+  // Normalize score: if m.score is a finite number AND 0 <= score <= 100 → Math.trunc(m.score)
+  // else → null (No clamping. Invalid/out-of-range becomes null.)
+  let normalizedScore: number | null = null;
+  if (
+    typeof m.score === 'number' &&
+    Number.isFinite(m.score) &&
+    m.score >= 0 &&
+    m.score <= 100
+  ) {
+    normalizedScore = Math.trunc(m.score);
+  }
+
+  // Normalize role
+  const normalizedRole = normalizeRole(m.role);
+
+  // Normalize content: ensure it's a string (fallback '' if somehow nullish)
+  const normalizedContent = typeof m.content === 'string' ? m.content : '';
+
+  // Normalize traitData: must use existing normalizeTraitData
+  const normalizedTraitData = normalizeTraitData(m.traitData);
+
+  return {
+    turnIndex: normalizedTurnIndex,
+    role: normalizedRole,
+    content: normalizedContent,
+    score: normalizedScore,
+    traitData: normalizedTraitData,
+  };
 }
 
 @Injectable()
@@ -169,6 +241,13 @@ export class SessionsService {
     didFinalize: boolean;
     didGrant: boolean;
     isSuccess: boolean | null;
+    messages: Array<{
+      turnIndex: number;
+      role: MessageRole;
+      content: string;
+      score: number | null;
+      traitData: any;
+    }>;
   }> {
     const {
       userId,
@@ -235,6 +314,9 @@ export class SessionsService {
       : MissionStatus.IN_PROGRESS;
 
     const result = await this.prisma.$transaction(async (tx) => {
+      // ✅ Step 5.2: Defensive empty array for early returns (though transaction throws on errors)
+      const empty: any[] = [];
+
       const [stats, wallet] = await Promise.all([
         tx.userStats.findUnique({ where: { userId } }),
         tx.userWallet.findUnique({ where: { userId } }),
@@ -556,10 +638,24 @@ export class SessionsService {
         }
       }
 
+      // ✅ Step 5.2: Fetch normalized messages using tx (same transaction)
+      const messages = await tx.chatMessage.findMany({
+        where: { sessionId: session.id },
+        orderBy: { turnIndex: 'asc' },
+        select: {
+          turnIndex: true,
+          role: true,
+          content: true,
+          score: true,
+          traitData: true,
+        },
+      });
+
       return {
         sessionId: session.id,
         didFinalize: shouldFinalize,
         didGrant,
+        messages: messages ?? empty, // Defensive: ensure array even if findMany returns null/undefined
       };
     });
 
@@ -570,6 +666,7 @@ export class SessionsService {
       didFinalize: result.didFinalize,
       didGrant: result.didGrant,
       isSuccess,
+      messages: result.messages,
     };
   }
 
@@ -618,7 +715,7 @@ export class SessionsService {
 
     await this.ensureUserProfilePrimitives(userId);
 
-    const { summary, finalScore, sessionId: usedSessionId, isSuccess } =
+    const { summary, finalScore, sessionId: usedSessionId, isSuccess, messages } =
       await this.saveOrUpdateScoredSession({
         userId,
         sessionId: sessionId ?? null,
@@ -668,6 +765,22 @@ export class SessionsService {
 
     const dashboard = await this.statsService.getDashboardForUser(userId);
 
+    // ✅ Step 5.4: Normalize messages with defensive handling and deterministic ordering
+    const normalizedMessages = (messages ?? [])
+      .map((m, idx) => ({
+        ...normalizeChatMessageRead(m, idx),
+        _originalIndex: idx, // Preserve for stable sorting
+      }))
+      .sort((a, b) => {
+        // Sort by turnIndex asc, tie-breaker by original index (stable)
+        if (a.turnIndex !== b.turnIndex) {
+          return a.turnIndex - b.turnIndex;
+        }
+        // Stable sort: preserve original order for same turnIndex (shouldn't happen after Migration B)
+        return a._originalIndex - b._originalIndex;
+      })
+      .map(({ _originalIndex, ...msg }) => msg); // Remove temporary _originalIndex field
+
     return {
       ok: true,
       rewards: {
@@ -689,6 +802,7 @@ export class SessionsService {
       },
       dashboard,
       sessionId: usedSessionId,
+      messages: normalizedMessages,
     };
   }
 

@@ -7,19 +7,23 @@ import { AiStyleKey, MissionDifficulty } from '@prisma/client';
 // 1. End Reason Domain
 // ============================================================================
 
-export type MissionEndReasonCode =
-  | 'SUCCESS_OBJECTIVE'
-  | 'SUCCESS_GATE_SEQUENCE'
-  | 'SUCCESS_SCORE_MILESTONE'
-  | 'FAIL_OBJECTIVE'
-  | 'FAIL_MAX_MESSAGES'
-  | 'FAIL_TIMER_EXPIRED'
-  | 'FAIL_TOO_MANY_STRIKES'
-  | 'FAIL_GATE_SEQUENCE'
-  | 'FAIL_MOOD_COLLAPSE'
-  | 'ABORT_USER_EXIT'
-  | 'ABORT_SYSTEM_ERROR'
-  | 'ABORT_DISQUALIFIED';
+// ✅ Step 5.3: Single source of truth for valid end reason codes
+export const MISSION_END_REASON_CODES = [
+  'SUCCESS_OBJECTIVE',
+  'SUCCESS_GATE_SEQUENCE',
+  'SUCCESS_SCORE_MILESTONE',
+  'FAIL_OBJECTIVE',
+  'FAIL_MAX_MESSAGES',
+  'FAIL_TIMER_EXPIRED',
+  'FAIL_TOO_MANY_STRIKES',
+  'FAIL_GATE_SEQUENCE',
+  'FAIL_MOOD_COLLAPSE',
+  'ABORT_USER_EXIT',
+  'ABORT_SYSTEM_ERROR',
+  'ABORT_DISQUALIFIED',
+] as const;
+
+export type MissionEndReasonCode = (typeof MISSION_END_REASON_CODES)[number];
 
 export type MissionEndReasonCategory = 'SUCCESS' | 'FAIL' | 'ABORT';
 
