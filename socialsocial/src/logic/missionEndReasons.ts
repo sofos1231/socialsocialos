@@ -145,4 +145,4 @@ export function getEndReasonCopy(missionState?: MissionStatePayload | null): End
     default:
       return { title: 'Mission ended', subtitle: 'Session finished.', tone: 'neutral', code: null, status };
   }
-}
+}   

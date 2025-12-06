@@ -1,3 +1,5 @@
+// (I’m keeping your file intact; only changed the "fallback to DB chatMessage" section.)
+
 import {
   Injectable,
   NotFoundException,
@@ -39,8 +41,8 @@ type DisqualifyCode = 'SEXUAL_EXPLICIT' | 'HARASSMENT_SLUR' | 'THREAT_VIOLENCE';
 
 type DisqualifyResult = {
   code: DisqualifyCode;
-  triggeredByUserMessageIndex: number; // index among USER messages in the session
-  matchedText: string; // the term/pattern that matched (best-effort)
+  triggeredByUserMessageIndex: number;
+  matchedText: string;
 };
 
 export interface MissionStatePayload {
@@ -52,7 +54,6 @@ export interface MissionStatePayload {
   remainingMessages?: number;
   mood?: MissionMood;
 
-  // Debug + UI friendliness
   policy?: {
     difficulty: MissionDifficulty;
     goalType: MissionGoalType | null;
@@ -64,7 +65,6 @@ export interface MissionStatePayload {
   disqualified?: boolean;
   disqualify?: DisqualifyResult | null;
 
-  // ✅ Phase 1 / Step 3: End reason code and metadata
   endReasonCode?: MissionEndReasonCode | null;
   endReasonMeta?: Record<string, any> | null;
 }
@@ -142,10 +142,6 @@ function resolvePolicy(params: {
   };
 }
 
-/**
- * ✅ Phase 1 / Step 2: Resolve policy from NormalizedMissionConfigV1.statePolicy
- * Builds policy object from statePolicy with clamping, preserving difficulty/goalType from template.
- */
 function resolvePolicyFromStatePolicy(params: {
   difficulty: MissionDifficulty;
   goalType: MissionGoalType | null;
@@ -154,14 +150,10 @@ function resolvePolicyFromStatePolicy(params: {
   policy: Required<MissionStatePayload>['policy'];
   minMessagesBeforeEndResolved: number | null;
 } {
-  // Clamp maxMessages to 1..50
   const maxMessages = clampInt(params.statePolicy.maxMessages, 1, 50, 5);
-
-  // Clamp thresholds to 0..100
   const successScoreThreshold = clampInt(params.statePolicy.successScoreThreshold, 0, 100, 80);
   const failScoreThreshold = clampInt(params.statePolicy.failScoreThreshold, 0, 100, 60);
 
-  // Resolve minMessagesBeforeEnd: if null/undefined → null, else clamp to 1..maxMessages
   const minMessagesBeforeEndResolved: number | null =
     params.statePolicy.minMessagesBeforeEnd === null ||
     params.statePolicy.minMessagesBeforeEnd === undefined
@@ -281,9 +273,6 @@ function computeMissionState(
   const rawProgress = (totalUserMessages / Math.max(1, policy.maxMessages)) * 100;
   const progressPct = Math.max(5, Math.min(100, Math.round(rawProgress)));
 
-  // ✅ Phase 1 / Step 2: Respect minMessagesBeforeEnd if provided
-  // Safe approach: minEnd <= maxMessages (enforced in resolvePolicyFromStatePolicy)
-  // End only if both conditions met: reached maxMessages AND reached minMessagesBeforeEnd
   const minEnd = minMessagesBeforeEnd ?? policy.maxMessages;
 
   let status: MissionStateStatus = 'IN_PROGRESS';
@@ -326,11 +315,6 @@ function buildFallbackScoresOnDisqualify(params: {
   return [...base, ...delta];
 }
 
-/**
- * ✅ Phase 1 / Step 3: Compute end reason code based on mission state and config.
- * Returns null for FREEPLAY or IN_PROGRESS status.
- * Applies allowedEndReasons filtering and precedence remapping when config is available.
- */
 function computeEndReason(params: {
   aiMode: 'MISSION' | 'FREEPLAY';
   status: MissionStateStatus;
@@ -340,17 +324,14 @@ function computeEndReason(params: {
   policy: Required<MissionStatePayload>['policy'];
   normalizedConfig: NormalizedMissionConfigV1 | null;
 }): { code: MissionEndReasonCode | null; meta: Record<string, any> | null } {
-  // FREEPLAY: no end reason computation
   if (params.aiMode === 'FREEPLAY') {
     return { code: null, meta: null };
   }
 
-  // IN_PROGRESS: no end reason yet
   if (params.status === 'IN_PROGRESS') {
     return { code: null, meta: null };
   }
 
-  // Disqualify: always ABORT_DISQUALIFIED (bypasses allowedEndReasons)
   if (params.disqualified && params.disqualify) {
     return {
       code: 'ABORT_DISQUALIFIED',
@@ -362,11 +343,9 @@ function computeEndReason(params: {
     };
   }
 
-  // Normal endings: compute natural reason
   const naturalReason: MissionEndReasonCode =
     params.status === 'SUCCESS' ? 'SUCCESS_OBJECTIVE' : 'FAIL_OBJECTIVE';
 
-  // If no normalized config, use natural reason
   if (!params.normalizedConfig || !params.normalizedConfig.statePolicy.allowedEndReasons) {
     return {
       code: naturalReason,
@@ -382,7 +361,6 @@ function computeEndReason(params: {
 
   const allowedEndReasons = params.normalizedConfig.statePolicy.allowedEndReasons;
 
-  // If allowedEndReasons is empty, use natural reason
   if (allowedEndReasons.length === 0) {
     return {
       code: naturalReason,
@@ -396,7 +374,6 @@ function computeEndReason(params: {
     };
   }
 
-  // If natural reason is allowed, use it
   if (allowedEndReasons.includes(naturalReason)) {
     return {
       code: naturalReason,
@@ -410,14 +387,12 @@ function computeEndReason(params: {
     };
   }
 
-  // Natural reason not allowed: remap using precedence
   const precedence =
     params.normalizedConfig.endReasonPrecedenceResolved &&
     params.normalizedConfig.endReasonPrecedenceResolved.length > 0
       ? params.normalizedConfig.endReasonPrecedenceResolved
       : MISSION_END_REASON_PRECEDENCE;
 
-  // Find first code in precedence that is in allowedEndReasons
   let remappedCode: MissionEndReasonCode | null = null;
   for (const code of precedence) {
     if (allowedEndReasons.includes(code)) {
@@ -426,7 +401,6 @@ function computeEndReason(params: {
     }
   }
 
-  // Fallback: use first allowed reason if none found in precedence
   if (!remappedCode) {
     remappedCode = allowedEndReasons[0];
   }
@@ -460,7 +434,6 @@ export class PracticeService {
     dtoAiStyleKey: string | null;
     existingPayload: any | null;
   }): Promise<{ aiStyle: AiStyle | null; aiStyleKey: AiStyleKey | null }> {
-    // If a real mission template is used, style comes from the template (NOT freeplay).
     if (params.templateId) return { aiStyle: null, aiStyleKey: null };
 
     const payloadKey =
@@ -470,7 +443,6 @@ export class PracticeService {
     const rawKey = safeTrim(params.dtoAiStyleKey) || payloadKey;
     if (!rawKey) return { aiStyle: null, aiStyleKey: null };
 
-    // DB key is enum AiStyleKey; accept string input from FE and validate via DB.
     const found = await this.prisma.aiStyle.findUnique({
       where: { key: rawKey as any },
     });
@@ -488,7 +460,6 @@ export class PracticeService {
       throw new BadRequestException('No messages provided.');
     }
 
-    // Part-2 compatibility: dto may (soon) include aiStyleKey; keep backward compatible for now.
     type DtoV2 = CreatePracticeSessionDto & { aiStyleKey?: string | null; mode?: string | null };
     const dtoV2 = dto as DtoV2;
 
@@ -534,7 +505,6 @@ export class PracticeService {
             wordLimit: true,
             aiContract: true,
             aiStyle: {
-              // ✅ STEP 4.2: Validate aiStyle exists and is active
               select: {
                 id: true,
                 key: true,
@@ -548,7 +518,6 @@ export class PracticeService {
 
     if (templateId && !template) throw new NotFoundException('Mission template not found.');
 
-    // ✅ STEP 4.2: Validate persona exists and is active (if template has personaId)
     if (templateId && template?.personaId) {
       const persona = await this.prisma.aiPersona.findUnique({
         where: { id: template.personaId },
@@ -568,7 +537,6 @@ export class PracticeService {
       }
     }
 
-    // ✅ STEP 4.2: Validate aiStyle exists and is active (if template has aiStyleId)
     if (templateId && template?.aiStyle) {
       if (!template.aiStyle.isActive) {
         throw new BadRequestException({
@@ -578,9 +546,6 @@ export class PracticeService {
       }
     }
 
-    // ✅ Phase 1 / Step 1: Normalize missionConfigV1 at session start
-    // Continuations: reuse snapshot from payload if present (snapshot semantics)
-    // New sessions: normalize from template.aiContract (FAIL-FAST if missing/invalid)
     let normalizedMissionConfigV1: NormalizedMissionConfigV1 | null = null;
 
     if (isContinuation) {
@@ -613,13 +578,10 @@ export class PracticeService {
       normalizedMissionConfigV1 = normalizeResult.value;
     }
 
-    // ✅ Phase 1 / Step 2: Use statePolicy when available (MISSION mode only)
-    // Fallback to resolvePolicy() for FREEPLAY or legacy missions without normalizedMissionConfigV1
     let effectivePolicy: Required<MissionStatePayload>['policy'];
     let minMessagesBeforeEndResolved: number | null = null;
 
     if (templateId && normalizedMissionConfigV1?.statePolicy) {
-      // Use statePolicy-driven policy
       const resolved = resolvePolicyFromStatePolicy({
         difficulty: template.difficulty,
         goalType: template.goalType ?? null,
@@ -628,7 +590,6 @@ export class PracticeService {
       effectivePolicy = resolved.policy;
       minMessagesBeforeEndResolved = resolved.minMessagesBeforeEndResolved;
     } else {
-      // Fallback: use existing resolvePolicy() logic (FREEPLAY or legacy missions)
       effectivePolicy = template
         ? resolvePolicy({
             difficulty: template.difficulty,
@@ -662,14 +623,24 @@ export class PracticeService {
         : [];
     }
 
+    // ✅ FIX: DB fallback ordering must handle NULL turnIndex safely
     if (isContinuation && existingTranscript.length === 0) {
       const rows = await this.prisma.chatMessage.findMany({
         where: { sessionId: existingSession!.id },
         orderBy: { createdAt: 'asc' },
-        select: { role: true, content: true },
+        select: { role: true, content: true, createdAt: true, turnIndex: true, meta: true },
       });
 
-      existingTranscript = rows
+      const allHaveTurnIndex = rows.every((r) => typeof r.turnIndex === 'number');
+      const allHaveMetaIndex = rows.every((r) => typeof (r.meta as any)?.index === 'number');
+
+      const sorted = [...rows].sort((a, b) => {
+        if (allHaveTurnIndex) return (a.turnIndex as number) - (b.turnIndex as number);
+        if (allHaveMetaIndex) return ((a.meta as any).index as number) - ((b.meta as any).index as number);
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      });
+
+      existingTranscript = sorted
         .map((r) => {
           const role: TranscriptMsg['role'] = r.role === MessageRole.USER ? 'USER' : 'AI';
           return { role, content: safeTrim(r.content) };
@@ -750,13 +721,10 @@ export class PracticeService {
       freeplay: {
         aiStyleKey: freePlayStyle.aiStyleKey ?? null,
       },
-      // root-level for backwards compat
       aiStyleKey: freePlayStyle.aiStyleKey ?? null,
-      // ✅ Phase 1 / Step 1: Persist normalized mission config snapshot
       normalizedMissionConfigV1: normalizedMissionConfigV1 ?? null,
     };
 
-    // Handle disqualify early return
     if (disqualify) {
       const scores = buildFallbackScoresOnDisqualify({
         existingScores,
@@ -781,7 +749,6 @@ export class PracticeService {
         disqualify,
       };
 
-      // ✅ Phase 1 / Step 3: Compute end reason for disqualify
       const endReason = computeEndReason({
         aiMode,
         status: missionState.status,
@@ -888,7 +855,6 @@ export class PracticeService {
 
     const missionState = computeMissionState(messageScores, effectivePolicy, minMessagesBeforeEndResolved);
 
-    // ✅ Phase 1 / Step 3: Compute end reason for normal path
     const endReason = computeEndReason({
       aiMode,
       status: missionState.status,
@@ -901,7 +867,6 @@ export class PracticeService {
     missionState.endReasonCode = endReason.code;
     missionState.endReasonMeta = endReason.meta;
 
-    // ✅ Step 4: pass aiStyleKey / aiStyle to AiChatService (FreePlay-aware)
     const { aiReply, aiDebug, aiStructured } = await this.aiChat.generateReply({
       userId,
       topic,

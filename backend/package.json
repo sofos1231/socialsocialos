@@ -21,7 +21,9 @@
     "certs:fetch": "mkdir -p certs && (curl -sfL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -o certs/rds-global-bundle.pem || powershell -Command \"[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; (New-Object Net.WebClient).DownloadFile('https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem', 'certs/rds-global-bundle.pem')\")",
     "db:seed:catalog": "ts-node --transpile-only scripts/seed-catalog.ts",
     "deals:create:double": "ts-node --transpile-only scripts/create-deal.ts",
-    "test:e2e": "jest --runInBand --testPathPattern=test/e2e/.*\\.spec\\.ts$",
+    "test": "jest",
+    "test:unit": "jest --testPathPattern=src/.*\\.spec\\.ts$",
+    "test:e2e": "jest --runInBand --testPathPattern=test/e2e/.*(\\.spec|\\.e2e-spec)\\.ts$",
     "test:smoke": "jest -i test/e2e/smoke.spec.ts",
     "ci:openapi": "ts-node scripts/ci/openapi-diff.ts",
     "test:jwt": "node scripts/genToken.js"

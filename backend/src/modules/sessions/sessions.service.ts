@@ -18,8 +18,9 @@ import {
   MissionStatus,
   RewardLedgerKind,
 } from '@prisma/client';
-import { AiSessionResult } from '../ai/ai-scoring.types';
+import { AiSessionResult, MessageEvaluation } from '../ai/ai-scoring.types';
 import { buildAiInsightSummary } from '../ai/ai-insights';
+import { Prisma } from '@prisma/client';
 
 // Temporary: mock scores for the /sessions/mock endpoint
 const MOCK_MESSAGE_SCORES: number[] = [62, 74, 88, 96];
@@ -35,6 +36,43 @@ const RARITY_TO_GRADE: Record<MessageRarity, MessageGrade> = {
 
 // NOTE: keep role as string for flexibility; we still *expect* "USER"/"AI".
 type TranscriptMsg = { role: string; content: string };
+
+function safeTrim(s: any): string {
+  return typeof s === 'string' ? s.trim() : '';
+}
+
+/**
+ * ✅ Step 5.1 Migration B: Safe traitData helper
+ * Returns a valid JsonObject for traitData, never null/undefined.
+ * Uses empty object when aiCoreMsg is missing or invalid.
+ */
+function safeTraitData(aiCoreMsg: MessageEvaluation | undefined | null): Prisma.JsonObject {
+  if (!aiCoreMsg || typeof aiCoreMsg !== 'object') {
+    return { traits: {}, flags: [], label: null };
+  }
+
+  const traits = aiCoreMsg.traits && typeof aiCoreMsg.traits === 'object'
+    ? aiCoreMsg.traits
+    : {};
+
+  const flags = Array.isArray(aiCoreMsg.flags)
+    ? aiCoreMsg.flags
+    : [];
+
+  const label = typeof aiCoreMsg.label === 'string'
+    ? aiCoreMsg.label
+    : null;
+
+  return { traits, flags, label };
+}
+
+function normalizeRole(role: any): MessageRole {
+  if (role === 'USER' || role === MessageRole.USER) return MessageRole.USER;
+  if (role === 'AI' || role === MessageRole.AI) return MessageRole.AI;
+  if (role === 'SYSTEM' || role === MessageRole.SYSTEM) return MessageRole.SYSTEM;
+  // default: treat unknown as SYSTEM (safer than AI)
+  return MessageRole.SYSTEM;
+}
 
 @Injectable()
 export class SessionsService {
@@ -58,10 +96,8 @@ export class SessionsService {
     current: MissionStatus,
     next: MissionStatus,
   ): void {
-    // Same status is always allowed (idempotent)
     if (current === next) return;
 
-    // From IN_PROGRESS, any final status is allowed
     if (current === MissionStatus.IN_PROGRESS) {
       if (
         next === MissionStatus.SUCCESS ||
@@ -72,7 +108,6 @@ export class SessionsService {
       }
     }
 
-    // Any other transition is illegal
     throw new BadRequestException({
       code: 'ILLEGAL_STATUS_TRANSITION',
       message: `Cannot transition from ${current} to ${next}. Legal transitions: IN_PROGRESS -> SUCCESS/FAIL/ABORTED, or same status (idempotent).`,
@@ -110,34 +145,23 @@ export class SessionsService {
     });
   }
 
-  /**
-   * ✅ Core: save/update ONE in-progress mission session per (userId, templateId),
-   * persist ChatMessages, and FINALIZE + GRANT rewards only once with ledger.
-   *
-   * Step 8 addition:
-   * - If sessionId is provided: update THAT exact session (validate ownership + IN_PROGRESS)
-   *
-   * Step 3 addition:
-   * - aiMode + extraPayload (e.g. freeplay.aiStyleKey) are stored on PracticeSession.
-   */
   private async saveOrUpdateScoredSession(params: {
     userId: string;
-    sessionId?: string | null; // ✅ Step 8
+    sessionId?: string | null;
     topic: string;
     messageScores: number[];
     templateId?: string | null;
     personaId?: string | null;
     transcript: TranscriptMsg[];
-    // Mission status coming from missionState engine (PracticeService)
     missionStatus?: 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
 
-    // NEW – FreePlay / mode metadata
     aiMode?: string | null;
     extraPayload?: Record<string, any> | null;
 
-    // ✅ Phase 1 / Step 3: End reason code and metadata
     endReasonCode?: string | null;
     endReasonMeta?: Record<string, any> | null;
+
+    aiCoreResult?: AiSessionResult | null;
   }): Promise<{
     summary: SessionRewardsSummary;
     finalScore: number;
@@ -159,6 +183,7 @@ export class SessionsService {
       extraPayload,
       endReasonCode,
       endReasonMeta,
+      aiCoreResult,
     } = params;
 
     if (!messageScores || !Array.isArray(messageScores) || messageScores.length === 0) {
@@ -176,7 +201,6 @@ export class SessionsService {
 
     const now = new Date();
 
-    // 1) Compute rewards from message scores (USER messages only)
     const inputs: MessageEvaluationInput[] = messageScores.map((score) => ({ score }));
     const summary: SessionRewardsSummary = computeSessionRewards(inputs);
     const finalScore = Math.round(summary.finalScore);
@@ -187,15 +211,11 @@ export class SessionsService {
         ? perMessageScores.reduce((sum, s) => sum + s, 0) / perMessageScores.length
         : 0;
 
-    // 2) Determine "should finalize" and success flag
-    // ✅ STEP 4.4: Finalize when missionStatus is SUCCESS, FAIL, or ABORTED (all final states).
-    // Do NOT finalize on IN_PROGRESS for either missions or FreePlay.
-    // Note: missionStatus param is typed as 'IN_PROGRESS' | 'SUCCESS' | 'FAIL', but we also
-    // handle ABORTED as a final state for future extensibility.
     const isFinalStatus =
       missionStatus === 'SUCCESS' ||
       missionStatus === 'FAIL' ||
       (missionStatus as any) === 'ABORTED';
+
     const shouldFinalize = isFinalStatus;
 
     const isSuccess: boolean | null = shouldFinalize
@@ -211,10 +231,9 @@ export class SessionsService {
           ? MissionStatus.FAIL
           : (missionStatus as any) === 'ABORTED'
             ? MissionStatus.ABORTED
-            : MissionStatus.FAIL // fallback (shouldn't happen)
+            : MissionStatus.FAIL
       : MissionStatus.IN_PROGRESS;
 
-    // 3) Transaction: upsert session, replace messages, maybe finalize+grant once
     const result = await this.prisma.$transaction(async (tx) => {
       const [stats, wallet] = await Promise.all([
         tx.userStats.findUnique({ where: { userId } }),
@@ -227,11 +246,9 @@ export class SessionsService {
         );
       }
 
-      // 3.1) Determine session id to use and load current status
       let sessionIdToUse: string | null = null;
       let currentStatus: MissionStatus | null = null;
 
-      // ✅ Step 8: explicit sessionId wins
       if (explicitSessionId) {
         const existingById = await tx.practiceSession.findUnique({
           where: { id: explicitSessionId },
@@ -260,7 +277,6 @@ export class SessionsService {
         sessionIdToUse = existingById.id;
       }
 
-      // Existing behavior: by (userId, templateId, IN_PROGRESS)
       if (!sessionIdToUse && templateId) {
         const existing = await tx.practiceSession.findFirst({
           where: {
@@ -278,7 +294,6 @@ export class SessionsService {
         }
       }
 
-      // ✅ STEP 4.4: Validate status transition if we have a current status
       if (currentStatus !== null) {
         this.validateMissionStatusTransition(currentStatus, targetStatus);
       }
@@ -287,20 +302,16 @@ export class SessionsService {
         ...(extraPayload && typeof extraPayload === 'object' ? extraPayload : {}),
         messageScores,
         transcript,
-        // ✅ Phase 1 / Step 3: Persist end reason code and metadata
         endReasonCode: endReasonCode ?? null,
         endReasonMeta: endReasonMeta ?? null,
       };
 
-      // ✅ STEP 4.4: Ensure endedAt is set when finalizing
       const finalEndedAt = shouldFinalize ? now : null;
 
       const baseSessionData = {
         userId,
         topic,
         score: finalScore,
-
-        // store computed totals on the session (wallet grant is ledger-controlled)
         xpGained: summary.totalXp,
         coinsGained: summary.totalCoins,
         gemsGained: summary.totalGems,
@@ -319,8 +330,10 @@ export class SessionsService {
         endedAt: finalEndedAt,
         isSuccess: shouldFinalize ? isSuccess : null,
 
-        // ✅ NEW – store logical mode on the session ("MISSION" / "FREEPLAY")
         aiMode: aiMode ?? (templateId ? 'MISSION' : null),
+
+        endReasonCode: endReasonCode ?? null,
+        endReasonMeta: endReasonMeta ?? null,
       };
 
       const session = sessionIdToUse
@@ -332,66 +345,106 @@ export class SessionsService {
             data: baseSessionData as any,
           });
 
-      // 3.2) Replace ChatMessage rows (MVP safe approach)
       await tx.chatMessage.deleteMany({ where: { sessionId: session.id } });
 
-      // Map reward deltas onto USER messages in order
-      const userRewards = summary.messages; // aligns with messageScores (USER-only)
+      // Map aiCoreResult.messages[] to transcript indices
+      const aiCoreMessagesByIndex = new Map<number, any>();
+      if (aiCoreResult?.messages && Array.isArray(aiCoreResult.messages)) {
+        aiCoreResult.messages.forEach((msg, idx) => {
+          aiCoreMessagesByIndex.set(idx, msg);
+        });
+      }
+
+      const userRewards = summary.messages;
       let userIdx = 0;
 
-      const rows = transcript
-        .filter((m) => typeof m?.content === 'string' && m.content.trim().length > 0)
-        .map((m, i) => {
-          if (m.role === 'USER') {
-            const r = userRewards[userIdx];
-            const score = r?.score ?? null;
-            const rarity = r?.rarity ?? null;
+      const rows: any[] = [];
 
-            const row = {
-              sessionId: session.id,
-              userId,
-              role: MessageRole.USER,
-              content: m.content.trim(),
-              grade: rarity ? RARITY_TO_GRADE[rarity] : null,
-              xpDelta: r?.xp ?? 0,
-              coinsDelta: r?.coins ?? 0,
-              gemsDelta: r?.gems ?? 0,
-              isBrilliant: rarity === 'S+',
-              isLifesaver: false,
-              meta: {
-                index: i,
-                userIndex: userIdx,
-                score,
-                rarity,
-              } as any,
-            };
-            userIdx += 1;
-            return row;
-          }
+      // IMPORTANT: preserve original transcript indices as turnIndex/meta.index
+      for (let i = 0; i < transcript.length; i++) {
+        const m = transcript[i];
+        const content = safeTrim(m?.content);
+        if (!content) continue;
 
-          return {
+        const roleEnum = normalizeRole(m?.role);
+        const aiCoreMsg = aiCoreMessagesByIndex.get(i);
+
+        if (roleEnum === MessageRole.USER) {
+          const r = userRewards[userIdx];
+          const score = r?.score ?? null;
+          const rarity = r?.rarity ?? null;
+
+          rows.push({
+            sessionId: session.id,
+            userId,
+            role: MessageRole.USER,
+            content,
+            grade: rarity ? RARITY_TO_GRADE[rarity] : null,
+            xpDelta: r?.xp ?? 0,
+            coinsDelta: r?.coins ?? 0,
+            gemsDelta: r?.gems ?? 0,
+            isBrilliant: rarity === 'S+',
+            isLifesaver: false,
+
+            turnIndex: i,
+            score: score ?? null,
+            traitData: safeTraitData(aiCoreMsg),
+
+            meta: {
+              index: i,
+              userIndex: userIdx,
+              score,
+              rarity,
+            } as any,
+          });
+
+          userIdx += 1;
+        } else if (roleEnum === MessageRole.AI) {
+          rows.push({
             sessionId: session.id,
             userId,
             role: MessageRole.AI,
-            content: m.content.trim(),
+            content,
             grade: null,
             xpDelta: 0,
             coinsDelta: 0,
             gemsDelta: 0,
             isBrilliant: false,
             isLifesaver: false,
-            meta: {
-              index: i,
-              generated: true,
-            } as any,
-          };
-        });
+
+            turnIndex: i,
+            score: null,
+            traitData: safeTraitData(aiCoreMsg),
+
+            meta: { index: i, generated: true } as any,
+          });
+        } else {
+          // SYSTEM
+          rows.push({
+            sessionId: session.id,
+            userId,
+            role: MessageRole.SYSTEM,
+            content,
+            grade: null,
+            xpDelta: 0,
+            coinsDelta: 0,
+            gemsDelta: 0,
+            isBrilliant: false,
+            isLifesaver: false,
+
+            turnIndex: i,
+            score: null,
+            traitData: safeTraitData(aiCoreMsg),
+
+            meta: { index: i, system: true } as any,
+          });
+        }
+      }
 
       if (rows.length > 0) {
         await tx.chatMessage.createMany({ data: rows as any });
       }
 
-      // 3.3) Finalize + grant rewards ONCE (ledger)
       let didGrant = false;
 
       if (shouldFinalize) {
@@ -405,7 +458,6 @@ export class SessionsService {
         });
 
         if (!existingGrant) {
-          // Create ledger entry first (this is the "once" guard)
           await tx.rewardLedgerEntry.create({
             data: {
               userId,
@@ -426,7 +478,6 @@ export class SessionsService {
 
           didGrant = true;
 
-          // Update UserStats
           const newSessionsCount = stats.sessionsCount + 1;
           const newSuccessCount = stats.successCount + (isSuccess ? 1 : 0);
           const newFailCount = stats.failCount + (isSuccess ? 0 : 1);
@@ -453,7 +504,6 @@ export class SessionsService {
             },
           });
 
-          // Update wallet
           await tx.userWallet.update({
             where: { userId },
             data: {
@@ -464,7 +514,6 @@ export class SessionsService {
             },
           });
 
-          // Mission progress update
           if (templateId) {
             const existing = await tx.missionProgress.findUnique({
               where: {
@@ -524,14 +573,9 @@ export class SessionsService {
     };
   }
 
-  /**
-   * Used by:
-   * - /v1/sessions/mock
-   * - /v1/practice/session
-   */
   async createScoredSessionFromScores(params: {
     userId: string;
-    sessionId?: string | null; // ✅ Step 8
+    sessionId?: string | null;
     topic: string;
     messageScores: number[];
     aiCoreResult?: AiSessionResult;
@@ -541,14 +585,11 @@ export class SessionsService {
     transcript: TranscriptMsg[];
     assistantReply?: string;
 
-    // ✅ Step 6: mission end state (from PracticeService.missionState.status)
     missionStatus?: 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
 
-    // ✅ Step 3: FreePlay / mode metadata
     aiMode?: string | null;
     extraPayload?: Record<string, any> | null;
 
-    // ✅ Phase 1 / Step 3: End reason code and metadata
     endReasonCode?: string | null;
     endReasonMeta?: Record<string, any> | null;
   }) {
@@ -591,32 +632,36 @@ export class SessionsService {
         extraPayload: extraPayload ?? null,
         endReasonCode: endReasonCode ?? null,
         endReasonMeta: endReasonMeta ?? null,
+        aiCoreResult: aiCoreResult ?? null,
       });
 
-    // Option B: persist metrics + insights (update the SAME session we used)
-    if (aiCoreResult?.metrics) {
-      const m = aiCoreResult.metrics;
+    // ✅ FIX: Persist aiCorePayload/version ALWAYS when aiCoreResult exists (metrics optional)
+    if (aiCoreResult) {
       const aiSummary = buildAiInsightSummary(aiCoreResult);
+      const m: any = (aiCoreResult as any).metrics ?? null;
 
       await this.prisma.practiceSession.update({
         where: { id: usedSessionId },
         data: {
-          charismaIndex: m.charismaIndex ?? null,
-          confidenceScore: m.confidence ?? null,
-          clarityScore: m.clarity ?? null,
-          humorScore: m.humor ?? null,
-          tensionScore: m.tensionControl ?? null,
-          emotionalWarmth: m.emotionalWarmth ?? null,
-          dominanceScore: m.dominance ?? null,
-
-          fillerWordsCount: m.fillerWordsCount ?? null,
-          totalMessages: m.totalMessages ?? null,
-          totalWords: m.totalWords ?? null,
-
-          aiCoreVersion: aiCoreResult.version ?? null,
+          aiCoreVersion: (aiCoreResult as any).version ?? null,
           aiCorePayload: aiCoreResult as any,
-
           aiSummary: aiSummary ? (aiSummary as any) : null,
+
+          ...(m
+            ? {
+                charismaIndex: m.charismaIndex ?? null,
+                confidenceScore: m.confidence ?? null,
+                clarityScore: m.clarity ?? null,
+                humorScore: m.humor ?? null,
+                tensionScore: m.tensionControl ?? null,
+                emotionalWarmth: m.emotionalWarmth ?? null,
+                dominanceScore: m.dominance ?? null,
+
+                fillerWordsCount: m.fillerWordsCount ?? null,
+                totalMessages: m.totalMessages ?? null,
+                totalWords: m.totalWords ?? null,
+              }
+            : {}),
         },
       });
     }
@@ -670,4 +715,3 @@ export class SessionsService {
     return this.statsService.getDashboardForUser(userId);
   }
 }
-                                        

@@ -248,6 +248,12 @@ model PracticeSession {
   aiSummary    Json?
 
   /// --------------------------------------
+  /// ✅ Step 5.1 – End reason fields
+  /// --------------------------------------
+  endReasonCode String?
+  endReasonMeta Json?
+
+  /// --------------------------------------
   /// ⭐ Option B – Core AI Metrics (B4)
   /// --------------------------------------
   charismaIndex   Int?
@@ -295,10 +301,19 @@ model ChatMessage {
   isBrilliant Boolean         @default(false)
   isLifesaver Boolean         @default(false)
   meta        Json?
+
+  /// --------------------------------------
+  /// ✅ Step 5.1 – Deterministic ordering + normalized scoring
+  /// --------------------------------------
+  turnIndex   Int             // Position in transcript (0-based, includes USER + AI)
+  score       Int?            // Normalized score (0-100, USER messages only)
+  traitData   Json            // { traits: {...}, flags: [...], label: string }
+
   session     PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, createdAt])
+  @@unique([sessionId, turnIndex])
 }
 
 model UserWallet {
