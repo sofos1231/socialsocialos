@@ -19,6 +19,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import axios from 'axios';
+import MissionEndModal from '../components/MissionEndModal';
 
 import {
   PracticeStackParamList,
@@ -710,56 +711,16 @@ export default function PracticeScreen({ route, navigation }: Props) {
           </View>
         </Modal>
 
-        <Modal
-          visible={isMissionComplete && !!sessionRewards && !isPreviewOnly}
-          transparent
-          animationType="fade"
-          onRequestClose={handleBackToHubFromModal}
-        >
-          <View style={styles.completeOverlay}>
-            <View style={styles.completeCard}>
-              <View style={styles.completeCardHeader}>
-                <Text style={styles.completeTitle}>
-                  {sessionRewards?.isSuccess ? 'Mission complete' : 'Mission ended'}
-                </Text>
-                <TouchableOpacity style={styles.completeCloseButton} onPress={handleCloseMissionEndModal}>
-                  <Text style={styles.completeCloseText}>×</Text>
-                </TouchableOpacity>
-              </View>
-
-              {!!missionState?.status && (
-                <Text style={[styles.completeLine, { marginBottom: 6 }]}>
-                  Status: <Text style={styles.completeHighlight}>{missionState.status}</Text> · Progress:{' '}
-                  <Text style={styles.completeHighlight}>{missionState.progressPct}%</Text>
-                </Text>
-              )}
-
-              <Text style={styles.completeLine}>
-                Score: <Text style={styles.completeHighlight}>{sessionRewards?.score ?? '—'}</Text> · Message score:{' '}
-                <Text style={styles.completeHighlight}>{sessionRewards?.messageScore ?? '—'}</Text>
-              </Text>
-
-              <Text style={styles.completeLine}>
-                XP: <Text style={styles.completeHighlight}>{sessionRewards?.xpGained ?? 0}</Text> · Coins:{' '}
-                <Text style={styles.completeHighlight}>{sessionRewards?.coinsGained ?? 0}</Text> · Gems:{' '}
-                <Text style={styles.completeHighlight}>{sessionRewards?.gemsGained ?? 0}</Text>
-              </Text>
-
-              <View style={styles.completeButtonsRow}>
-                <TouchableOpacity style={[styles.completeButton, styles.completePrimary]} onPress={handleViewStatsFromModal}>
-                  <Text style={styles.completeButtonText}>View stats</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.completeButton, styles.completeSecondary]} onPress={handleBackToHubFromModal}>
-                  <Text style={styles.completeButtonText}>Back to missions</Text>
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity style={styles.completePracticeAgain} onPress={handlePracticeAgainFromModal}>
-                <Text style={styles.completePracticeAgainText}>Practice again</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+        <MissionEndModal
+          visible={isMissionComplete && !isPreviewOnly}
+          missionState={missionState}
+          onClose={handleCloseMissionEndModal}
+          onTryAgain={handlePracticeAgainFromModal}
+          onViewStats={handleViewStatsFromModal}
+          onBackToMissions={handleBackToHubFromModal}
+          primaryLabel="Continue"
+          tryAgainLabel="Practice again"
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

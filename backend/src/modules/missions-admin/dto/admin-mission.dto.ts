@@ -7,8 +7,12 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  ValidationArguments,
+  Validate,
 } from 'class-validator';
-import { MissionDifficulty, MissionGoalType } from '@prisma/client';
+import { MissionDifficulty, MissionGoalType, AiStyleKey } from '@prisma/client';
 
 function trimKeepEmpty({ value }: { value: any }) {
   if (value === null || value === undefined) return undefined;
@@ -35,6 +39,25 @@ function boolToUndef({ value }: { value: any }) {
   if (s === 'true' || s === '1' || s === 'yes' || s === 'on') return true;
   if (s === 'false' || s === '0' || s === 'no' || s === 'off') return false;
   return undefined;
+}
+
+/**
+ * Custom validator for aiStyleKey to ensure it matches Prisma AiStyleKey enum
+ */
+@ValidatorConstraint({ name: 'isAiStyleKey', async: false })
+export class IsAiStyleKeyConstraint implements ValidatorConstraintInterface {
+  validate(value: any, args: ValidationArguments) {
+    // Allow empty string (for clearing style on update)
+    if (value === '' || value === null || value === undefined) return true;
+    if (typeof value !== 'string') return false;
+    const normalized = value.trim().toUpperCase();
+    return Object.values(AiStyleKey).includes(normalized as AiStyleKey);
+  }
+
+  defaultMessage(args: ValidationArguments) {
+    const validKeys = Object.values(AiStyleKey).join(', ');
+    return `aiStyleKey must be one of: ${validKeys}, or empty string to clear`;
+  }
 }
 
 export class CreateMissionDto {
@@ -101,6 +124,7 @@ export class CreateMissionDto {
   @Transform(trimKeepEmpty)
   @IsString()
   @MaxLength(40)
+  @Validate(IsAiStyleKeyConstraint)
   aiStyleKey?: string;
 
   /**
@@ -111,6 +135,7 @@ export class CreateMissionDto {
   @Transform(trimKeepEmpty)
   @IsString()
   @MaxLength(40)
+  @Validate(IsAiStyleKeyConstraint)
   aiStyle?: string;
 
   @IsOptional()

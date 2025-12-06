@@ -2,8 +2,10 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
+import { normalizeMissionConfigV1 } from '../practice/mission-config-runtime';
 import { MissionProgressStatus } from '@prisma/client';
 
 const STATUS_LOCKED = MissionProgressStatus.LOCKED;
@@ -148,6 +150,29 @@ export class MissionsService {
     if (!template) throw new NotFoundException('Mission template not found.');
     if (!(template as any).active)
       throw new ForbiddenException('Mission is inactive.');
+
+    // ✅ STEP 4.2: Pre-flight validation - ensure template has valid aiContract
+    if (!template.aiContract || template.aiContract === null) {
+      throw new BadRequestException({
+        code: 'MISSION_TEMPLATE_INVALID_AT_START',
+        message: 'Mission template is missing aiContract configuration',
+      });
+    }
+
+    const normalizeResult = normalizeMissionConfigV1(template.aiContract);
+    if (!normalizeResult.ok) {
+      const failedResult = normalizeResult as { ok: false; reason: string; errors?: any[] };
+      throw new BadRequestException({
+        code: 'MISSION_TEMPLATE_INVALID_AT_START',
+        message:
+          failedResult.reason === 'missing'
+            ? 'Mission template aiContract is missing missionConfigV1'
+            : failedResult.reason === 'invalid'
+              ? 'Mission template aiContract is invalid'
+              : 'Mission template aiContract is not a valid object',
+        details: failedResult.errors ?? [],
+      });
+    }
 
     const isUnlocked = await this.isUnlockedForUser(userId, template as any);
     if (!isUnlocked)

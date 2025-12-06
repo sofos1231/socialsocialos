@@ -43,6 +43,42 @@ export class SessionsService {
     private readonly statsService: StatsService,
   ) {}
 
+  /**
+   * ✅ STEP 4.4: Validate mission status transitions
+   * Legal transitions:
+   * - IN_PROGRESS -> IN_PROGRESS (idempotent)
+   * - IN_PROGRESS -> SUCCESS
+   * - IN_PROGRESS -> FAIL
+   * - IN_PROGRESS -> ABORTED
+   *
+   * Forbidden:
+   * - Any transition FROM SUCCESS/FAIL/ABORTED to another status
+   */
+  private validateMissionStatusTransition(
+    current: MissionStatus,
+    next: MissionStatus,
+  ): void {
+    // Same status is always allowed (idempotent)
+    if (current === next) return;
+
+    // From IN_PROGRESS, any final status is allowed
+    if (current === MissionStatus.IN_PROGRESS) {
+      if (
+        next === MissionStatus.SUCCESS ||
+        next === MissionStatus.FAIL ||
+        next === MissionStatus.ABORTED
+      ) {
+        return;
+      }
+    }
+
+    // Any other transition is illegal
+    throw new BadRequestException({
+      code: 'ILLEGAL_STATUS_TRANSITION',
+      message: `Cannot transition from ${current} to ${next}. Legal transitions: IN_PROGRESS -> SUCCESS/FAIL/ABORTED, or same status (idempotent).`,
+    });
+  }
+
   private async ensureUserProfilePrimitives(userId: string) {
     await this.prisma.$transaction(async (tx) => {
       await tx.userWallet.upsert({
@@ -98,6 +134,10 @@ export class SessionsService {
     // NEW – FreePlay / mode metadata
     aiMode?: string | null;
     extraPayload?: Record<string, any> | null;
+
+    // ✅ Phase 1 / Step 3: End reason code and metadata
+    endReasonCode?: string | null;
+    endReasonMeta?: Record<string, any> | null;
   }): Promise<{
     summary: SessionRewardsSummary;
     finalScore: number;
@@ -117,6 +157,8 @@ export class SessionsService {
       missionStatus,
       aiMode,
       extraPayload,
+      endReasonCode,
+      endReasonMeta,
     } = params;
 
     if (!messageScores || !Array.isArray(messageScores) || messageScores.length === 0) {
@@ -146,20 +188,30 @@ export class SessionsService {
         : 0;
 
     // 2) Determine "should finalize" and success flag
-    // ✅ Step 6: Finalize ONLY when missionStatus is SUCCESS or FAIL (ended).
+    // ✅ STEP 4.4: Finalize when missionStatus is SUCCESS, FAIL, or ABORTED (all final states).
     // Do NOT finalize on IN_PROGRESS for either missions or FreePlay.
-    const shouldFinalize = missionStatus === 'SUCCESS' || missionStatus === 'FAIL';
+    // Note: missionStatus param is typed as 'IN_PROGRESS' | 'SUCCESS' | 'FAIL', but we also
+    // handle ABORTED as a final state for future extensibility.
+    const isFinalStatus =
+      missionStatus === 'SUCCESS' ||
+      missionStatus === 'FAIL' ||
+      (missionStatus as any) === 'ABORTED';
+    const shouldFinalize = isFinalStatus;
 
     const isSuccess: boolean | null = shouldFinalize
       ? templateId
         ? missionStatus === 'SUCCESS'
-        : finalScore >= 60
+        : missionStatus === 'SUCCESS' && finalScore >= 60
       : null;
 
     const targetStatus: MissionStatus = shouldFinalize
-      ? isSuccess
+      ? missionStatus === 'SUCCESS'
         ? MissionStatus.SUCCESS
-        : MissionStatus.FAIL
+        : missionStatus === 'FAIL'
+          ? MissionStatus.FAIL
+          : (missionStatus as any) === 'ABORTED'
+            ? MissionStatus.ABORTED
+            : MissionStatus.FAIL // fallback (shouldn't happen)
       : MissionStatus.IN_PROGRESS;
 
     // 3) Transaction: upsert session, replace messages, maybe finalize+grant once
@@ -175,8 +227,9 @@ export class SessionsService {
         );
       }
 
-      // 3.1) Determine session id to use
+      // 3.1) Determine session id to use and load current status
       let sessionIdToUse: string | null = null;
+      let currentStatus: MissionStatus | null = null;
 
       // ✅ Step 8: explicit sessionId wins
       if (explicitSessionId) {
@@ -217,16 +270,30 @@ export class SessionsService {
             endedAt: null,
           },
           orderBy: { createdAt: 'desc' },
-          select: { id: true },
+          select: { id: true, status: true },
         });
-        if (existing?.id) sessionIdToUse = existing.id;
+        if (existing?.id) {
+          sessionIdToUse = existing.id;
+          currentStatus = existing.status;
+        }
+      }
+
+      // ✅ STEP 4.4: Validate status transition if we have a current status
+      if (currentStatus !== null) {
+        this.validateMissionStatusTransition(currentStatus, targetStatus);
       }
 
       const basePayload: Record<string, any> = {
         ...(extraPayload && typeof extraPayload === 'object' ? extraPayload : {}),
         messageScores,
         transcript,
+        // ✅ Phase 1 / Step 3: Persist end reason code and metadata
+        endReasonCode: endReasonCode ?? null,
+        endReasonMeta: endReasonMeta ?? null,
       };
+
+      // ✅ STEP 4.4: Ensure endedAt is set when finalizing
+      const finalEndedAt = shouldFinalize ? now : null;
 
       const baseSessionData = {
         userId,
@@ -249,7 +316,7 @@ export class SessionsService {
         overallScore: finalScore,
 
         status: targetStatus,
-        endedAt: shouldFinalize ? now : null,
+        endedAt: finalEndedAt,
         isSuccess: shouldFinalize ? isSuccess : null,
 
         // ✅ NEW – store logical mode on the session ("MISSION" / "FREEPLAY")
@@ -480,6 +547,10 @@ export class SessionsService {
     // ✅ Step 3: FreePlay / mode metadata
     aiMode?: string | null;
     extraPayload?: Record<string, any> | null;
+
+    // ✅ Phase 1 / Step 3: End reason code and metadata
+    endReasonCode?: string | null;
+    endReasonMeta?: Record<string, any> | null;
   }) {
     const {
       userId,
@@ -493,6 +564,8 @@ export class SessionsService {
       missionStatus,
       aiMode,
       extraPayload,
+      endReasonCode,
+      endReasonMeta,
     } = params;
 
     if (!userId) {
@@ -516,6 +589,8 @@ export class SessionsService {
         missionStatus,
         aiMode: aiMode ?? null,
         extraPayload: extraPayload ?? null,
+        endReasonCode: endReasonCode ?? null,
+        endReasonMeta: endReasonMeta ?? null,
       });
 
     // Option B: persist metrics + insights (update the SAME session we used)

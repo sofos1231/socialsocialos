@@ -20,6 +20,10 @@ import {
   validateMissionConfigV1Shape,
   MissionConfigValidationError,
 } from './mission-config-v1.schema';
+import {
+  normalizeMissionConfigV1,
+  type NormalizedMissionConfigV1,
+} from '../practice/mission-config-runtime';
 
 function slugify(input: string) {
   return input
@@ -445,10 +449,81 @@ export class MissionsAdminService {
       });
     }
 
+    // ✅ STEP 4.1: Normalize missionConfigV1 before save
+    const normalizeResult = normalizeMissionConfigV1(aiContract);
+    if (!normalizeResult.ok) {
+      const failedResult = normalizeResult as { ok: false; reason: string; errors?: any[] };
+      throw new BadRequestException({
+        code: 'MISSION_TEMPLATE_INVALID_CONFIG',
+        message:
+          failedResult.reason === 'missing'
+            ? 'Mission template is missing missionConfigV1'
+            : failedResult.reason === 'invalid'
+              ? 'Mission template aiContract is invalid'
+              : 'Mission template aiContract is not a valid object',
+        details: failedResult.errors ?? [],
+      });
+    }
+
+    // Extract normalized config (without endReasonPrecedenceResolved which is runtime-only)
+    const normalizedConfig = normalizeResult.value;
+    const normalizedAiContract = {
+      missionConfigV1: {
+        version: normalizedConfig.version,
+        dynamics: normalizedConfig.dynamics,
+        objective: normalizedConfig.objective,
+        difficulty: normalizedConfig.difficulty,
+        style: normalizedConfig.style,
+        statePolicy: normalizedConfig.statePolicy,
+      },
+    };
+
+    // ✅ STEP 4.1: Consistency checks
+    // Check difficulty consistency
+    const templateDifficulty = dto.difficulty ?? MissionDifficulty.EASY;
+    if (normalizedConfig.difficulty.level !== templateDifficulty) {
+      throw new BadRequestException({
+        code: 'MISSION_TEMPLATE_INCONSISTENT_DIFFICULTY',
+        message: `Template difficulty (${templateDifficulty}) does not match missionConfigV1.difficulty.level (${normalizedConfig.difficulty.level})`,
+      });
+    }
+
     // ✅ aiStyleKey (new) + legacy alias dto.aiStyle
     const normalizedStyleKey = this.normalizeAiStyleKey(
       (dto as any).aiStyleKey ?? (dto as any).aiStyle,
     );
+
+    // ✅ STEP 4.1: Check style consistency
+    if (normalizedStyleKey && normalizedStyleKey !== null) {
+      if (normalizedConfig.style.aiStyleKey !== normalizedStyleKey) {
+        throw new BadRequestException({
+          code: 'MISSION_TEMPLATE_INCONSISTENT_STYLE',
+          message: `Template aiStyleKey (${normalizedStyleKey}) does not match missionConfigV1.style.aiStyleKey (${normalizedConfig.style.aiStyleKey})`,
+        });
+      }
+    } else if (normalizedConfig.style.aiStyleKey) {
+      // Template has no aiStyleKey but missionConfigV1 does - this is OK, missionConfigV1 is source of truth
+    }
+
+    // ✅ STEP 4.1: Validate persona exists and is active
+    if (personaId) {
+      const persona = await this.prisma.aiPersona.findUnique({
+        where: { id: personaId },
+        select: { id: true, active: true },
+      });
+      if (!persona) {
+        throw new BadRequestException({
+          code: 'MISSION_TEMPLATE_INVALID_PERSONA',
+          message: `Persona with id "${personaId}" does not exist`,
+        });
+      }
+      if (!persona.active) {
+        throw new BadRequestException({
+          code: 'MISSION_TEMPLATE_INACTIVE_PERSONA',
+          message: `Persona with id "${personaId}" is inactive`,
+        });
+      }
+    }
 
     const data: Prisma.PracticeMissionTemplateCreateInput = {
       code,
@@ -472,7 +547,7 @@ export class MissionsAdminService {
       goalType: dto.goalType ?? null,
 
       active: dto.active ?? true,
-      aiContract: aiContract ?? null,
+      aiContract: normalizedAiContract as any, // Store normalized version
 
       ...(categoryId
         ? { category: { connect: { id: categoryId } } }
@@ -506,7 +581,7 @@ export class MissionsAdminService {
   async updateMission(id: string, dto: UpdateMissionDto) {
     const existing = await this.prisma.practiceMissionTemplate.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, active: true },
     });
     if (!existing) {
       throw new NotFoundException({
@@ -523,10 +598,24 @@ export class MissionsAdminService {
 
     const aiContract = this.sanitizeAiContract(dto.aiContract);
 
-    // Phase 0: Validate missionConfigV1 for update (only if aiContract is being updated)
+    // ✅ STEP 4.1: For stability, require valid config for active missions
+    // Only allow null if explicitly clearing AND mission is being deactivated
+    // Determine final active status: use dto.active if provided, otherwise keep existing
+    const willBeActive = dto.active !== undefined ? dto.active : existing.active;
+    
+    let normalizedAiContract: any = undefined;
     if (dto.aiContract !== undefined) {
-      // For updates, allow explicit null to clear aiContract without enforcing missionConfigV1
-      if (aiContract !== null) {
+      if (aiContract === null) {
+        // Only allow null if mission is being deactivated (or already inactive)
+        if (willBeActive) {
+          throw new BadRequestException({
+            code: 'MISSION_TEMPLATE_CANNOT_CLEAR_CONFIG',
+            message: 'Cannot clear aiContract for active missions. Deactivate the mission first or provide a valid config.',
+          });
+        }
+        normalizedAiContract = null;
+      } else {
+        // Validate and normalize
         const validationErrors = validateMissionConfigV1Shape(aiContract);
         if (validationErrors.length > 0) {
           throw new BadRequestException({
@@ -534,6 +623,56 @@ export class MissionsAdminService {
             message: 'Invalid aiContract.missionConfigV1',
             details: validationErrors,
           });
+        }
+
+        const normalizeResult = normalizeMissionConfigV1(aiContract);
+        if (!normalizeResult.ok) {
+          const failedResult = normalizeResult as { ok: false; reason: string; errors?: any[] };
+          throw new BadRequestException({
+            code: 'MISSION_TEMPLATE_INVALID_CONFIG',
+            message:
+              failedResult.reason === 'missing'
+                ? 'Mission template is missing missionConfigV1'
+                : failedResult.reason === 'invalid'
+                  ? 'Mission template aiContract is invalid'
+                  : 'Mission template aiContract is not a valid object',
+            details: failedResult.errors ?? [],
+          });
+        }
+
+        const normalizedConfig = normalizeResult.value;
+        normalizedAiContract = {
+          missionConfigV1: {
+            version: normalizedConfig.version,
+            dynamics: normalizedConfig.dynamics,
+            objective: normalizedConfig.objective,
+            difficulty: normalizedConfig.difficulty,
+            style: normalizedConfig.style,
+            statePolicy: normalizedConfig.statePolicy,
+          },
+        };
+
+        // ✅ STEP 4.1: Consistency checks for update
+        // Check difficulty consistency (only if both are being updated)
+        if (dto.difficulty !== undefined) {
+          if (normalizedConfig.difficulty.level !== dto.difficulty) {
+            throw new BadRequestException({
+              code: 'MISSION_TEMPLATE_INCONSISTENT_DIFFICULTY',
+              message: `Template difficulty (${dto.difficulty}) does not match missionConfigV1.difficulty.level (${normalizedConfig.difficulty.level})`,
+            });
+          }
+        } else {
+          // Load existing difficulty to check consistency
+          const existing = await this.prisma.practiceMissionTemplate.findUnique({
+            where: { id },
+            select: { difficulty: true },
+          });
+          if (existing && normalizedConfig.difficulty.level !== existing.difficulty) {
+            throw new BadRequestException({
+              code: 'MISSION_TEMPLATE_INCONSISTENT_DIFFICULTY',
+              message: `Template difficulty (${existing.difficulty}) does not match missionConfigV1.difficulty.level (${normalizedConfig.difficulty.level})`,
+            });
+          }
         }
       }
     }
@@ -569,7 +708,9 @@ export class MissionsAdminService {
       ...(dto.goalType !== undefined ? { goalType: dto.goalType ?? null } : {}),
 
       ...(dto.active !== undefined ? { active: dto.active } : {}),
-      ...(dto.aiContract !== undefined ? { aiContract: aiContract ?? null } : {}),
+      ...(normalizedAiContract !== undefined
+        ? { aiContract: normalizedAiContract as any }
+        : {}),
 
       ...(dto.code ? { code: normalizeCode(dto.code) } : {}),
     };
@@ -598,12 +739,71 @@ export class MissionsAdminService {
       (dto as any).aiStyleKey ?? (dto as any).aiStyle,
     );
 
+    // ✅ STEP 4.1: Check style consistency if both aiContract and aiStyleKey are being updated
+    if (normalizedAiContract !== undefined && normalizedStyleKey !== undefined) {
+      const configStyleKey = (normalizedAiContract as any)?.missionConfigV1?.style?.aiStyleKey;
+      if (normalizedStyleKey !== null && configStyleKey && configStyleKey !== normalizedStyleKey) {
+        throw new BadRequestException({
+          code: 'MISSION_TEMPLATE_INCONSISTENT_STYLE',
+          message: `Template aiStyleKey (${normalizedStyleKey}) does not match missionConfigV1.style.aiStyleKey (${configStyleKey})`,
+        });
+      }
+    } else if (normalizedAiContract !== undefined) {
+      // Check against existing aiStyleId
+      const existing = await this.prisma.practiceMissionTemplate.findUnique({
+        where: { id },
+        select: { aiStyleId: true, aiStyle: { select: { key: true } } },
+      });
+      if (existing?.aiStyle) {
+        const configStyleKey = (normalizedAiContract as any)?.missionConfigV1?.style?.aiStyleKey;
+        if (configStyleKey && configStyleKey !== existing.aiStyle.key) {
+          throw new BadRequestException({
+            code: 'MISSION_TEMPLATE_INCONSISTENT_STYLE',
+            message: `Template aiStyle (${existing.aiStyle.key}) does not match missionConfigV1.style.aiStyleKey (${configStyleKey})`,
+          });
+        }
+      }
+    }
+
     if (normalizedStyleKey !== undefined) {
       if (normalizedStyleKey === null) {
         (data as any).aiStyle = { disconnect: true };
       } else {
         const aiStyleId = await this.resolveAiStyleIdByKeyOrThrow(normalizedStyleKey);
         (data as any).aiStyle = { connect: { id: aiStyleId } };
+      }
+    }
+
+    // ✅ STEP 4.1: Validate persona exists and is active (if being updated)
+    if (personaId !== undefined || personaCode !== undefined) {
+      const targetPersonaId = personaId
+        ? personaId
+        : personaCode
+          ? (
+              await this.prisma.aiPersona.findUnique({
+                where: { code: personaCode },
+                select: { id: true },
+              })
+            )?.id
+          : null;
+
+      if (targetPersonaId) {
+        const persona = await this.prisma.aiPersona.findUnique({
+          where: { id: targetPersonaId },
+          select: { id: true, active: true },
+        });
+        if (!persona) {
+          throw new BadRequestException({
+            code: 'MISSION_TEMPLATE_INVALID_PERSONA',
+            message: `Persona with id "${targetPersonaId}" does not exist`,
+          });
+        }
+        if (!persona.active) {
+          throw new BadRequestException({
+            code: 'MISSION_TEMPLATE_INACTIVE_PERSONA',
+            message: `Persona with id "${targetPersonaId}" is inactive`,
+          });
+        }
       }
     }
 

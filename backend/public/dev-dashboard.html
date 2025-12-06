@@ -500,7 +500,7 @@
               <label>AI Contract JSON (single blob)</label>
               <textarea
                 id="aiContractJsonTextarea"
-                placeholder='{"version":"ai-contract/v1","personaStyle":{...},"requiredMoves":[...],"bannedMoves":[...],"successCriteria":{...},"gradingHints":{...}}'
+                placeholder='{"version":1,"dynamics":{"mode":"CHAT","locationTag":"APP_CHAT","hasPerMessageTimer":false,"defaultEntryRoute":"TEXT_CHAT"},"objective":{"kind":"PRACTICE_OPENING","userTitle":"Mission Title","userDescription":"Mission description"},"difficulty":{"level":"EASY"},"style":{"aiStyleKey":"NEUTRAL"},"statePolicy":{"maxMessages":10,"maxStrikes":3,"allowTimerExtension":false,"successScoreThreshold":60,"failScoreThreshold":40,"enableGateSequence":false,"enableMoodCollapse":false,"enableObjectiveAutoSuccess":false,"allowedEndReasons":["SUCCESS_OBJECTIVE","FAIL_OBJECTIVE"]}}'
               ></textarea>
 
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -804,7 +804,12 @@
           try {
             const obj =
               typeof contract === "string" ? JSON.parse(contract) : contract;
-            ui.aiContractJsonTextarea.value = JSON.stringify(obj, null, 2);
+            
+            // If wrapped format { missionConfigV1: {...} }, extract the inner config
+            // Otherwise, assume it's already raw MissionConfigV1
+            const configToDisplay = obj.missionConfigV1 || obj;
+            
+            ui.aiContractJsonTextarea.value = JSON.stringify(configToDisplay, null, 2);
           } catch {
             ui.aiContractJsonTextarea.value =
               typeof contract === "string" ? contract : safeStringify(contract);
@@ -983,9 +988,56 @@
           if (!categoryId) return { ok: false, error: "Category is required (Load Meta first)." };
           if (!personaId) return { ok: false, error: "Persona is required (Load Meta first)." };
 
+          const isUpdate = !!state.selectedMissionId;
           const parsed = getAiContractJsonOrNull();
-          if (!parsed || !parsed.ok) {
-            return { ok: false, error: parsed?.error || "AI Contract JSON is required." };
+
+          // For updates: if textarea is empty, don't include aiContract at all
+          if (isUpdate && (!parsed || !parsed.ok || !parsed.value)) {
+            // Empty textarea on update = don't touch aiContract
+            const payload = {
+              name,
+              difficulty,
+              categoryId,
+              personaId,
+              active,
+              ...(code ? { code } : {}),
+            };
+
+            // AI Style (optional) — NEVER send aiStyleId, only aiStyleKey
+            const sel = getSelectedStyle();
+            if (sel && sel.key) {
+              payload.aiStyleKey = String(sel.key).trim().toUpperCase();
+            } else if (state.aiStyleTouched) {
+              payload.aiStyleKey = ""; // explicit clear on update
+            }
+
+            return { ok: true, value: payload };
+          }
+
+          // For create: require AI contract
+          if (!isUpdate && (!parsed || !parsed.ok)) {
+            return { ok: false, error: parsed?.error || "AI Contract JSON is required for new missions." };
+          }
+
+          // Normalize aiContract: wrap raw MissionConfigV1 or use already-wrapped format
+          let aiContractValue = null;
+          if (parsed && parsed.ok && parsed.value) {
+            const value = parsed.value;
+
+            // Check if it's already wrapped { missionConfigV1: {...} }
+            if (value.missionConfigV1 && typeof value.missionConfigV1 === 'object') {
+              // Already wrapped, use as-is
+              aiContractValue = value;
+            } else if (value.version === 1 && value.dynamics && value.objective) {
+              // Raw MissionConfigV1 (has version:1 and required fields), wrap it
+              aiContractValue = { missionConfigV1: value };
+            } else {
+              // Legacy format detected (e.g., version:"ai-contract/v1")
+              return {
+                ok: false,
+                error: "Legacy AI contract format detected. Please use MissionConfigV1 format (version: 1, with dynamics/objective/difficulty/style/statePolicy)."
+              };
+            }
           }
 
           const payload = {
@@ -995,7 +1047,7 @@
             personaId,
             active,
             ...(code ? { code } : {}),
-            aiContract: parsed.value
+            ...(aiContractValue ? { aiContract: aiContractValue } : {}),
           };
 
           // AI Style (optional) — NEVER send aiStyleId, only aiStyleKey

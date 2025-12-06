@@ -18,7 +18,8 @@ export type MissionEndReasonCode =
   | 'FAIL_GATE_SEQUENCE'
   | 'FAIL_MOOD_COLLAPSE'
   | 'ABORT_USER_EXIT'
-  | 'ABORT_SYSTEM_ERROR';
+  | 'ABORT_SYSTEM_ERROR'
+  | 'ABORT_DISQUALIFIED';
 
 export type MissionEndReasonCategory = 'SUCCESS' | 'FAIL' | 'ABORT';
 
@@ -32,6 +33,7 @@ export interface MissionEndReasonMeta {
 export const MISSION_END_REASON_PRECEDENCE: MissionEndReasonCode[] = [
   // Highest priority first when multiple reasons could apply
   'ABORT_SYSTEM_ERROR',
+  'ABORT_DISQUALIFIED',
   'FAIL_TIMER_EXPIRED',
   'FAIL_TOO_MANY_STRIKES',
   'FAIL_GATE_SEQUENCE',
@@ -113,6 +115,12 @@ export const MISSION_END_REASON_META_DEFAULT: Record<
     category: 'ABORT',
     label: 'System Error',
     description: 'Mission was aborted due to a system error.',
+  },
+  ABORT_DISQUALIFIED: {
+    code: 'ABORT_DISQUALIFIED',
+    category: 'ABORT',
+    label: 'Disqualified',
+    description: 'Mission was disqualified due to inappropriate content.',
   },
 };
 
@@ -249,6 +257,7 @@ const VALID_END_REASON_CODES: MissionEndReasonCode[] = [
   'FAIL_MOOD_COLLAPSE',
   'ABORT_USER_EXIT',
   'ABORT_SYSTEM_ERROR',
+  'ABORT_DISQUALIFIED',
 ];
 const VALID_DEFAULT_ENTRY_ROUTES: string[] = ['TEXT_CHAT', 'VOICE_SIM'];
 const VALID_STYLE_INTENSITIES: string[] = ['SOFT', 'NORMAL', 'HARD'];
@@ -338,6 +347,25 @@ export function validateMissionConfigV1Shape(
     );
   }
 
+  // Check for unknown keys at missionConfigV1 level
+  const allowedTopLevelKeys = [
+    'version',
+    'dynamics',
+    'objective',
+    'difficulty',
+    'style',
+    'statePolicy',
+  ];
+  for (const key in config) {
+    if (!allowedTopLevelKeys.includes(key)) {
+      addError(
+        errors,
+        `aiContract.missionConfigV1.${key}`,
+        'Unknown key',
+      );
+    }
+  }
+
   // Validate dynamics
   if (!config.dynamics || typeof config.dynamics !== 'object') {
     addError(
@@ -375,6 +403,23 @@ export function validateMissionConfigV1Shape(
         `defaultEntryRoute must be one of: ${VALID_DEFAULT_ENTRY_ROUTES.join(', ')}`,
       );
     }
+
+    // Check for unknown keys in dynamics
+    const allowedDynamicsKeys = [
+      'mode',
+      'locationTag',
+      'hasPerMessageTimer',
+      'defaultEntryRoute',
+    ];
+    for (const key in dynamics) {
+      if (!allowedDynamicsKeys.includes(key)) {
+        addError(
+          errors,
+          `aiContract.missionConfigV1.dynamics.${key}`,
+          'Unknown key',
+        );
+      }
+    }
   }
 
   // Validate objective
@@ -406,6 +451,18 @@ export function validateMissionConfigV1Shape(
         'aiContract.missionConfigV1.objective.userDescription',
         'userDescription is required and must be a non-empty string',
       );
+    }
+
+    // Check for unknown keys in objective
+    const allowedObjectiveKeys = ['kind', 'userTitle', 'userDescription'];
+    for (const key in objective) {
+      if (!allowedObjectiveKeys.includes(key)) {
+        addError(
+          errors,
+          `aiContract.missionConfigV1.objective.${key}`,
+          'Unknown key',
+        );
+      }
     }
   }
 
@@ -461,6 +518,23 @@ export function validateMissionConfigV1Shape(
         'recommendedFailScore must be a number between 0 and 100, or null',
       );
     }
+
+    // Check for unknown keys in difficulty
+    const allowedDifficultyKeys = [
+      'level',
+      'recommendedMaxMessages',
+      'recommendedSuccessScore',
+      'recommendedFailScore',
+    ];
+    for (const key in difficulty) {
+      if (!allowedDifficultyKeys.includes(key)) {
+        addError(
+          errors,
+          `aiContract.missionConfigV1.difficulty.${key}`,
+          'Unknown key',
+        );
+      }
+    }
   }
 
   // Validate style
@@ -494,6 +568,18 @@ export function validateMissionConfigV1Shape(
         'aiContract.missionConfigV1.style.styleIntensity',
         `styleIntensity must be one of: ${VALID_STYLE_INTENSITIES.join(', ')} or undefined`,
       );
+    }
+
+    // Check for unknown keys in style
+    const allowedStyleKeys = ['aiStyleKey', 'styleIntensity'];
+    for (const key in style) {
+      if (!allowedStyleKeys.includes(key)) {
+        addError(
+          errors,
+          `aiContract.missionConfigV1.style.${key}`,
+          'Unknown key',
+        );
+      }
     }
   }
 
@@ -627,6 +713,31 @@ export function validateMissionConfigV1Shape(
             );
           }
         }
+      }
+    }
+
+    // Check for unknown keys in statePolicy
+    const allowedStatePolicyKeys = [
+      'maxMessages',
+      'maxStrikes',
+      'allowTimerExtension',
+      'successScoreThreshold',
+      'failScoreThreshold',
+      'enableGateSequence',
+      'enableMoodCollapse',
+      'enableObjectiveAutoSuccess',
+      'allowedEndReasons',
+      'minMessagesBeforeEnd',
+      'timerSecondsPerMessage',
+      'endReasonPrecedence',
+    ];
+    for (const key in statePolicy) {
+      if (!allowedStatePolicyKeys.includes(key)) {
+        addError(
+          errors,
+          `aiContract.missionConfigV1.statePolicy.${key}`,
+          'Unknown key',
+        );
       }
     }
   }
