@@ -3,7 +3,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { MessageRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service';
-import { normalizeChatMessageRead } from '../sessions/sessions.service';
+// ✅ Step 5.5: Import from shared normalizer (removed service-to-service dependency)
+import { normalizeChatMessageRead } from '../shared/normalizers/chat-message.normalizer';
 
 /**
  * ✅ Step 5.1 Migration B: Safe traitData helper

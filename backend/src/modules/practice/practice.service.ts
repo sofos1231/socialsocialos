@@ -469,6 +469,35 @@ export function normalizeEndReason(
   return { endReasonCode: normalizedCode, endReasonMeta: normalizedMeta };
 }
 
+/**
+ * ✅ Step 5.5: Sanitize practice response (remove debug/internal fields)
+ * 
+ * Debug gating rules:
+ * - aiDebug: Only include if NODE_ENV !== 'production' AND AI_DEBUG_EXPOSE === 'true'
+ * - aiStructured: Remove 'raw' field if present (keep other fields for backwards compatibility)
+ * - Production: NEVER expose debug fields, even if flag set
+ */
+function sanitizePracticeResponse<T extends Record<string, any>>(resp: T): T {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const allowDebug = !isProduction && process.env.AI_DEBUG_EXPOSE === 'true';
+
+  // Create sanitized copy
+  const sanitized: any = { ...resp };
+
+  // Remove aiDebug unless explicitly allowed (and never in production)
+  if (!allowDebug && 'aiDebug' in sanitized) {
+    delete sanitized.aiDebug;
+  }
+
+  // Sanitize aiStructured: remove 'raw' field if present
+  if ('aiStructured' in sanitized && sanitized.aiStructured && typeof sanitized.aiStructured === 'object') {
+    const { raw, ...rest } = sanitized.aiStructured as any;
+    sanitized.aiStructured = rest as any;
+  }
+
+  return sanitized as T;
+}
+
 @Injectable()
 export class PracticeService {
   constructor(
@@ -844,7 +873,8 @@ export class PracticeService {
         endReasonMeta: missionState.endReasonMeta ?? null,
       });
 
-      return {
+      // ✅ Step 5.5: Sanitize response (remove debug fields by default)
+      return sanitizePracticeResponse({
         ...saved,
         aiReply,
         aiStructured: null,
@@ -867,7 +897,7 @@ export class PracticeService {
             }
           : null,
         missionState,
-      };
+      });
     }
 
     let messageScores: number[] = [];
@@ -968,7 +998,8 @@ export class PracticeService {
       endReasonMeta: missionState.endReasonMeta ?? null,
     });
 
-    return {
+    // ✅ Step 5.5: Sanitize response (remove debug fields by default)
+    return sanitizePracticeResponse({
       ...saved,
       aiReply,
       aiStructured,
@@ -988,6 +1019,6 @@ export class PracticeService {
           }
         : null,
       missionState,
-    };
+    });
   }
 }

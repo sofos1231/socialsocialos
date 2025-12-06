@@ -3,7 +3,9 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../db/prisma.service';
-import { SessionsService, normalizeChatMessageRead } from './sessions.service';
+import { SessionsService } from './sessions.service';
+// ✅ Step 5.5: Import from shared normalizer module
+import { normalizeChatMessageRead } from '../shared/normalizers/chat-message.normalizer';
 import { StatsService } from '../stats/stats.service';
 import { MessageRole } from '@prisma/client';
 import { AiSessionResult } from '../ai/ai-scoring.types';

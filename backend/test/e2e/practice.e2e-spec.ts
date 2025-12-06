@@ -380,5 +380,141 @@ describe('Practice E2E - Step 5.1', () => {
       await prisma.practiceSession.delete({ where: { id: session.id } });
     });
   });
+
+  describe('Step 5.5 - Public Response Sanitization', () => {
+    it('should NOT include aiDebug in response by default', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/practice/session')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          topic: 'Test sanitization',
+          messages: [{ role: 'USER', content: 'Hello' }],
+        })
+        .expect(201);
+
+      // Verify aiDebug is NOT present
+      expect(response.body.aiDebug).toBeUndefined();
+    });
+
+    it('should NOT include raw field in aiStructured if present', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/practice/session')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          topic: 'Test sanitization',
+          messages: [{ role: 'USER', content: 'Hello' }],
+        })
+        .expect(201);
+
+      // If aiStructured exists, it should NOT have a 'raw' field
+      if (response.body.aiStructured) {
+        expect(response.body.aiStructured.raw).toBeUndefined();
+        // Verify other fields are preserved
+        if (response.body.aiStructured.replyText !== undefined) {
+          expect(typeof response.body.aiStructured.replyText).toBe('string');
+        }
+      }
+    });
+
+    it('should NOT include debug fields in production mode', async () => {
+      // Save original env
+      const originalEnv = process.env.NODE_ENV;
+      const originalDebugFlag = process.env.AI_DEBUG_EXPOSE;
+
+      try {
+        // Set production mode
+        process.env.NODE_ENV = 'production';
+        delete process.env.AI_DEBUG_EXPOSE;
+
+        const response = await request(app.getHttpServer())
+          .post('/v1/practice/session')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({
+            topic: 'Test production sanitization',
+            messages: [{ role: 'USER', content: 'Hello' }],
+          })
+          .expect(201);
+
+        // In production, aiDebug must be absent
+        expect(response.body.aiDebug).toBeUndefined();
+
+        // Verify response still has public fields
+        expect(response.body.aiReply).toBeDefined();
+        expect(response.body.missionState).toBeDefined();
+      } finally {
+        // Restore original env
+        process.env.NODE_ENV = originalEnv;
+        if (originalDebugFlag) {
+          process.env.AI_DEBUG_EXPOSE = originalDebugFlag;
+        }
+      }
+    });
+
+    it('should preserve public fields (endReasonMeta, missionState, etc.)', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/practice/session')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          topic: 'Test public fields',
+          messages: [{ role: 'USER', content: 'Hello' }],
+        })
+        .expect(201);
+
+      // Verify public fields are present
+      expect(response.body.aiReply).toBeDefined();
+      expect(response.body.missionState).toBeDefined();
+      expect(response.body.sessionId).toBeDefined();
+      expect(response.body.rewards).toBeDefined();
+      expect(response.body.messages).toBeDefined();
+      expect(Array.isArray(response.body.messages)).toBe(true);
+    });
+
+    it('should NOT include meta field in messages', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/practice/session')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          topic: 'Test message sanitization',
+          messages: [{ role: 'USER', content: 'Hello' }],
+        })
+        .expect(201);
+
+      // Verify messages don't have meta field
+      if (response.body.messages && response.body.messages.length > 0) {
+        response.body.messages.forEach((msg: any) => {
+          expect(msg.meta).toBeUndefined();
+          // Verify expected fields are present
+          expect(msg.turnIndex).toBeDefined();
+          expect(msg.role).toBeDefined();
+          expect(msg.content).toBeDefined();
+        });
+      }
+    });
+
+    it('should serialize response JSON without debug fields', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/practice/session')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          topic: 'Test JSON serialization',
+          messages: [{ role: 'USER', content: 'Hello' }],
+        })
+        .expect(201);
+
+      // Serialize and parse to ensure no hidden fields
+      const jsonString = JSON.stringify(response.body);
+      const parsed = JSON.parse(jsonString);
+
+      // Verify no debug fields in serialized JSON
+      expect(parsed.aiDebug).toBeUndefined();
+      if (parsed.aiStructured) {
+        expect(parsed.aiStructured.raw).toBeUndefined();
+      }
+
+      // Verify no 'raw' anywhere in the response tree
+      const hasRawField = JSON.stringify(parsed).includes('"raw"');
+      expect(hasRawField).toBe(false);
+    });
+  });
 });
 
