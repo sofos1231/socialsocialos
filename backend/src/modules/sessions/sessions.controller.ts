@@ -1,5 +1,5 @@
 // src/modules/sessions/sessions.controller.ts
-import { Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Req, UseGuards, Param } from '@nestjs/common';
 import { SessionsService } from './sessions.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -19,5 +19,25 @@ export class SessionsController {
   async getDashboardSnapshot(@Req() req: any) {
     const userId = req.user?.sub;
     return this.sessionsService.getDashboardSnapshot(userId);
+  }
+
+  /**
+   * ✅ Step 5.7: GET /v1/sessions/last
+   * Returns the most recent session (prefers IN_PROGRESS, else most recent finalized)
+   */
+  @Get('last')
+  async getLast(@Req() req: any) {
+    const userId = req.user?.sub;
+    return this.sessionsService.getLastSessionPublic(userId);
+  }
+
+  /**
+   * ✅ Step 5.7: GET /v1/sessions/:id
+   * Returns a specific session by ID (user must own the session)
+   */
+  @Get(':id')
+  async getById(@Req() req: any, @Param('id') id: string) {
+    const userId = req.user?.sub;
+    return this.sessionsService.getSessionByIdPublic(userId, id);
   }
 }

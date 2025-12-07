@@ -23,6 +23,10 @@ import {
   MISSION_END_REASON_PRECEDENCE,
 } from '../missions-admin/mission-config-v1.schema';
 import { Prisma } from '@prisma/client';
+// ✅ Step 5.6: Import allowlist serializer
+import { toPracticeSessionResponsePublic } from '../shared/serializers/api-serializers';
+// ✅ Step 5.7: Import shared normalizeEndReason
+import { normalizeEndReason } from '../shared/normalizers/end-reason.normalizer';
 
 import type { PracticeMessageInput as AiPracticeMessageInput } from '../ai/ai.types';
 import type { TranscriptMessage } from '../ai/ai-scoring.types';
@@ -421,53 +425,7 @@ function computeEndReason(params: {
   };
 }
 
-// ✅ Step 5.3: Module-level Set for O(1) lookup performance
-const VALID_END_REASON_CODES_SET = new Set<string>(MISSION_END_REASON_CODES);
-
-/**
- * ✅ Step 5.3: Normalize endReasonCode/endReasonMeta from DB (defensive normalization)
- * Validates endReasonCode against MissionEndReasonCode enum and ensures meta is plain object or null.
- * Always converts undefined → null. Idempotent.
- */
-export function normalizeEndReason(
-  code: any,
-  meta: any,
-): { endReasonCode: MissionEndReasonCode | null; endReasonMeta: Record<string, any> | null } {
-  // Normalize code: ensure MissionEndReasonCode | null (never undefined)
-  // Must be a valid enum member
-  let normalizedCode: MissionEndReasonCode | null = null;
-  if (
-    code !== null &&
-    code !== undefined &&
-    code !== Prisma.DbNull &&
-    code !== Prisma.JsonNull &&
-    typeof code === 'string'
-  ) {
-    // Validate against enum using Set for O(1) lookup
-    if (VALID_END_REASON_CODES_SET.has(code)) {
-      normalizedCode = code as MissionEndReasonCode;
-    }
-    // Invalid code → null (defensive)
-  }
-
-  // Normalize meta: ensure plain object | null (handle DbNull/JsonNull/malformed)
-  const metaIsNullLike =
-    meta === null ||
-    meta === undefined ||
-    meta === Prisma.DbNull ||
-    meta === Prisma.JsonNull;
-
-  const isPlainObject =
-    !metaIsNullLike &&
-    typeof meta === 'object' &&
-    !Array.isArray(meta) &&
-    meta !== null &&
-    meta.constructor === Object;
-
-  const normalizedMeta = isPlainObject ? meta : null;
-
-  return { endReasonCode: normalizedCode, endReasonMeta: normalizedMeta };
-}
+// ✅ Step 5.7: normalizeEndReason moved to shared/normalizers/end-reason.normalizer.ts
 
 /**
  * ✅ Step 5.5: Sanitize practice response (remove debug/internal fields)
@@ -873,31 +831,33 @@ export class PracticeService {
         endReasonMeta: missionState.endReasonMeta ?? null,
       });
 
-      // ✅ Step 5.5: Sanitize response (remove debug fields by default)
-      return sanitizePracticeResponse({
-        ...saved,
-        aiReply,
-        aiStructured: null,
-        aiDebug:
-          process.env.NODE_ENV !== 'production'
-            ? { disqualify, note: 'Disqualified before AI calls. No LLM used.' }
-            : undefined,
-        mission: templateId
-          ? {
-              templateId,
-              difficulty: template?.difficulty ?? null,
-              goalType: template?.goalType ?? null,
-              maxMessages: effectivePolicy.maxMessages,
-              scoring: {
-                successScore: effectivePolicy.successScore,
-                failScore: effectivePolicy.failScore,
-              },
-              aiStyle: (template?.aiStyle ?? null) as AiStyle | null,
-              aiContract: template?.aiContract ?? null,
-            }
-          : null,
-        missionState,
-      });
+      // ✅ Step 5.6: Apply allowlist-only serializer (no spreading raw objects)
+      return toPracticeSessionResponsePublic(
+        sanitizePracticeResponse({
+          ...saved,
+          aiReply,
+          aiStructured: null,
+          aiDebug:
+            process.env.NODE_ENV !== 'production'
+              ? { disqualify, note: 'Disqualified before AI calls. No LLM used.' }
+              : undefined,
+          mission: templateId
+            ? {
+                templateId,
+                difficulty: template?.difficulty ?? null,
+                goalType: template?.goalType ?? null,
+                maxMessages: effectivePolicy.maxMessages,
+                scoring: {
+                  successScore: effectivePolicy.successScore,
+                  failScore: effectivePolicy.failScore,
+                },
+                aiStyle: (template?.aiStyle ?? null) as AiStyle | null,
+                aiContract: template?.aiContract ?? null,
+              }
+            : null,
+          missionState,
+        }),
+      );
     }
 
     let messageScores: number[] = [];
@@ -998,27 +958,29 @@ export class PracticeService {
       endReasonMeta: missionState.endReasonMeta ?? null,
     });
 
-    // ✅ Step 5.5: Sanitize response (remove debug fields by default)
-    return sanitizePracticeResponse({
-      ...saved,
-      aiReply,
-      aiStructured,
-      aiDebug: process.env.NODE_ENV !== 'production' ? aiDebug : undefined,
-      mission: templateId
-        ? {
-            templateId,
-            difficulty: template?.difficulty ?? null,
-            goalType: template?.goalType ?? null,
-            maxMessages: effectivePolicy.maxMessages,
-            scoring: {
-              successScore: effectivePolicy.successScore,
-              failScore: effectivePolicy.failScore,
-            },
-            aiStyle: (template?.aiStyle ?? null) as AiStyle | null,
-            aiContract: template?.aiContract ?? null,
-          }
-        : null,
-      missionState,
-    });
+    // ✅ Step 5.6: Apply allowlist-only serializer (no spreading raw objects)
+    return toPracticeSessionResponsePublic(
+      sanitizePracticeResponse({
+        ...saved,
+        aiReply,
+        aiStructured,
+        aiDebug: process.env.NODE_ENV !== 'production' ? aiDebug : undefined,
+        mission: templateId
+          ? {
+              templateId,
+              difficulty: template?.difficulty ?? null,
+              goalType: template?.goalType ?? null,
+              maxMessages: effectivePolicy.maxMessages,
+              scoring: {
+                successScore: effectivePolicy.successScore,
+                failScore: effectivePolicy.failScore,
+              },
+              aiStyle: (template?.aiStyle ?? null) as AiStyle | null,
+              aiContract: template?.aiContract ?? null,
+            }
+          : null,
+        missionState,
+      }),
+    );
   }
 }

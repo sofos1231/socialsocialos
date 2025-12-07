@@ -516,5 +516,156 @@ describe('Practice E2E - Step 5.1', () => {
       expect(hasRawField).toBe(false);
     });
   });
+
+  describe('Step 5.6 - Public API Allowlist Serialization', () => {
+    const ALLOWED_PRACTICE_TOP_LEVEL_KEYS = [
+      'ok',
+      'rewards',
+      'dashboard',
+      'sessionId',
+      'messages',
+      'aiReply',
+      'aiStructured',
+      'mission',
+      'missionState',
+    ];
+
+    const FORBIDDEN_KEYS = [
+      'aiDebug',
+      'extraPayload',
+      'payloadExtras',
+      'meta',
+      'providerRaw',
+      'scoringDebug',
+      'userId',
+      'sessionId', // Only allowed at top level, not nested
+      'createdAt',
+      'updatedAt',
+      'id',
+      'raw',
+      'provider',
+    ];
+
+    /**
+     * Deep scan helper: recursively check for forbidden keys anywhere in the object
+     */
+    function deepScanForForbiddenKeys(obj: any, path: string = ''): string[] {
+      const found: string[] = [];
+      if (obj === null || obj === undefined) return found;
+
+      if (typeof obj === 'object') {
+        if (Array.isArray(obj)) {
+          obj.forEach((item, index) => {
+            found.push(...deepScanForForbiddenKeys(item, `${path}[${index}]`));
+          });
+        } else {
+          Object.keys(obj).forEach((key) => {
+            // Check if key itself is forbidden
+            if (FORBIDDEN_KEYS.includes(key)) {
+              found.push(`${path ? path + '.' : ''}${key}`);
+            }
+            // Recursively check nested objects
+            found.push(...deepScanForForbiddenKeys(obj[key], `${path ? path + '.' : ''}${key}`));
+          });
+        }
+      }
+
+      return found;
+    }
+
+    it('should only return exactly the 9 allowlisted top-level keys', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/practice/session')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          topic: 'Test allowlist',
+          messages: [{ role: 'USER', content: 'Hello' }],
+        })
+        .expect(201);
+
+      const responseKeys = Object.keys(response.body).sort();
+      const expectedKeys = [...ALLOWED_PRACTICE_TOP_LEVEL_KEYS].sort();
+
+      expect(responseKeys).toEqual(expectedKeys);
+    });
+
+    it('should NOT contain any forbidden keys anywhere (deep scan)', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/practice/session')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          topic: 'Test forbidden keys deep scan',
+          messages: [{ role: 'USER', content: 'Hello' }],
+        })
+        .expect(201);
+
+      const forbiddenKeysFound = deepScanForForbiddenKeys(response.body);
+      expect(forbiddenKeysFound).toEqual([]);
+    });
+
+    it('should have messages array with only allowlisted fields', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/practice/session')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          topic: 'Test message allowlist',
+          messages: [{ role: 'USER', content: 'Hello' }],
+        })
+        .expect(201);
+
+      const ALLOWED_MESSAGE_KEYS = ['turnIndex', 'role', 'content', 'score', 'traitData'];
+
+      if (response.body.messages && response.body.messages.length > 0) {
+        response.body.messages.forEach((msg: any, index: number) => {
+          const msgKeys = Object.keys(msg).sort();
+          const expectedKeys = [...ALLOWED_MESSAGE_KEYS].sort();
+
+          expect(msgKeys).toEqual(expectedKeys);
+
+          // Verify traitData structure
+          if (msg.traitData) {
+            const traitDataKeys = Object.keys(msg.traitData).sort();
+            expect(traitDataKeys).toEqual(['flags', 'label', 'traits']);
+          }
+        });
+      }
+    });
+
+    it('should NOT have aiStructured.raw field', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/practice/session')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          topic: 'Test aiStructured allowlist',
+          messages: [{ role: 'USER', content: 'Hello' }],
+        })
+        .expect(201);
+
+      if (response.body.aiStructured) {
+        expect(response.body.aiStructured.raw).toBeUndefined();
+        // Verify only allowlisted fields exist
+        const allowedAiStructuredKeys = ['replyText', 'messageScore', 'rarity', 'tags', 'parseOk'];
+        const actualKeys = Object.keys(response.body.aiStructured).sort();
+        const expectedKeys = allowedAiStructuredKeys
+          .filter((key) => response.body.aiStructured[key] !== undefined)
+          .sort();
+        expect(actualKeys).toEqual(expectedKeys);
+      }
+    });
+
+    it('should NOT have aiDebug anywhere in response', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/practice/session')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          topic: 'Test aiDebug exclusion',
+          messages: [{ role: 'USER', content: 'Hello' }],
+        })
+        .expect(201);
+
+      const responseJson = JSON.stringify(response.body);
+      expect(responseJson).not.toContain('aiDebug');
+    });
+  });
 });
 

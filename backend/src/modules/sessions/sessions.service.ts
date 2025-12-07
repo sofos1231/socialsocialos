@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
 import { StatsService } from '../stats/stats.service';
@@ -23,6 +24,10 @@ import { buildAiInsightSummary } from '../ai/ai-insights';
 import { Prisma } from '@prisma/client';
 // ✅ Step 5.5: Import normalizers from shared module (no service-to-service dependencies)
 import { normalizeChatMessageRead } from '../shared/normalizers/chat-message.normalizer';
+// ✅ Step 5.6: Import allowlist serializer
+import { toSessionsMockResponsePublic, toPracticeSessionResponsePublic } from '../shared/serializers/api-serializers';
+// ✅ Step 5.7: Import shared normalizeEndReason
+import { normalizeEndReason } from '../shared/normalizers/end-reason.normalizer';
 
 // Temporary: mock scores for the /sessions/mock endpoint
 const MOCK_MESSAGE_SCORES: number[] = [62, 74, 88, 96];
@@ -738,7 +743,7 @@ export class SessionsService {
   }
 
   async createMockSession(userId: string) {
-    return this.createScoredSessionFromScores({
+    const result = await this.createScoredSessionFromScores({
       userId,
       topic: 'Mock practice session',
       messageScores: MOCK_MESSAGE_SCORES,
@@ -748,6 +753,8 @@ export class SessionsService {
       })),
       missionStatus: 'SUCCESS',
     });
+    // ✅ Step 5.6: Apply allowlist-only serializer (no spreading raw objects)
+    return toSessionsMockResponsePublic(result);
   }
 
   async getDashboardSnapshot(userId: string) {
@@ -758,5 +765,329 @@ export class SessionsService {
       });
     }
     return this.statsService.getDashboardForUser(userId);
+  }
+
+  /**
+   * ✅ Step 5.7: Get session by ID (read endpoint)
+   * Returns the same public payload shape as POST /v1/practice/session
+   */
+  async getSessionByIdPublic(userId: string, sessionId: string) {
+    if (!userId) {
+      throw new UnauthorizedException({
+        code: 'AUTH_INVALID',
+        message: 'Missing user id',
+      });
+    }
+
+    const session = await this.prisma.practiceSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        userId: true,
+        topic: true,
+        status: true,
+        endedAt: true,
+        createdAt: true,
+        score: true,
+        xpGained: true,
+        coinsGained: true,
+        gemsGained: true,
+        isSuccess: true,
+        messageCount: true,
+        payload: true,
+        rarityCounts: true,
+        endReasonCode: true,
+        endReasonMeta: true,
+        templateId: true,
+        personaId: true,
+        aiMode: true,
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: 'Session not found',
+      });
+    }
+
+    // Avoid leaking existence: return NotFound if userId mismatches
+    if (session.userId !== userId) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: 'Session not found',
+      });
+    }
+
+    return this.buildSessionResponsePublic(userId, session);
+  }
+
+  /**
+   * ✅ Step 5.7: Get last session (read endpoint)
+   * Returns most recent FINALIZED session only (endedAt IS NOT NULL)
+   */
+  async getLastSessionPublic(userId: string) {
+    if (!userId) {
+      throw new UnauthorizedException({
+        code: 'AUTH_INVALID',
+        message: 'Missing user id',
+      });
+    }
+
+    const session = await this.prisma.practiceSession.findFirst({
+      where: {
+        userId,
+        endedAt: { not: null }, // Only finalized sessions
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        userId: true,
+        topic: true,
+        status: true,
+        endedAt: true,
+        createdAt: true,
+        score: true,
+        xpGained: true,
+        coinsGained: true,
+        gemsGained: true,
+        isSuccess: true,
+        messageCount: true,
+        payload: true,
+        rarityCounts: true,
+        endReasonCode: true,
+        endReasonMeta: true,
+        templateId: true,
+        personaId: true,
+        aiMode: true,
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: 'No sessions found',
+      });
+    }
+
+    return this.buildSessionResponsePublic(userId, session);
+  }
+
+  /**
+   * ✅ Step 5.7: Build public session response (shared logic for read endpoints)
+   * Reconstructs POST-like response shape from stored session data
+   */
+  private async buildSessionResponsePublic(
+    userId: string,
+    session: {
+      id: string;
+      userId: string;
+      topic: string;
+      status: MissionStatus;
+      endedAt: Date | null;
+      createdAt: Date;
+      score: number;
+      xpGained: number;
+      coinsGained: number;
+      gemsGained: number;
+      isSuccess: boolean | null;
+      messageCount: number;
+      payload: Prisma.JsonValue | null;
+      rarityCounts: Prisma.JsonValue | null;
+      endReasonCode: string | null;
+      endReasonMeta: Prisma.JsonValue | null;
+      templateId: string | null;
+      personaId: string | null;
+      aiMode: string | null;
+    },
+  ) {
+    // 3A) Fetch ChatMessage rows (ordered by turnIndex)
+    const chatMessages = await this.prisma.chatMessage.findMany({
+      where: { sessionId: session.id },
+      orderBy: { turnIndex: 'asc' },
+      select: {
+        turnIndex: true,
+        role: true,
+        content: true,
+        score: true,
+        traitData: true,
+        xpDelta: true,
+        coinsDelta: true,
+        gemsDelta: true,
+        meta: true,
+      },
+    });
+
+    // 3B) Build messages[] public
+    let messages: any[] = [];
+    if (chatMessages.length > 0) {
+      // Preferred: use ChatMessage rows
+      messages = chatMessages.map((m, idx) =>
+        normalizeChatMessageRead(m, idx),
+      );
+    } else {
+      // Fallback: reconstruct from payload.transcript[]
+      const payload = session.payload && typeof session.payload === 'object' ? (session.payload as any) : null;
+      const transcript = Array.isArray(payload?.transcript) ? payload.transcript : [];
+      const messageScores = Array.isArray(payload?.messageScores)
+        ? payload.messageScores.filter((n: any) => typeof n === 'number' && Number.isFinite(n))
+        : [];
+
+      let userScoreIdx = 0;
+      messages = transcript
+        .filter((m: any) => m && typeof m.content === 'string')
+        .map((m: any, idx: number) => {
+          const role = normalizeRole(m.role);
+          const isUser = role === MessageRole.USER;
+          const score = isUser && userScoreIdx < messageScores.length
+            ? messageScores[userScoreIdx++]
+            : null;
+
+          return {
+            turnIndex: idx,
+            role,
+            content: safeTrim(m.content),
+            score,
+            traitData: { traits: {}, flags: [], label: null },
+          };
+        });
+    }
+
+    // 3C) Build messageScores[] (for rewards)
+    let messageScores: number[] = [];
+    const payload = session.payload && typeof session.payload === 'object' ? (session.payload as any) : null;
+    if (Array.isArray(payload?.messageScores)) {
+      messageScores = payload.messageScores.filter((n: any) => typeof n === 'number' && Number.isFinite(n));
+    } else if (chatMessages.length > 0) {
+      // Fallback: extract from ChatMessage USER scores
+      messageScores = chatMessages
+        .filter((m) => m.role === MessageRole.USER && typeof m.score === 'number')
+        .map((m) => m.score as number);
+    }
+
+    // Compute rewards using existing computeSessionRewards
+    const inputs: MessageEvaluationInput[] = messageScores.map((score) => ({ score }));
+    const summary: SessionRewardsSummary = computeSessionRewards(inputs);
+    const finalScore = Math.round(summary.finalScore);
+
+    // Use stored aggregates (prefer stored over computed for consistency)
+    const rewards = {
+      score: session.score ?? finalScore,
+      messageScore: session.score ?? finalScore,
+      isSuccess: session.isSuccess ?? false,
+      xpGained: session.xpGained,
+      coinsGained: session.coinsGained,
+      gemsGained: session.gemsGained,
+      rarityCounts:
+        session.rarityCounts && typeof session.rarityCounts === 'object'
+          ? (session.rarityCounts as Record<string, number>)
+          : summary.rarityCounts,
+      messages: summary.messages.map((m, index) => ({
+        index,
+        score: m.score,
+        rarity: m.rarity,
+        xp: m.xp,
+        coins: m.coins,
+        gems: m.gems,
+      })),
+    };
+
+    // 3D) aiReply (always string)
+    let aiReply = '';
+    // Scan reverse for last AI message
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === MessageRole.AI) {
+        aiReply = typeof messages[i].content === 'string' ? messages[i].content : '';
+        break;
+      }
+    }
+
+    // 3E) mission + aiStructured
+    const mission = null; // Keep null for now (allowed by serializer + FE doesn't require it for reads)
+    const aiStructured = null; // null (safe + FE ignores it)
+
+    // 3F) missionState (minimal but correct for FE)
+    // Map status: treat DISQUALIFIED/ABORTED as 'FAIL'
+    let status: 'IN_PROGRESS' | 'SUCCESS' | 'FAIL' = 'IN_PROGRESS';
+    if (session.status === MissionStatus.SUCCESS) {
+      status = 'SUCCESS';
+    } else if (session.status === MissionStatus.FAIL || session.status === MissionStatus.ABORTED) {
+      status = 'FAIL';
+    }
+
+    // Resolve maxMessages: template?.maxMessages ?? payload?.normalizedMissionConfigV1?.statePolicy?.maxMessages ?? 5
+    let maxMessages = 5; // Default fallback
+    
+    if (session.templateId) {
+      // Fetch template for maxMessages
+      const template = await this.prisma.practiceMissionTemplate.findUnique({
+        where: { id: session.templateId },
+        select: { maxMessages: true },
+      });
+      if (template?.maxMessages && typeof template.maxMessages === 'number' && template.maxMessages > 0) {
+        maxMessages = template.maxMessages;
+      }
+    }
+    
+    // Fallback to payload normalizedMissionConfigV1 (support multiple shapes)
+    if (maxMessages === 5 && payload?.normalizedMissionConfigV1) {
+      const config = payload.normalizedMissionConfigV1;
+      // Try: policy.maxMessages OR statePolicy.maxMessages OR maxMessages (direct)
+      const payloadMax =
+        (config.policy?.maxMessages && typeof config.policy.maxMessages === 'number' && config.policy.maxMessages > 0)
+          ? config.policy.maxMessages
+          : (config.statePolicy?.maxMessages && typeof config.statePolicy.maxMessages === 'number' && config.statePolicy.maxMessages > 0)
+            ? config.statePolicy.maxMessages
+            : (config.maxMessages && typeof config.maxMessages === 'number' && config.maxMessages > 0)
+              ? config.maxMessages
+              : null;
+      
+      if (payloadMax !== null) {
+        maxMessages = payloadMax;
+      }
+    }
+
+    // Compute progressPct = endedAt ? 100 : clamp01(totalMessages / maxMessages) * 100
+    const totalMessages = messageScores.length;
+    const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+    const progressPct = session.endedAt
+      ? 100
+      : totalMessages > 0
+        ? Math.round(clamp01(totalMessages / Math.max(1, maxMessages)) * 100)
+        : 0;
+
+    // endReasonCode/meta fallback: session.endReasonCode ?? payload?.endReasonCode
+    const codeIn = session.endReasonCode ?? payload?.endReasonCode ?? null;
+    const metaIn = session.endReasonMeta ?? payload?.endReasonMeta ?? null;
+    const normalizedEndReason = normalizeEndReason(codeIn, metaIn);
+
+    const missionState = {
+      status,
+      progressPct,
+      averageScore: session.score ?? 0,
+      totalMessages,
+      endReasonCode: normalizedEndReason.endReasonCode,
+      endReasonMeta: normalizedEndReason.endReasonMeta,
+    };
+
+    // 3G) dashboard
+    const dashboard = await this.statsService.getDashboardForUser(userId);
+
+    // 3H) Build response object matching POST shape
+    const resp = {
+      ok: true,
+      rewards,
+      dashboard,
+      sessionId: session.id, // Map PracticeSession.id to "sessionId"
+      messages,
+      aiReply,
+      aiStructured,
+      mission,
+      missionState,
+      // Explicitly do NOT include aiDebug (GET responses never include it)
+    };
+
+    // Return via allowlist serializer only
+    return toPracticeSessionResponsePublic(resp);
   }
 }

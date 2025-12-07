@@ -5,6 +5,8 @@ import { MessageRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service';
 // ✅ Step 5.5: Import from shared normalizer (removed service-to-service dependency)
 import { normalizeChatMessageRead } from '../shared/normalizers/chat-message.normalizer';
+// ✅ Step 5.6: Import allowlist serializer (no spreading raw DB objects)
+import { toChatMessageResponsePublic } from '../shared/serializers/api-serializers';
 
 /**
  * ✅ Step 5.1 Migration B: Safe traitData helper
@@ -72,17 +74,12 @@ export class ChatService {
 
     const message = await createMessage();
 
-    // ✅ Step 5.4: Normalize returned message (preserve backwards compatibility)
-    // Merge normalized fields with existing message fields in case callers rely on them
+    // ✅ Step 5.6: Use allowlist-only serializer (no spreading raw DB objects)
+    // Normalize first, then apply strict allowlist (only 5 public fields)
     const normalized = normalizeChatMessageRead(
       message,
       message.turnIndex ?? 0,
     );
-    return {
-      message: {
-        ...message,
-        ...normalized,
-      },
-    };
+    return toChatMessageResponsePublic(normalized);
   }
 }
