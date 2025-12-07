@@ -21,6 +21,7 @@ import { MissionsModule } from './modules/missions/missions.module'; // ✅ play
 
 // backend/src/app.module.ts – RECOMMENDED
 import { AiStylesModule } from './modules/ai-styles/ai-styles.module';
+import { InsightsModule } from './modules/insights/insights.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { AiStylesModule } from './modules/ai-styles/ai-styles.module';
     MissionsModule,
     PersonasModule,
     AiStylesModule, // ✅ GET /v1/ai-styles
+    InsightsModule, // Phase 1: Deep Insights Engine
   ],
   controllers: [],
   providers: [

@@ -17,13 +17,87 @@ function normalizeRole(role: any): MessageRole {
 /**
  * Normalize traitData from DB (defensive normalization)
  * Handles null, undefined, malformed objects, and ensures consistent shape.
+ * Phase 0: Extended to support optional fiveLayer field.
+ * Exported for use by other modules (e.g., InsightsService).
  */
-function normalizeTraitData(v: any): { traits: Record<string, any>; flags: string[]; label: string | null } {
+export function normalizeTraitData(v: any): { 
+  traits: Record<string, any>; 
+  flags: string[]; 
+  label: string | null;
+  fiveLayer?: {
+    L1: number;
+    L2: number;
+    L3: number;
+    L4: number;
+    L5: number;
+    overallScore: number;
+    rareTier: string;
+    version: string;
+  };
+} {
   const okObj = v && typeof v === 'object' && !Array.isArray(v);
   const traits = okObj && typeof v.traits === 'object' && v.traits ? v.traits : {};
   const flags = okObj && Array.isArray(v.flags) ? v.flags : [];
   const label = okObj && typeof v.label === 'string' ? v.label : null;
-  return { traits, flags, label };
+  
+  // Phase 0: Support optional fiveLayer field
+  let fiveLayer: {
+    L1: number;
+    L2: number;
+    L3: number;
+    L4: number;
+    L5: number;
+    overallScore: number;
+    rareTier: string;
+    version: string;
+  } | undefined = undefined;
+  
+  if (okObj && v.fiveLayer && typeof v.fiveLayer === 'object') {
+    const fl = v.fiveLayer;
+    if (
+      typeof fl.L1 === 'number' &&
+      typeof fl.L2 === 'number' &&
+      typeof fl.L3 === 'number' &&
+      typeof fl.L4 === 'number' &&
+      typeof fl.L5 === 'number' &&
+      typeof fl.overallScore === 'number' &&
+      typeof fl.rareTier === 'string' &&
+      typeof fl.version === 'string'
+    ) {
+      fiveLayer = {
+        L1: fl.L1,
+        L2: fl.L2,
+        L3: fl.L3,
+        L4: fl.L4,
+        L5: fl.L5,
+        overallScore: fl.overallScore,
+        rareTier: fl.rareTier,
+        version: fl.version,
+      };
+    }
+  }
+  
+  const result: {
+    traits: Record<string, any>;
+    flags: string[];
+    label: string | null;
+    fiveLayer?: {
+      L1: number;
+      L2: number;
+      L3: number;
+      L4: number;
+      L5: number;
+      overallScore: number;
+      rareTier: string;
+      version: string;
+    };
+  } = { traits, flags, label };
+  
+  if (fiveLayer) {
+    result.fiveLayer = fiveLayer;
+  }
+  
+  return result;
 }
 
 /**

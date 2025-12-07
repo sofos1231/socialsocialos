@@ -36,6 +36,11 @@ model User {
 
   // ✅ Rewards ledger (idempotent grants)
   rewardLedger RewardLedgerEntry[]
+
+  // Phase 0: Deep Insights & Mood relations
+  deepInsights       MissionDeepInsights[]
+  moodTimelines      MissionMoodTimeline[]
+  promptHookTriggers PromptHookTrigger[]
 }
 
 model IdempotencyKey {
@@ -206,8 +211,9 @@ model PracticeMissionTemplate {
   createdAt DateTime @default(now())
 
   // Relations
-  sessions PracticeSession[]
-  progress MissionProgress[]
+  sessions    PracticeSession[]
+  progress    MissionProgress[]
+  moodConfigs MissionMoodConfig[]
 
   @@index([aiStyleId])
 }
@@ -278,6 +284,11 @@ model PracticeSession {
   // ✅ Rewards ledger relation
   rewardLedger RewardLedgerEntry[]
 
+  // Phase 0: Deep Insights & Mood relations
+  deepInsights       MissionDeepInsights?
+  moodTimeline       MissionMoodTimeline?
+  promptHookTriggers PromptHookTrigger[]
+
   persona  AiPersona?               @relation(fields: [personaId], references: [id])
   template PracticeMissionTemplate? @relation(fields: [templateId], references: [id])
   user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -288,32 +299,32 @@ model PracticeSession {
 }
 
 model ChatMessage {
-  id          String          @id @default(cuid())
+  id          String        @id @default(cuid())
   sessionId   String
   userId      String
-  createdAt   DateTime        @default(now())
+  createdAt   DateTime      @default(now())
   role        MessageRole
   content     String
   grade       MessageGrade?
-  xpDelta     Int             @default(0)
-  coinsDelta  Int             @default(0)
-  gemsDelta   Int             @default(0)
-  isBrilliant Boolean         @default(false)
-  isLifesaver Boolean         @default(false)
+  xpDelta     Int           @default(0)
+  coinsDelta  Int           @default(0)
+  gemsDelta   Int           @default(0)
+  isBrilliant Boolean       @default(false)
+  isLifesaver Boolean       @default(false)
   meta        Json?
 
   /// --------------------------------------
   /// ✅ Step 5.1 – Deterministic ordering + normalized scoring
   /// --------------------------------------
-  turnIndex   Int             // Position in transcript (0-based, includes USER + AI)
-  score       Int?            // Normalized score (0-100, USER messages only)
-  traitData   Json            // { traits: {...}, flags: [...], label: string }
+  turnIndex Int // Position in transcript (0-based, includes USER + AI)
+  score     Int? // Normalized score (0-100, USER messages only)
+  traitData Json // { traits: {...}, flags: [...], label: string }
 
-  session     PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([sessionId, createdAt])
   @@unique([sessionId, turnIndex])
+  @@index([sessionId, createdAt])
 }
 
 model UserWallet {
@@ -469,4 +480,138 @@ enum AiStyleKey {
 /// ✅ Ledger kinds (extend later)
 enum RewardLedgerKind {
   SESSION_REWARD
+}
+
+/// --------------------------------------
+/// Phase 0: Deep Insights
+/// --------------------------------------
+model MissionDeepInsights {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  userId    String
+  missionId String // templateId
+  createdAt DateTime @default(now())
+  version   String   @default("v1")
+
+  // Store full JSON payload (flexible for evolution)
+  insightsJson Json // MissionDeepInsights interface serialized
+
+  // Denormalized fields for quick queries/filtering
+  averageRarityTier    String // 'D' | 'C' | 'B' | 'A' | 'S' | 'S+'
+  primaryLabels        String[] @default([]) // for search/filtering
+  overallCharismaIndex Int?
+
+  // Relations
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([missionId])
+  @@index([averageRarityTier])
+}
+
+/// --------------------------------------
+/// Phase 0: Mission Mood Timeline
+/// --------------------------------------
+model MissionMoodTimeline {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  userId    String
+  missionId String // templateId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   String   @default("v1")
+
+  // Store full timeline as JSON (array of MoodSnapshot)
+  timelineJson Json
+
+  // Denormalized fields for quick queries
+  currentMoodState   String // 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'RECOVERING' | 'COLLAPSED'
+  currentMoodPercent Int // 0-100
+
+  // Relations
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([missionId])
+  @@index([currentMoodState])
+}
+
+/// --------------------------------------
+/// Phase 0: Mission Mood Config
+/// --------------------------------------
+model MissionMoodConfig {
+  id        String   @id @default(cuid())
+  missionId String   @unique // templateId
+  version   String   @default("v1")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Store full config as JSON (MissionMoodConfig interface)
+  configJson Json
+
+  // Denormalized fields for quick access
+  windowSize  Int
+  positiveMin Int
+  neutralMin  Int
+  negativeMin Int
+
+  // Relations
+  mission PracticeMissionTemplate @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@index([missionId])
+}
+
+/// --------------------------------------
+/// Phase 0: Prompt / Hook System
+/// --------------------------------------
+model PromptHook {
+  id           String @id @default(cuid()) // or use custom ID format
+  name         String
+  type         String // 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL'
+  textTemplate String @db.Text
+
+  // Store conditions as JSON (flexible structure)
+  conditionsJson Json
+
+  category  String
+  tags      String[] @default([])
+  priority  Int      @default(50) // 1-100
+  isEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   String   @default("v1")
+
+  // Optional metadata
+  metaJson Json?
+
+  // Relations
+  triggers PromptHookTrigger[]
+
+  @@index([category])
+  @@index([type, isEnabled])
+  @@index([priority])
+  @@index([tags])
+}
+
+/// --------------------------------------
+/// Phase 0: Prompt Hook Trigger (analytics/cooldown)
+/// --------------------------------------
+model PromptHookTrigger {
+  id             String   @id @default(cuid())
+  hookId         String
+  sessionId      String
+  userId         String
+  triggeredAt    DateTime @default(now())
+  matchedContext Json? // snapshot of conditions that matched
+
+  // Relations
+  hook    PromptHook      @relation(fields: [hookId], references: [id], onDelete: Cascade)
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([hookId, sessionId]) // for cooldown checks
+  @@index([sessionId, triggeredAt])
+  @@index([userId, triggeredAt])
 }

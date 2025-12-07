@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
 import { StatsService } from '../stats/stats.service';
+import { InsightsService } from '../insights/insights.service';
 import {
   computeSessionRewards,
   MessageEvaluationInput,
@@ -87,6 +88,7 @@ export class SessionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly statsService: StatsService,
+    private readonly insightsService: InsightsService,
   ) {}
 
   /**
@@ -651,22 +653,28 @@ export class SessionsService {
 
     await this.ensureUserProfilePrimitives(userId);
 
-    const { summary, finalScore, sessionId: usedSessionId, isSuccess, messages } =
-      await this.saveOrUpdateScoredSession({
-        userId,
-        sessionId: sessionId ?? null,
-        topic,
-        messageScores,
-        templateId: templateId ?? null,
-        personaId: personaId ?? null,
-        transcript,
-        missionStatus,
-        aiMode: aiMode ?? null,
-        extraPayload: extraPayload ?? null,
-        endReasonCode: endReasonCode ?? null,
-        endReasonMeta: endReasonMeta ?? null,
-        aiCoreResult: aiCoreResult ?? null,
-      });
+    const {
+      summary,
+      finalScore,
+      sessionId: usedSessionId,
+      isSuccess,
+      messages,
+      didFinalize,
+    } = await this.saveOrUpdateScoredSession({
+      userId,
+      sessionId: sessionId ?? null,
+      topic,
+      messageScores,
+      templateId: templateId ?? null,
+      personaId: personaId ?? null,
+      transcript,
+      missionStatus,
+      aiMode: aiMode ?? null,
+      extraPayload: extraPayload ?? null,
+      endReasonCode: endReasonCode ?? null,
+      endReasonMeta: endReasonMeta ?? null,
+      aiCoreResult: aiCoreResult ?? null,
+    });
 
     // ✅ FIX: Persist aiCorePayload/version ALWAYS when aiCoreResult exists (metrics optional)
     if (aiCoreResult) {
@@ -697,6 +705,18 @@ export class SessionsService {
             : {}),
         },
       });
+    }
+
+    // Phase 1: Generate Deep Insights for finalized sessions
+    // Synchronous execution (blocks until complete) but errors don't fail session save
+    if (didFinalize) {
+      try {
+        await this.insightsService.buildAndPersistForSession(usedSessionId);
+      } catch (err: any) {
+        // Errors are already logged inside buildAndPersistForSession
+        // This catch ensures session response still succeeds even if insights fail
+        // (no throw - just log and continue)
+      }
     }
 
     const dashboard = await this.statsService.getDashboardForUser(userId);
