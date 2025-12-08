@@ -6,6 +6,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, ActivityIndicator } from 'react-native';
 
 import AuthScreen from '../screens/AuthScreen';
+import OnboardingScreen from '../screens/OnboardingScreen';
+import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import PracticeHubScreen from '../screens/PracticeHubScreen';
 import PracticeScreen from '../screens/PracticeScreen';
 import VoicePracticeScreen from '../screens/VoicePracticeScreen';
@@ -21,6 +23,7 @@ import {
   PracticeStackParamList,
 } from './types';
 import { getAccessToken, hydrateFromStorage } from '../store/tokens';
+import { useAppState } from '../store/appState';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -110,8 +113,32 @@ export default function NavigationRoot() {
         const token = getAccessToken();
         console.log('[NavigationRoot] token present?', !!token);
 
-        if (!cancelled) {
-          setInitialRoute(token ? 'Dashboard' : 'Auth');
+        if (!token) {
+          if (!cancelled) {
+            setInitialRoute('Auth');
+          }
+          return;
+        }
+
+        // Fetch app state to determine route
+        console.log('[NavigationRoot] fetching app state…');
+        const appState = await useAppState.getState().fetchAppState();
+
+        if (cancelled) return;
+
+        if (!appState) {
+          // If fetch fails, default to Auth
+          console.log('[NavigationRoot] appState fetch failed, routing to Auth');
+          setInitialRoute('Auth');
+        } else if (!appState.user.onboardingCompleted) {
+          console.log('[NavigationRoot] onboarding incomplete, routing to Onboarding');
+          setInitialRoute('Onboarding');
+        } else if (!appState.user.profileCompleted) {
+          console.log('[NavigationRoot] profile incomplete, routing to ProfileSetup');
+          setInitialRoute('ProfileSetup');
+        } else {
+          console.log('[NavigationRoot] all complete, routing to Dashboard');
+          setInitialRoute('Dashboard');
         }
       } catch (e) {
         console.log('[NavigationRoot] bootstrap error', e);
@@ -152,6 +179,8 @@ export default function NavigationRoot() {
         }}
       >
         <RootStack.Screen name="Auth" component={AuthScreen} />
+        <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
+        <RootStack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
         <RootStack.Screen name="Dashboard" component={MainTabsNavigator} />
       </RootStack.Navigator>
     </NavigationContainer>

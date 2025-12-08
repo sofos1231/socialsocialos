@@ -13,6 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { PracticeStackParamList } from '../navigation/types';
 import { fetchMissionRoad, startMission } from '../api/missionsService';
+import { useRequireOnboardingComplete } from '../hooks/useRequireOnboardingComplete';
 
 type Mission = {
   id: string;
@@ -74,6 +75,7 @@ function buildLanesFromAny(data: any): Lane[] {
 }
 
 export default function MissionRoadScreen() {
+  useRequireOnboardingComplete();
   const navigation =
     useNavigation<NativeStackNavigationProp<PracticeStackParamList>>();
 

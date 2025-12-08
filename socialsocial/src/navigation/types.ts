@@ -6,6 +6,8 @@ import type { MissionEndReasonCode, EndReasonMeta } from '../logic/missionEndRea
 
 export type RootStackParamList = {
   Auth: undefined;
+  Onboarding: undefined;
+  ProfileSetup: undefined;
   Dashboard: undefined;
 };
 

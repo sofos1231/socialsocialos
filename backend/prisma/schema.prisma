@@ -31,6 +31,36 @@ model User {
   attractedTo    AttractionPreference @default(UNKNOWN)
   preferencePath PreferencePath       @default(UNKNOWN_PATH)
 
+  // Gate flags + meta
+  onboardingCompleted   Boolean   @default(false)
+  profileCompleted      Boolean   @default(false)
+  onboardingVersion     String?
+  onboardingCompletedAt DateTime?
+  profileCompletedAt    DateTime?
+  onboardingStep        Int       @default(0) // 0 = not started, 1–10 = last completed step
+
+  // Profile identity
+  displayName                String?
+  avatarType                 AvatarType   @default(DEFAULT)
+  avatarId                   String?
+  avatarUrl                  String?
+  profileTags                String[]     @default([])
+  countryCode                String?
+  allowLeaderboardVisibility Boolean      @default(true)
+
+  // Onboarding preferences (beyond existing Gender/AttractionPreference/PreferencePath)
+  mainGoal            MainGoal?
+  dailyEffortMinutes  Int?
+  commitmentLevel     CommitmentLevel?
+  selfRatedLevel      Int?
+  wantsHarshFeedback  Boolean?
+
+  preferredStyles     String[]  @default([])
+  interestTags        String[]  @default([])
+
+  notificationsEnabled  Boolean @default(false)
+  preferredReminderTime String?
+
   // Mission progress
   missionProgress MissionProgress[]
 
@@ -41,6 +71,9 @@ model User {
   deepInsights       MissionDeepInsights[]
   moodTimelines      MissionMoodTimeline[]
   promptHookTriggers PromptHookTrigger[]
+
+  // Onboarding state tracking
+  onboardingState UserOnboardingState?
 }
 
 model IdempotencyKey {
@@ -445,6 +478,25 @@ enum PreferencePath {
   UNKNOWN_PATH
 }
 
+enum MainGoal {
+  DATING
+  SOCIAL
+  CAREER
+  ALL
+}
+
+enum CommitmentLevel {
+  LOW
+  MEDIUM
+  HIGH
+  EXTREME
+}
+
+enum AvatarType {
+  DEFAULT
+  UPLOADED
+}
+
 /// Mission difficulty levels
 enum MissionDifficulty {
   EASY
@@ -614,4 +666,21 @@ model PromptHookTrigger {
   @@index([hookId, sessionId]) // for cooldown checks
   @@index([sessionId, triggeredAt])
   @@index([userId, triggeredAt])
+}
+
+/// --------------------------------------
+/// User Onboarding State (resume tracking)
+/// --------------------------------------
+model UserOnboardingState {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  onboardingVersion String
+  currentStep       Int        @default(0) // 0 = before start, 1–10 as defined in onboarding flow
+  startedAt         DateTime?
+  completedAt       DateTime?
+  skipped           Boolean    @default(false)
+
+  lastUpdatedAt     DateTime   @updatedAt
 }

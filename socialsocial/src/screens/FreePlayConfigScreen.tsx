@@ -22,6 +22,7 @@ import {
   FreePlayPlace,
   PracticeStackParamList,
 } from '../navigation/types';
+import { useRequireOnboardingComplete } from '../hooks/useRequireOnboardingComplete';
 
 type Props = NativeStackScreenProps<PracticeStackParamList, 'FreePlayConfig'>;
 
@@ -97,6 +98,7 @@ function validateFreePlayConfig(config: {
 }
 
 export default function FreePlayConfigScreen({ navigation }: Props) {
+  useRequireOnboardingComplete();
   // Premium-only enforcement: allow while developing, block in production
   const hasPremium = (globalThis as any).__DEV__ === true; // TODO connect real entitlements later
   const premiumBlocked = !hasPremium;

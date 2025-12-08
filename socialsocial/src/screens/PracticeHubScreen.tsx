@@ -9,10 +9,12 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PracticeStackParamList } from '../navigation/types';
+import { useRequireOnboardingComplete } from '../hooks/useRequireOnboardingComplete';
 
 type Props = NativeStackScreenProps<PracticeStackParamList, 'PracticeHub'>;
 
 export default function PracticeHubScreen({ navigation }: Props) {
+  useRequireOnboardingComplete();
   const handleFreePlay = () => {
     navigation.navigate('FreePlayConfig');
   };

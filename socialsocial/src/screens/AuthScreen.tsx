@@ -11,6 +11,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { login, signup } from '../api/auth';
 import { setTokens, clearTokens } from '../store/tokens';
+import { useAppState } from '../store/appState';
 
 // ----------------------------
 
@@ -31,6 +32,47 @@ export function AuthScreen() {
     clearTokens();
   }, []);
 
+  // Helper to route based on appState
+  async function routeAfterAuth() {
+    try {
+      const appState = await useAppState.getState().fetchAppState();
+
+      if (!appState || !appState.user) {
+        // Fallback to Dashboard if fetch fails
+        console.log('[AuthScreen] appState fetch failed, routing to Dashboard');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Dashboard' }],
+        });
+        return;
+      }
+
+      if (!appState.user.onboardingCompleted) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Onboarding' }],
+        });
+      } else if (!appState.user.profileCompleted) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'ProfileSetup' }],
+        });
+      } else {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Dashboard' }],
+        });
+      }
+    } catch (e) {
+      console.log('[AuthScreen] routeAfterAuth error', e);
+      // Fallback to Dashboard on error
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Dashboard' }],
+      });
+    }
+  }
+
   async function onSubmit() {
     console.log('[UI][AUTH] SUBMIT', { mode, email, hasPassword: !!password });
     setBusy(true);
@@ -50,17 +92,14 @@ export function AuthScreen() {
         setMode('login');
         setPassword(''); // force retyping password
       } else {
-        // LOGIN: verify credentials, then store tokens & go to Dashboard
+        // LOGIN: verify credentials, then store tokens & route based on appState
         const res = await login({ email, password });
 
         await setTokens(res.accessToken, res.refreshToken);
 
         setMsg('Logged in. Redirecting…');
 
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Dashboard' }],
-        });
+        await routeAfterAuth();
       }
     } catch (e: any) {
       console.log('[UI][AUTH] ERROR RAW', e);
@@ -80,14 +119,12 @@ export function AuthScreen() {
   }
 
   // DEV skip – jumps straight to Dashboard with fake tokens
+  // Now respects appState gating like normal login
   async function handleSkipDev() {
     try {
       console.log('[UI][AUTH] SKIP LOGIN (DEV) pressed');
       await setTokens('dev', 'dev');
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Dashboard' }],
-      });
+      await routeAfterAuth();
     } catch (e) {
       console.log('[UI][AUTH] SKIP LOGIN (DEV) failed', e);
     }

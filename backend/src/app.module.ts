@@ -15,6 +15,8 @@ import { PersonasModule } from './modules/personas/personas.module';
 import { PracticeModule } from './modules/practice/practice.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ProfileModule } from './modules/profile/profile.module';
+import { MeModule } from './modules/me/me.module';
+import { OnboardingModule } from './modules/onboarding/onboarding.module';
 
 import { MissionsAdminModule } from './modules/missions-admin/missions-admin.module';
 import { MissionsModule } from './modules/missions/missions.module'; // ✅ player-facing
@@ -36,6 +38,8 @@ import { InsightsModule } from './modules/insights/insights.module';
     PracticeModule,
     DashboardModule,
     ProfileModule,
+    MeModule, // ✅ GET /v1/me/app-state
+    OnboardingModule, // ✅ PUT /v1/onboarding/preferences, POST /v1/onboarding/skip, POST /v1/onboarding/complete
 
     MissionsAdminModule,
     MissionsModule,

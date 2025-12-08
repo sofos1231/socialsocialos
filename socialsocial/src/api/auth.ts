@@ -1,5 +1,5 @@
 // src/api/auth.ts
-import { API_BASE_URL } from '../config/api';
+import { ENV } from '../config/env';
 
 export type SignupPayload = {
     email: string;
@@ -45,7 +45,8 @@ async function handleResponse(res: Response) {
 }
 
 export async function signup(payload: SignupPayload): Promise<AuthResponse> {
-  const res = await fetch(`${API_BASE_URL}/auth/signup`, {
+  const url = `${ENV.API_URL}/v1/auth/signup`;
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -57,7 +58,8 @@ export async function signup(payload: SignupPayload): Promise<AuthResponse> {
 }
 
 export async function login(payload: LoginPayload): Promise<AuthResponse> {
-  const res = await fetch(`${API_BASE_URL}/auth/login`, {
+  const url = `${ENV.API_URL}/v1/auth/login`;
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
