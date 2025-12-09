@@ -311,7 +311,18 @@ export default function PracticeScreen({ route, navigation }: Props) {
 
       const res = (await createPracticeSession(payload)) as PracticeSessionResponse;
 
-      if (res?.sessionId) setActiveSessionId(res.sessionId);
+      // Capture sessionId before it might be cleared
+      const endedSessionId = res?.sessionId || null;
+      if (endedSessionId) setActiveSessionId(endedSessionId);
+
+      // Dev-only debug breadcrumb: confirm session creation happens on first message
+      if (__DEV__) {
+        console.log('[PracticeScreen] Session state:', {
+          sessionId: endedSessionId || null,
+          status: res?.missionState?.status || null,
+          endedAt: res?.missionState?.status === 'SUCCESS' || res?.missionState?.status === 'FAIL' ? 'finalized' : 'in_progress',
+        });
+      }
 
       const rewards = res?.rewards;
       const serverState = res?.missionState ?? null;
@@ -327,7 +338,19 @@ export default function PracticeScreen({ route, navigation }: Props) {
       scrollToBottom();
 
       if (rewards && serverState?.status && isEnded(serverState.status)) {
-        finalizeMission(rewards, serverState);
+        // Step 5.3: Navigate to MissionEnd screen if we have sessionId
+        if (endedSessionId) {
+          navigation.replace('MissionEnd', {
+            sessionId: endedSessionId,
+            templateId,
+            personaId,
+            missionId,
+            title: missionTitle,
+          });
+        } else {
+          // Fallback: use modal if no sessionId
+          finalizeMission(rewards, serverState);
+        }
       }
     } catch (err: any) {
       console.error('Practice session error:', err);

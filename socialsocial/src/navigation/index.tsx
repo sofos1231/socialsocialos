@@ -16,6 +16,7 @@ import StatsScreen from '../screens/StatsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import MissionRoadScreen from '../screens/MissionRoadScreen';
 import FreePlayConfigScreen from '../screens/FreePlayConfigScreen';
+import MissionEndScreen from '../screens/MissionEndScreen';
 
 import {
   RootStackParamList,
@@ -44,6 +45,9 @@ function PracticeStackNavigator() {
 
       {/* Existing chat screen (used by missions + freeplay after config) */}
       <PracticeStack.Screen name="PracticeSession" component={PracticeScreen} />
+
+      {/* Step 5.3: Mission end screen */}
+      <PracticeStack.Screen name="MissionEnd" component={MissionEndScreen} />
 
       <PracticeStack.Screen
         name="VoicePracticeSession"

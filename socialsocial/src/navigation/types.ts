@@ -83,6 +83,14 @@ export type PracticeStackParamList = {
   ABPracticeSession: {
     topic: string;
   };
+
+  MissionEnd: {
+    sessionId: string;
+    templateId?: string;
+    personaId?: string;
+    missionId?: string;
+    title?: string;
+  };
 };
 
 // ----- Shared practice types -----

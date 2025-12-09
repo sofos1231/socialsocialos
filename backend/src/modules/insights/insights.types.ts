@@ -111,5 +111,119 @@ export interface MissionDeepInsightsPayload {
     improvementTrend?: 'improving' | 'declining' | 'stable'; // comparing first vs last half
     consistencyScore?: number; // 0-100, how consistent were message scores
   };
+
+  // Step 5.2: Insights v2 payload (optional, merged into insightsJson)
+  insightsV2?: InsightsV2Payload;
+}
+
+/**
+ * Step 5.2: Insight kinds for v2 engine
+ */
+export type InsightKind = 'GATE_FAIL' | 'POSITIVE_HOOK' | 'NEGATIVE_PATTERN' | 'GENERAL_TIP';
+
+/**
+ * Step 5.2: Insight card shown to user (lightweight output)
+ */
+export interface InsightCard {
+  id: string; // Stable unique ID (e.g. 'gate_min_messages_too_short')
+  kind: InsightKind;
+  category: string; // e.g. 'empathy', 'humor', 'clarity', 'tension', 'confidence'
+  title: string;
+  body: string;
+  relatedTurnIndex?: number; // Optional: which message this relates to
+}
+
+/**
+ * Step 5.2: Insights v2 payload structure
+ */
+export interface InsightsV2Payload {
+  gateInsights: InsightCard[];
+  positiveInsights: InsightCard[];
+  negativeInsights: InsightCard[];
+  traitDeltas: Record<string, number>; // e.g. { confidence: 0.5, clarity: -0.2 }
+  meta: {
+    seed: string; // Deterministic seed used for selection
+    excludedIds: string[]; // Insight IDs excluded from last 5 missions
+    pickedIds: string[]; // Insight IDs selected for this mission
+    version: 'v2';
+  };
+}
+
+/**
+ * Step 5.2: Deep Insights API response (for FE/BE contract)
+ */
+export interface DeepInsightsResponse {
+  insightsV2: InsightsV2Payload;
+  // v1 extras can be added here if needed for FE
+}
+
+/**
+ * Step 5.2: Internal types for engine
+ */
+
+/**
+ * Insight template (registry entry)
+ */
+export interface InsightTemplate {
+  id: string; // Stable unique ID
+  kind: InsightKind;
+  category: string;
+  weight: number; // For weighted selection
+  cooldownMissions: number; // 3-5 typical
+  title: string;
+  body: string;
+  requires?: {
+    gateKey?: string;
+    hookKey?: string;
+    patternKey?: string;
+  };
+}
+
+/**
+ * Candidate insight (before selection)
+ */
+export interface CandidateInsight {
+  id: string;
+  kind: InsightKind;
+  category: string;
+  priority: number; // Gate=100, Hook=80, Pattern=60, Tip=40
+  weight: number;
+  evidence?: {
+    gateKey?: string;
+    hookKey?: string;
+    patternKey?: string;
+    turnIndex?: number;
+    strength?: number;
+    severity?: number;
+  };
+}
+
+/**
+ * Insight signals extracted from session data
+ */
+export interface InsightSignals {
+  gateFails: Array<{
+    gateKey: string;
+    reasonCode?: string;
+  }>;
+  positiveHooks: Array<{
+    hookKey: string;
+    strength: number;
+    turnIndex?: number;
+  }>;
+  negativePatterns: Array<{
+    patternKey: string;
+    severity: number;
+    turnIndex?: number;
+  }>;
+  traitSnapshot: Record<string, number>;
+  topMessages: Array<{
+    turnIndex: number;
+    score: number;
+  }>;
+  bottomMessages: Array<{
+    turnIndex: number;
+    score: number;
+  }>;
 }
 

@@ -28,6 +28,9 @@ import {
 import { generateSessionLabels } from './insights.labels';
 import { generateNarrativeInsights } from './insights.narrative';
 import { normalizeTraitData } from '../shared/normalizers/chat-message.normalizer';
+import { buildInsightsV2 } from './engine/insights.engine';
+import { loadSessionAnalyticsSnapshot } from '../shared/helpers/session-snapshot.helper';
+import { MissionDeepInsightsPayload } from './insights.types';
 
 const logger = new Logger('InsightsService');
 
@@ -38,11 +41,45 @@ export class InsightsService {
   /**
    * High-level entry point: build and persist Deep Insights for a session
    * Called after session is finalized (SUCCESS/FAIL/ABORTED)
+   * 
+   * Step 5.2: Now builds both v1 and v2 insights
    */
   async buildAndPersistForSession(sessionId: string): Promise<void> {
     try {
-      const payload = await this.buildPayloadForSession(sessionId);
-      await this.persistDeepInsights(payload);
+      // Build v1 payload (existing logic)
+      const v1Payload = await this.buildPayloadForSession(sessionId);
+
+      // Step 5.2: Build v2 payload (try/catch to ensure v1 still persists if v2 fails)
+      let v2Payload = null;
+      try {
+        // Load snapshot for v2 engine
+        const snapshot = await loadSessionAnalyticsSnapshot(this.prisma, sessionId);
+        
+        // Build v2 insights
+        v2Payload = await buildInsightsV2(
+          this.prisma,
+          snapshot.userId,
+          sessionId,
+          snapshot,
+        );
+
+        logger.debug(`Built insights v2 for session ${sessionId}`);
+      } catch (v2Error: any) {
+        // Log but don't fail - v1 must still persist
+        logger.warn(
+          `Failed to build insights v2 for session ${sessionId}: ${v2Error.message}`,
+          v2Error.stack,
+        );
+      }
+
+      // Merge v1 and v2 payloads
+      const mergedPayload: MissionDeepInsightsPayload = {
+        ...v1Payload,
+        insightsV2: v2Payload || undefined, // Only include if v2 was built successfully
+      };
+
+      // Persist merged payload
+      await this.persistDeepInsights(mergedPayload);
     } catch (error) {
       // Don't throw - log error but don't fail session save
       logger.error(
@@ -199,20 +236,21 @@ export class InsightsService {
     const overallCharismaIndex = payload.computedFields?.overallCharismaIndex ?? null;
 
     // Upsert MissionDeepInsights record (idempotent)
+    // Step 5.2: insightsJson now includes insightsV2 block if v2 was built
     await this.prisma.missionDeepInsights.upsert({
       where: { sessionId: payload.sessionId },
       create: {
         sessionId: payload.sessionId,
         userId: payload.userId,
         missionId: payload.missionId || null, // Empty string → null for FREEPLAY
-        insightsJson: payload as any,
+        insightsJson: payload as any, // Contains both v1 and v2 data
         averageRarityTier,
         primaryLabels,
         overallCharismaIndex,
-        version: payload.version,
+        version: payload.version, // Keep as "v1" for backward compatibility
       },
       update: {
-        insightsJson: payload as any,
+        insightsJson: payload as any, // Update includes v2 if available
         averageRarityTier,
         primaryLabels,
         overallCharismaIndex,
@@ -249,6 +287,8 @@ export class InsightsService {
               traits: aiMsg.traits,
               flags: aiMsg.flags || [],
               label: aiMsg.label || null,
+              hooks: [], // Step 5.1: Ensure hooks/patterns arrays exist (fallback path doesn't have derivation)
+              patterns: [],
             },
           };
         }
@@ -353,6 +393,39 @@ export class InsightsService {
       flags,
       label,
     };
+  }
+
+  /**
+   * Step 5.2/5.3: Get insights for a session (public API endpoint)
+   * Returns raw insightsJson which will be normalized by controller
+   * 
+   * @param sessionId - Session ID
+   * @param userId - User ID (for ownership check)
+   * @returns Raw insightsJson from MissionDeepInsights (may include v1 + v2)
+   * @throws Error if session not found or ownership mismatch
+   */
+  async getSessionInsightsPublic(sessionId: string, userId: string): Promise<any> {
+    // Load MissionDeepInsights (includes session relation for ownership check)
+    const insights = await this.prisma.missionDeepInsights.findUnique({
+      where: { sessionId },
+      include: {
+        session: {
+          select: { userId: true },
+        },
+      },
+    });
+
+    if (!insights) {
+      throw new Error(`Session ${sessionId} insights not found`);
+    }
+
+    // Ownership check
+    if (insights.session.userId !== userId) {
+      throw new Error(`Session ${sessionId} does not belong to user ${userId}`);
+    }
+
+    // Return raw insightsJson (controller will normalize)
+    return insights.insightsJson;
   }
 }
 

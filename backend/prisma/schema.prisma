@@ -72,6 +72,20 @@ model User {
   moodTimelines      MissionMoodTimeline[]
   promptHookTriggers PromptHookTrigger[]
 
+  // Step 5.1: Analytics relations
+  gateOutcomes  GateOutcome[]
+  traitHistory  UserTraitHistory[]
+  traitScores   UserTraitScores?
+
+  // Step 5.4: Badge relations
+  badgeProgress UserBadgeProgress[]
+  badgeEvents   UserBadgeEvent[]
+  badgeLedger   BadgeLedgerEntry[]
+
+  // Step 5.7: Hall of Fame and Burned Messages
+  hallOfFameMessages HallOfFameMessage[]
+  burnedMessages     BurnedMessage[]
+
   // Onboarding state tracking
   onboardingState UserOnboardingState?
 }
@@ -322,6 +336,19 @@ model PracticeSession {
   moodTimeline       MissionMoodTimeline?
   promptHookTriggers PromptHookTrigger[]
 
+  // Step 5.1: Gate outcomes
+  gateOutcomes GateOutcome[]
+
+  // Step 5.1: Trait history
+  traitHistory UserTraitHistory?
+
+  // Step 5.4: Badge relations
+  badgeEvents    UserBadgeEvent[]
+  badgeLedger    BadgeLedgerEntry[]
+
+  // Step 5.7: Hall of Fame and Burned Messages
+  hallOfFameMessages HallOfFameMessage[]
+
   persona  AiPersona?               @relation(fields: [personaId], references: [id])
   template PracticeMissionTemplate? @relation(fields: [templateId], references: [id])
   user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -356,8 +383,13 @@ model ChatMessage {
   session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Step 5.7: Relations for Hall of Fame and Burned Messages
+  hallOfFameEntries HallOfFameMessage[]
+  burnedEntries     BurnedMessage[]
+
   @@unique([sessionId, turnIndex])
   @@index([sessionId, createdAt])
+  @@index([userId, createdAt]) // Step 5.6: Performance index for user-scoped queries
 }
 
 model UserWallet {
@@ -532,6 +564,12 @@ enum AiStyleKey {
 /// ✅ Ledger kinds (extend later)
 enum RewardLedgerKind {
   SESSION_REWARD
+  BADGE_TIER_UPGRADE
+}
+
+enum BadgeLedgerKind {
+  PROGRESS_APPLY
+  TIER_UPGRADE
 }
 
 /// --------------------------------------
@@ -663,9 +701,163 @@ model PromptHookTrigger {
   session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([sessionId, hookId]) // Step 5.1: Prevent duplicate triggers per session/hook
   @@index([hookId, sessionId]) // for cooldown checks
   @@index([sessionId, triggeredAt])
   @@index([userId, triggeredAt])
+}
+
+/// --------------------------------------
+/// Step 5.1: Gate Outcomes (session-level gate ledger)
+/// --------------------------------------
+model GateOutcome {
+  id          String   @id @default(cuid())
+  sessionId   String
+  userId      String
+  gateKey     String
+  passed      Boolean
+  reasonCode  String?
+  contextJson Json?
+  evaluatedAt DateTime @default(now())
+
+  // Relations
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, gateKey])
+  @@index([sessionId, evaluatedAt])
+}
+
+/// --------------------------------------
+/// Step 5.1: User Trait History (per-session trait snapshots)
+/// --------------------------------------
+model UserTraitHistory {
+  id              String   @id @default(cuid())
+  sessionId       String   @unique
+  userId          String
+  recordedAt      DateTime @default(now())
+  traitsJson      Json // snapshot of trait values for this session
+  deltasJson      Json // delta vs previous scores
+  sessionScore    Int?
+  avgMessageScore Float?
+  missionId       String? // templateId
+
+  // Relations
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, recordedAt])
+  @@index([missionId])
+}
+
+/// --------------------------------------
+/// Step 5.1: User Trait Scores (long-term trait tracking)
+/// --------------------------------------
+model UserTraitScores {
+  userId    String   @id
+  traitsJson Json // long-term aggregated trait scores
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// --------------------------------------
+/// Step 5.4: Badge Progress Tracking
+/// --------------------------------------
+model UserBadgeProgress {
+  id         String   @id @default(cuid())
+  userId     String
+  badgeKey   String
+  categoryKey String
+  tier       Int      @default(0) // 0=none, 1=bronze, 2=silver, 3=gold, 4=diamond
+  points     Int      @default(0) // Current points toward next tier
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeKey])
+  @@index([userId, categoryKey])
+}
+
+/// --------------------------------------
+/// Step 5.4: Badge Upgrade Events (for "recent unlock" UX)
+/// --------------------------------------
+model UserBadgeEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  badgeKey   String
+  fromTier   Int      // Previous tier (0-4)
+  toTier     Int      // New tier (0-4)
+  sessionId  String
+  createdAt  DateTime @default(now())
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([sessionId])
+}
+
+/// --------------------------------------
+/// Step 5.4: Badge Idempotency Ledger (prevents double progress/rewards)
+/// --------------------------------------
+model BadgeLedgerEntry {
+  id         String          @id @default(cuid())
+  userId     String
+  sessionId  String
+  badgeKey   String
+  kind       BadgeLedgerKind
+  meta       Json?           // Optional metadata (e.g., fromTier, toTier)
+  createdAt  DateTime        @default(now())
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, badgeKey, kind])
+  @@index([userId, createdAt])
+}
+
+/// --------------------------------------
+/// Step 5.7: Hall of Fame Messages (top scoring messages saved by user)
+/// --------------------------------------
+model HallOfFameMessage {
+  id         String   @id @default(cuid())
+  userId     String
+  messageId  String   // ChatMessage.id
+  sessionId  String
+  turnIndex  Int      // Step 5.6: Message turnIndex for breakdown
+  categoryKey String? // Step 5.6: Optional category key for filtering
+  score      Int      // Cached for quick sorting
+  createdAt  DateTime @default(now()) // Step 5.6: Contract uses createdAt
+  savedAt    DateTime @default(now()) // Keep for backward compatibility
+
+  // Relations
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message ChatMessage     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@index([userId, createdAt])
+  @@index([sessionId])
+}
+
+/// --------------------------------------
+/// Step 5.7: Burned Messages (user-marked as "never show again")
+/// --------------------------------------
+model BurnedMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  messageId String   // ChatMessage.id
+  burnedAt  DateTime @default(now())
+
+  // Relations
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@index([userId, burnedAt])
 }
 
 /// --------------------------------------

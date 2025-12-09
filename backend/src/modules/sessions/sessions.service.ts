@@ -7,6 +7,13 @@ import {
 import { PrismaService } from '../../db/prisma.service';
 import { StatsService } from '../stats/stats.service';
 import { InsightsService } from '../insights/insights.service';
+// Step 5.1: Import analytics services
+import { MoodService } from '../mood/mood.service';
+import { TraitsService } from '../traits/traits.service';
+import { GatesService } from '../gates/gates.service';
+import { PromptsService } from '../prompts/prompts.service';
+// Step 5.4: Import badges service
+import { BadgesService } from '../badges/badges.service';
 import {
   computeSessionRewards,
   MessageEvaluationInput,
@@ -25,6 +32,8 @@ import { buildAiInsightSummary } from '../ai/ai-insights';
 import { Prisma } from '@prisma/client';
 // ✅ Step 5.5: Import normalizers from shared module (no service-to-service dependencies)
 import { normalizeChatMessageRead } from '../shared/normalizers/chat-message.normalizer';
+// Step 5.1: Import hook derivation functions
+import { deriveHooks, derivePatterns } from '../analytics/hook-taxonomy';
 // ✅ Step 5.6: Import allowlist serializer
 import { toSessionsMockResponsePublic, toPracticeSessionResponsePublic } from '../shared/serializers/api-serializers';
 // ✅ Step 5.7: Import shared normalizeEndReason
@@ -62,10 +71,11 @@ function normalizeRole(role: any): MessageRole {
  * ✅ Step 5.1 Migration B: Safe traitData helper
  * Returns a valid JsonObject for traitData, never null/undefined.
  * Uses empty object when aiCoreMsg is missing or invalid.
+ * Step 5.1 Broad: Extended to include hooks[] and patterns[] arrays.
  */
 function safeTraitData(aiCoreMsg: MessageEvaluation | undefined | null): Prisma.JsonObject {
   if (!aiCoreMsg || typeof aiCoreMsg !== 'object') {
-    return { traits: {}, flags: [], label: null };
+    return { traits: {}, flags: [], label: null, hooks: [], patterns: [] };
   }
 
   const traits = aiCoreMsg.traits && typeof aiCoreMsg.traits === 'object'
@@ -80,7 +90,9 @@ function safeTraitData(aiCoreMsg: MessageEvaluation | undefined | null): Prisma.
     ? aiCoreMsg.label
     : null;
 
-  return { traits, flags, label };
+  // Step 5.1: hooks and patterns are derived later during message creation
+  // For now, include empty arrays as defaults
+  return { traits, flags, label, hooks: [], patterns: [] };
 }
 
 @Injectable()
@@ -89,6 +101,13 @@ export class SessionsService {
     private readonly prisma: PrismaService,
     private readonly statsService: StatsService,
     private readonly insightsService: InsightsService,
+    // Step 5.1: Inject new analytics services
+    private readonly moodService: MoodService,
+    private readonly traitsService: TraitsService,
+    private readonly gatesService: GatesService,
+    private readonly promptsService: PromptsService,
+    // Step 5.4: Inject badges service
+    private readonly badgesService: BadgesService,
   ) {}
 
   /**
@@ -394,6 +413,21 @@ export class SessionsService {
           const score = r?.score ?? null;
           const rarity = r?.rarity ?? null;
 
+          // Step 5.1: Derive hooks and patterns for USER messages
+          const baseTraitData = safeTraitData(aiCoreMsg);
+          const traits = (baseTraitData.traits as Record<string, number>) || {};
+          const flags = (baseTraitData.flags as string[]) || [];
+          const label = (baseTraitData.label as string | null) || null;
+
+          const hooks = deriveHooks({ traits, label, score });
+          const patterns = derivePatterns(flags);
+
+          const enrichedTraitData = {
+            ...baseTraitData,
+            hooks,
+            patterns,
+          };
+
           rows.push({
             sessionId: session.id,
             userId,
@@ -408,7 +442,7 @@ export class SessionsService {
 
             turnIndex: i,
             score: score ?? null,
-            traitData: safeTraitData(aiCoreMsg),
+            traitData: enrichedTraitData,
 
             meta: {
               index: i,
@@ -707,15 +741,67 @@ export class SessionsService {
       });
     }
 
-    // Phase 1: Generate Deep Insights for finalized sessions
-    // Synchronous execution (blocks until complete) but errors don't fail session save
+    // Step 5.1 + 5.2: Analytics pipeline for finalized sessions
+    // Step 5.2: Reordered so Insights runs AFTER Gates/Prompts (v2 needs their data)
+    // Order: mood → traits → gates → prompts → insights (v1 + v2)
+    // All wrapped in try/catch so mission completion never breaks
+    //
+    // TODO Step 5.13: Backfill historical sessions
+    // - Compute hooks/patterns for old messages (missing hooks[]/patterns[])
+    // - Build mood timelines for old sessions (missing MissionMoodTimeline)
+    // - Compute gate outcomes for old sessions (missing GateOutcome rows)
+    // - Compute trait histories/scores for old sessions (missing UserTraitHistory/UserTraitScores)
+    // - Generate prompt triggers for old sessions (missing PromptHookTrigger)
+    // This ensures the entire stats ecosystem works for existing data.
     if (didFinalize) {
+      // 1. Mood Timeline (can run first - only needs messages)
+      try {
+        await this.moodService.buildAndPersistTimeline(usedSessionId);
+      } catch (err: any) {
+        console.error(`[SessionsService] Mood Timeline failed for ${usedSessionId}:`, err);
+      }
+
+      // 2. Trait History + Long-term Scores (needs messages)
+      try {
+        await this.traitsService.persistTraitHistoryAndUpdateScores(userId, usedSessionId);
+      } catch (err: any) {
+        console.error(`[SessionsService] Trait History failed for ${usedSessionId}:`, err);
+      }
+
+      // 3. Gate Outcomes (needs messages + session status)
+      try {
+        await this.gatesService.evaluateAndPersist(usedSessionId);
+      } catch (err: any) {
+        console.error(`[SessionsService] Gate Outcomes failed for ${usedSessionId}:`, err);
+      }
+
+      // 4. Prompt Hook Triggers (needs messages + mood timeline)
+      try {
+        await this.promptsService.matchAndTriggerHooksForSession(usedSessionId);
+      } catch (err: any) {
+        console.error(`[SessionsService] Prompt Hooks failed for ${usedSessionId}:`, err);
+      }
+
+      // 5. Deep Insights v1 + v2 (needs ALL signals: gates, hooks, traits)
+      // Step 5.2: v2 now extracts signals from GateOutcome and PromptHookTrigger
       try {
         await this.insightsService.buildAndPersistForSession(usedSessionId);
       } catch (err: any) {
-        // Errors are already logged inside buildAndPersistForSession
-        // This catch ensures session response still succeeds even if insights fail
-        // (no throw - just log and continue)
+        console.error(`[SessionsService] Deep Insights failed for ${usedSessionId}:`, err);
+      }
+
+      // 5.7: Hall of Fame persistence (after insights, before badges)
+      try {
+        await this.upsertHallOfFameMessages(userId, usedSessionId);
+      } catch (err: any) {
+        console.error(`[SessionsService] Hall of Fame upsert failed for ${usedSessionId}:`, err);
+      }
+
+      // 6. Badge Progress Updates (Step 5.4: after insights persist)
+      try {
+        await this.badgesService.updateBadgesForSession(usedSessionId);
+      } catch (err: any) {
+        console.error(`[SessionsService] Badge Updates failed for ${usedSessionId}:`, err);
       }
     }
 
@@ -760,6 +846,87 @@ export class SessionsService {
       sessionId: usedSessionId,
       messages: normalizedMessages,
     };
+  }
+
+  /**
+   * Step 5.7: Upsert Hall of Fame messages (top scoring messages)
+   * Called during session finalize pipeline
+   */
+  private async upsertHallOfFameMessages(userId: string, sessionId: string): Promise<void> {
+    // Import threshold from config
+    const statsConfig = await import('../stats/config/stats.config');
+    const HALL_OF_FAME_SCORE_THRESHOLD = statsConfig.HALL_OF_FAME_SCORE_THRESHOLD;
+    
+    // Get top 3 positive and top 3 negative messages from session
+    const sessionMessages = await this.prisma.chatMessage.findMany({
+      where: {
+        sessionId,
+        userId,
+        role: MessageRole.USER,
+        score: { not: null },
+      },
+      orderBy: [
+        { score: 'desc' },
+        { turnIndex: 'asc' }, // Deterministic tie-breaker
+      ],
+      select: {
+        id: true,
+        score: true,
+        turnIndex: true,
+        traitData: true,
+      },
+    });
+
+    // Get top 3 positive (high scores >= threshold) and top 3 negative (low scores)
+    const topPositive = sessionMessages.slice(0, 3).filter(m => typeof m.score === 'number' && m.score >= HALL_OF_FAME_SCORE_THRESHOLD);
+    const sortedAsc = [...sessionMessages].sort((a, b) => {
+      const scoreA = typeof a.score === 'number' ? a.score : 100;
+      const scoreB = typeof b.score === 'number' ? b.score : 100;
+      return scoreA - scoreB;
+    });
+    const topNegative = sortedAsc.slice(0, 3);
+    const messagesToSave = [...topPositive, ...topNegative];
+
+    // Import getCategoryForPattern for categoryKey derivation
+    const { getCategoryForPattern } = await import('../analytics/category-taxonomy');
+    const { normalizeTraitData } = await import('../shared/normalizers/chat-message.normalizer');
+    
+    // Upsert idempotently (unique constraint: userId + messageId)
+    for (const msg of messagesToSave) {
+      if (typeof msg.score === 'number') {
+        // Derive categoryKey from patterns (deterministic)
+        const traitData = normalizeTraitData(msg.traitData);
+        const patterns = Array.isArray(traitData.patterns) ? traitData.patterns : [];
+        let categoryKey: string | null = null;
+        if (patterns.length > 0) {
+          const category = getCategoryForPattern(patterns[0]);
+          categoryKey = category || null;
+        }
+
+        await this.prisma.hallOfFameMessage.upsert({
+          where: {
+            userId_messageId: {
+              userId,
+              messageId: msg.id,
+            },
+          },
+          create: {
+            userId,
+            messageId: msg.id,
+            sessionId,
+            turnIndex: typeof msg.turnIndex === 'number' ? msg.turnIndex : 0,
+            categoryKey,
+            score: msg.score,
+          },
+          update: {
+            score: msg.score,
+            turnIndex: typeof msg.turnIndex === 'number' ? msg.turnIndex : 0,
+            categoryKey,
+            savedAt: new Date(),
+          },
+        });
+      }
+    }
   }
 
   async createMockSession(userId: string) {

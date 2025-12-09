@@ -24,6 +24,15 @@ import { MissionsModule } from './modules/missions/missions.module'; // ✅ play
 // backend/src/app.module.ts – RECOMMENDED
 import { AiStylesModule } from './modules/ai-styles/ai-styles.module';
 import { InsightsModule } from './modules/insights/insights.module';
+// Step 5.1: Import new analytics modules
+import { MoodModule } from './modules/mood/mood.module';
+import { TraitsModule } from './modules/traits/traits.module';
+import { GatesModule } from './modules/gates/gates.module';
+import { PromptsModule } from './modules/prompts/prompts.module';
+// Step 5.4: Import badges module
+import { BadgesModule } from './modules/badges/badges.module';
+// Step 5.7: Import analyzer module
+import { AnalyzerModule } from './modules/analyzer/analyzer.module';
 
 @Module({
   imports: [
@@ -46,6 +55,15 @@ import { InsightsModule } from './modules/insights/insights.module';
     PersonasModule,
     AiStylesModule, // ✅ GET /v1/ai-styles
     InsightsModule, // Phase 1: Deep Insights Engine
+    // Step 5.1: Analytics modules
+    MoodModule,
+    TraitsModule,
+    GatesModule,
+    PromptsModule,
+    // Step 5.4: Badges module
+    BadgesModule,
+    // Step 5.7: Analyzer module
+    AnalyzerModule,
   ],
   controllers: [],
   providers: [

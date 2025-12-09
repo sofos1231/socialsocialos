@@ -39,10 +39,11 @@ async function request(path: string, options: RequestInit = {}) {
 export const api = {
   getHub: () => request('/practice/hub'),
   listMissions: (category?: string) => request(`/practice/missions${category ? `?category=${encodeURIComponent(category)}` : ''}`),
-  start: (body: { missionId?: string; mode: 'standard'|'quick'|'shadow' }) => request('/practice/start', { method: 'POST', body: JSON.stringify(body) }),
-  submit: (sessionId: string, turn: any) => request(`/practice/submit/${sessionId}`, { method: 'POST', body: JSON.stringify(turn) }),
-  complete: (sessionId: string) => request(`/practice/complete/${sessionId}`, { method: 'POST' }),
-  abort: (sessionId: string) => request(`/practice/abort/${sessionId}`, { method: 'POST' }),
+  // DEPRECATED / NOT IMPLEMENTED: Backend routes do not exist. Use /practice/session instead.
+  // start: (body: { missionId?: string; mode: 'standard'|'quick'|'shadow' }) => request('/practice/start', { method: 'POST', body: JSON.stringify(body) }),
+  // submit: (sessionId: string, turn: any) => request(`/practice/submit/${sessionId}`, { method: 'POST', body: JSON.stringify(turn) }),
+  // complete: (sessionId: string) => request(`/practice/complete/${sessionId}`, { method: 'POST' }),
+  // abort: (sessionId: string) => request(`/practice/abort/${sessionId}`, { method: 'POST' }),
 };
 
 

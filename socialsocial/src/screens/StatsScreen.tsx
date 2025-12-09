@@ -1,5 +1,6 @@
 // FILE: socialsocial/src/screens/StatsScreen.tsx
-import React, { useState, useCallback } from 'react';
+// Step 5.4: Converted to tab shell (Badges + Performance + placeholders)
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -7,14 +8,36 @@ import {
   Text,
   View,
   TouchableOpacity,
+  Pressable,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useDashboardLoop } from '../hooks/useDashboardLoop';
 import TopBarWalletStrip from '../app/components/TopBarWalletStrip';
+import BadgesTab from './stats/BadgesTab';
+import PerformanceTab from './stats/PerformanceTab';
+import AdvancedTab from './stats/AdvancedTab';
+import PlaceholderTab from './stats/PlaceholderTab';
+import { fetchStatsSummary, StatsSummaryResponse } from '../api/statsService';
+
+type TabName = 'Badges' | 'Performance' | 'Advanced' | 'Tips';
 
 export default function StatsScreen() {
   const { summary, isLoading, error, reload } = useDashboardLoop();
   const [showRaw, setShowRaw] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabName>('Badges');
+  const [isPremium, setIsPremium] = useState(false); // Step 5.5→5.6 glue
+
+  // Fetch premium status on mount
+  useEffect(() => {
+    fetchStatsSummary()
+      .then((stats: StatsSummaryResponse) => {
+        setIsPremium(stats.isPremium);
+      })
+      .catch((err) => {
+        console.warn('[StatsScreen] Failed to load premium status:', err);
+        // Default to false on error
+      });
+  }, []);
 
   // ✅ Step 6: Refresh stats when screen gains focus (e.g., after completing a session)
   useFocusEffect(
@@ -26,50 +49,26 @@ export default function StatsScreen() {
   const dashboard: any = summary || {};
   const wallet = dashboard.wallet || {};
   const streak = dashboard.streak || {};
-  const stats = dashboard.stats || {};
-  const latest = stats.latest || {};
-  const averages = stats.averages || {};
-  const recentSessions: any[] = stats.recentSessions || [];
-
-  const aiLatest = stats.insights?.latest || null;
-  const strongestTraits: any[] = aiLatest?.strongestTraits || [];
-  const weakestTraits: any[] = aiLatest?.weakestTraits || [];
 
   const xp = wallet.xp ?? wallet.lifetimeXp ?? 0;
   const level = wallet.level ?? 1;
   const coins = wallet.coins ?? 0;
   const gems = wallet.gems ?? 0;
-  const currentStreak = streak.current ?? stats.streakCurrent ?? 0;
-  const sessionsCount = stats.sessionsCount ?? 0;
-  const successCount = stats.successCount ?? 0;
-  const failCount = stats.failCount ?? 0;
-  const avgScore = stats.averageScore ?? null;
-  const avgMsgScore = stats.averageMessageScore ?? null;
-  const socialScore = stats.socialScore ?? null;
-  const socialTier = stats.socialTier ?? null;
+  const currentStreak = streak.current ?? 0;
 
-  const lastScore = latest.score ?? latest.charismaIndex ?? null;
-  const lastXp = (latest as any)?.totalXp ?? null;
-  const lastAt = stats.lastSessionAt || null;
-
-  const renderTraitList = (items: any[]) => {
-    if (!items || !items.length) {
-      return <Text style={styles.cardTextMuted}>No data yet.</Text>;
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'Badges':
+        return <BadgesTab />;
+      case 'Performance':
+        return <PerformanceTab />;
+      case 'Advanced':
+        return <AdvancedTab isPremium={isPremium} />;
+      case 'Tips':
+        return <PlaceholderTab title="Social Tips" subtitle="Tips for improving your social skills" />;
+      default:
+        return <BadgesTab />;
     }
-    return (
-      <>
-        {items.map((t, idx) => {
-          const trait = t.trait ?? t.name ?? 'Trait';
-          const score = t.score ?? t.value ?? null;
-          return (
-            <Text key={idx.toString()} style={styles.cardText}>
-              • {trait}
-              {score !== null ? ` – ${Math.round(score)}` : ''}
-            </Text>
-          );
-        })}
-      </>
-    );
   };
 
   return (
@@ -97,7 +96,7 @@ export default function StatsScreen() {
 
         {!isLoading && !error && summary && (
           <>
-            {/* Wallet / Progress summary */}
+            {/* Wallet / Progress summary (unchanged, stays at top) */}
             <View style={styles.cardRow}>
               <View style={styles.miniCard}>
                 <Text style={styles.cardLabel}>XP</Text>
@@ -122,89 +121,48 @@ export default function StatsScreen() {
               </View>
             </View>
 
-            {/* Session stats */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Session stats</Text>
-              <Text style={styles.cardText}>
-                Sessions: {sessionsCount} ({successCount} success / {failCount} fail)
-              </Text>
-              <Text style={styles.cardText}>
-                Avg score: {avgScore ?? '-'} | Avg message score: {avgMsgScore ?? '-'}
-              </Text>
-              {socialScore !== null && (
-                <Text style={styles.cardText}>
-                  Social score: {Math.round(socialScore)} ({socialTier || 'Unknown tier'})
+            {/* Tab navigation (Step 5.4) */}
+            <View style={styles.tabContainer}>
+              <Pressable
+                style={[styles.tab, activeTab === 'Badges' && styles.tabActive]}
+                onPress={() => setActiveTab('Badges')}
+              >
+                <Text style={[styles.tabText, activeTab === 'Badges' && styles.tabTextActive]}>
+                  Badges
                 </Text>
-              )}
-            </View>
-
-            {/* Latest session */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Latest session</Text>
-              <Text style={styles.cardText}>Score: {lastScore ?? '-'}</Text>
-              <Text style={styles.cardText}>XP gained: {lastXp ?? '-'}</Text>
-              {lastAt && (
-                <Text style={styles.cardTextMuted}>
-                  Last session at: {new Date(lastAt).toLocaleString()}
+              </Pressable>
+              <Pressable
+                style={[styles.tab, activeTab === 'Performance' && styles.tabActive]}
+                onPress={() => setActiveTab('Performance')}
+              >
+                <Text style={[styles.tabText, activeTab === 'Performance' && styles.tabTextActive]}>
+                  Performance
                 </Text>
-              )}
+              </Pressable>
+              <Pressable
+                style={[styles.tab, activeTab === 'Advanced' && styles.tabActive]}
+                onPress={() => setActiveTab('Advanced')}
+              >
+                <Text style={[styles.tabText, activeTab === 'Advanced' && styles.tabTextActive]}>
+                  Advanced
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.tab, activeTab === 'Tips' && styles.tabActive]}
+                onPress={() => setActiveTab('Tips')}
+              >
+                <Text style={[styles.tabText, activeTab === 'Tips' && styles.tabTextActive]}>
+                  Tips
+                </Text>
+              </Pressable>
             </View>
 
-            {/* AI trait snapshot */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Strongest traits</Text>
-              {renderTraitList(strongestTraits)}
+            {/* Tab content */}
+            <View style={styles.tabContent}>
+              {renderTabContent()}
             </View>
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Weakest traits</Text>
-              {renderTraitList(weakestTraits)}
-            </View>
-
-            {/* Averages summary */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Averages (last sessions)</Text>
-              <Text style={styles.cardText}>
-                Charisma: {averages.avgCharismaIndex ?? '-'}
-              </Text>
-              <Text style={styles.cardText}>
-                Confidence: {averages.avgConfidence ?? '-'}
-              </Text>
-              <Text style={styles.cardText}>
-                Clarity: {averages.avgClarity ?? '-'}
-              </Text>
-              <Text style={styles.cardText}>
-                Humor: {averages.avgHumor ?? '-'}
-              </Text>
-              <Text style={styles.cardText}>
-                Tension: {averages.avgTension ?? '-'}
-              </Text>
-              <Text style={styles.cardText}>
-                Warmth: {averages.avgWarmth ?? '-'}
-              </Text>
-              <Text style={styles.cardText}>
-                Dominance: {averages.avgDominance ?? '-'}
-              </Text>
-            </View>
-
-            {/* Recent sessions list */}
-            {!!recentSessions.length && (
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Recent sessions</Text>
-                {recentSessions.map((s, idx) => (
-                  <View key={idx.toString()} style={styles.sessionRow}>
-                    <Text style={styles.sessionDate}>
-                      {new Date(s.createdAt).toLocaleDateString()}
-                    </Text>
-                    <Text style={styles.sessionScore}>
-                      Score: {s.score ?? '-'} | Charisma: {s.charismaIndex ?? '-'}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Raw JSON debug toggle */}
+            {/* Raw JSON debug toggle (keep for debugging) */}
             <TouchableOpacity
               style={styles.toggleButton}
               onPress={() => setShowRaw((prev) => !prev)}
@@ -287,11 +245,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#F9FAFB',
   },
-  cardText: {
-    fontSize: 14,
-    color: '#E5E7EB',
-    marginBottom: 2,
-  },
   cardTextMuted: {
     fontSize: 13,
     color: '#9CA3AF',
@@ -324,18 +277,6 @@ const styles = StyleSheet.create({
     color: '#93C5FD',
     textDecorationLine: 'underline',
   },
-  sessionRow: {
-    marginTop: 4,
-    marginBottom: 2,
-  },
-  sessionDate: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  sessionScore: {
-    fontSize: 13,
-    color: '#E5E7EB',
-  },
   toggleButton: {
     alignSelf: 'flex-start',
     marginTop: 4,
@@ -348,5 +289,35 @@ const styles = StyleSheet.create({
   toggleText: {
     fontSize: 12,
     color: '#E5E7EB',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#111827',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#1F2937',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  tabActive: {
+    backgroundColor: '#22c55e',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#9CA3AF',
+  },
+  tabTextActive: {
+    color: '#0B1220',
+  },
+  tabContent: {
+    minHeight: 400,
   },
 });
