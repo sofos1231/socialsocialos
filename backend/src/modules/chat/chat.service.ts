@@ -12,9 +12,10 @@ import { toChatMessageResponsePublic } from '../shared/serializers/api-serialize
  * ✅ Step 5.1 Migration B: Safe traitData helper
  * Returns a valid JsonObject for traitData, never null/undefined.
  * Consistent shape with sessions.service.ts writes.
+ * Step 5.1 Broad: Extended to include hooks[] and patterns[] arrays.
  */
 function safeTraitData(): Prisma.JsonObject {
-  return { traits: {}, flags: [], label: null };
+  return { traits: {}, flags: [], label: null, hooks: [], patterns: [] };
 }
 
 @Injectable()

@@ -12,6 +12,10 @@ import { GatesModule } from '../gates/gates.module';
 import { PromptsModule } from '../prompts/prompts.module';
 // Step 5.4: Import badges module
 import { BadgesModule } from '../badges/badges.module';
+// Step 5.9: Import synergy module
+import { SynergyModule } from '../synergy/synergy.module';
+// Step 5.11: Import rotation module
+import { RotationModule } from '../rotation/rotation.module';
 
 @Module({
   imports: [
@@ -23,6 +27,8 @@ import { BadgesModule } from '../badges/badges.module';
     GatesModule,
     PromptsModule,
     BadgesModule,
+    SynergyModule,
+    RotationModule,
   ],
   controllers: [SessionsController],
   providers: [SessionsService],

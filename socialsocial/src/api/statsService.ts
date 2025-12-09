@@ -237,3 +237,106 @@ export async function fetchAdvancedMetrics(): Promise<AdvancedMetricsResponse> {
   const res = await apiClient.get('/stats/advanced');
   return res.data;
 }
+
+/**
+ * Step 5.9: Trait Synergy Map types
+ */
+export interface TraitSynergyNode {
+  id: string;      // TraitKey
+  label: string;   // Human-readable label
+  x: number;       // Deterministic layout coordinate
+  y: number;
+}
+
+export interface TraitSynergyEdge {
+  source: string;  // TraitKey
+  target: string;  // TraitKey
+  weight: number;  // -1 to 1 correlation coefficient
+}
+
+export interface TraitSynergyResponse {
+  nodes: TraitSynergyNode[];
+  edges: TraitSynergyEdge[];
+  correlationMatrix: Record<string, Record<string, number>>;
+}
+
+/**
+ * Step 5.9: Fetch trait synergy map
+ */
+export async function fetchTraitSynergy(): Promise<TraitSynergyResponse> {
+  const res = await apiClient.get<TraitSynergyResponse>('/stats/synergy');
+  return res.data;
+}
+
+/**
+ * Step 5.10: Mood timeline types
+ */
+import { MoodTimelineResponse } from '../types/InsightsDTO';
+
+/**
+ * Step 5.10: Fetch mood timeline for a session
+ */
+export async function fetchMoodTimeline(sessionId: string): Promise<MoodTimelineResponse> {
+  const { data } = await apiClient.get<MoodTimelineResponse>(`/v1/stats/mood/session/${sessionId}`);
+  return data;
+}
+
+/**
+ * Step 5.11: Rotation surface types
+ */
+export type RotationSurface =
+  | 'MISSION_END'
+  | 'ADVANCED_TAB'
+  | 'ANALYZER'
+  | 'SYNERGY_MAP'
+  | 'MOOD_TIMELINE';
+
+/**
+ * Step 5.11: Rotation pack response types
+ */
+export interface RotationPackResponse {
+  sessionId: string;
+  surface: RotationSurface;
+  selectedInsights: Array<{
+    id: string;
+    kind: string;
+    category: string;
+    title: string;
+    body: string;
+    isPremium?: boolean;
+  }>;
+  selectedParagraphs?: Array<{
+    id: string;
+    category: string;
+    title: string;
+    body: string;
+  }>;
+  meta: {
+    seed: string;
+    excludedIds: string[];
+    pickedIds: string[];
+    quotas: {
+      gate: number;
+      hook: number;
+      pattern: number;
+      tip: number;
+      mood?: number;
+      synergy?: number;
+      analyzer?: number;
+    };
+    version: 'v1';
+  };
+}
+
+/**
+ * Step 5.11: Fetch rotation pack for a session and surface
+ */
+export async function fetchRotationPack(
+  sessionId: string,
+  surface: RotationSurface = 'MISSION_END',
+): Promise<RotationPackResponse> {
+  const { data } = await apiClient.get<RotationPackResponse>(
+    `/v1/insights/rotation/${sessionId}?surface=${surface}`,
+  );
+  return data;
+}

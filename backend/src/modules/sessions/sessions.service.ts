@@ -14,6 +14,10 @@ import { GatesService } from '../gates/gates.service';
 import { PromptsService } from '../prompts/prompts.service';
 // Step 5.4: Import badges service
 import { BadgesService } from '../badges/badges.service';
+// Step 5.9: Import synergy service
+import { SynergyService } from '../synergy/synergy.service';
+// Step 5.11: Import rotation service
+import { RotationService } from '../rotation/rotation.service';
 import {
   computeSessionRewards,
   MessageEvaluationInput,
@@ -108,6 +112,10 @@ export class SessionsService {
     private readonly promptsService: PromptsService,
     // Step 5.4: Inject badges service
     private readonly badgesService: BadgesService,
+    // Step 5.9: Inject synergy service
+    private readonly synergyService: SynergyService,
+    // Step 5.11: Inject rotation service
+    private readonly rotationService: RotationService,
   ) {}
 
   /**
@@ -756,7 +764,7 @@ export class SessionsService {
     if (didFinalize) {
       // 1. Mood Timeline (can run first - only needs messages)
       try {
-        await this.moodService.buildAndPersistTimeline(usedSessionId);
+        await this.moodService.buildAndPersistForSession(userId, usedSessionId);
       } catch (err: any) {
         console.error(`[SessionsService] Mood Timeline failed for ${usedSessionId}:`, err);
       }
@@ -788,6 +796,31 @@ export class SessionsService {
         await this.insightsService.buildAndPersistForSession(usedSessionId);
       } catch (err: any) {
         console.error(`[SessionsService] Deep Insights failed for ${usedSessionId}:`, err);
+      }
+
+      // Step 5.9: Trait Synergy Map computation (after insights, before Hall of Fame)
+      try {
+        await this.synergyService.computeAndPersistSynergy(userId, usedSessionId);
+      } catch (err: any) {
+        console.error(`[SessionsService] Trait synergy computation failed for ${usedSessionId}:`, err);
+      }
+
+      // Step 5.10: Mood Timeline + Insights (after synergy, before Hall of Fame)
+      try {
+        await this.moodService.buildAndPersistForSession(userId, usedSessionId);
+      } catch (err: any) {
+        console.error(`[SessionsService] Mood timeline failed for ${usedSessionId}:`, err);
+      }
+
+      // Step 5.11: Rotation Engine (after mood, before Hall of Fame)
+      try {
+        await this.rotationService.buildAndPersistRotationPack(
+          userId,
+          usedSessionId,
+          'MISSION_END',
+        );
+      } catch (err: any) {
+        console.error(`[SessionsService] Rotation engine failed for ${usedSessionId}:`, err);
       }
 
       // 5.7: Hall of Fame persistence (after insights, before badges)

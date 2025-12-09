@@ -10,6 +10,10 @@ import {
   SessionTraitProfile,
   SessionLabels,
   NarrativeInsights,
+  CandidateInsight,
+  InsightCard,
+  InsightKind,
+  InsightSource,
 } from './insights.types';
 import { MessageEvaluation, AiSessionResult } from '../ai/ai-scoring.types';
 import {
@@ -31,12 +35,18 @@ import { normalizeTraitData } from '../shared/normalizers/chat-message.normalize
 import { buildInsightsV2 } from './engine/insights.engine';
 import { loadSessionAnalyticsSnapshot } from '../shared/helpers/session-snapshot.helper';
 import { MissionDeepInsightsPayload } from './insights.types';
+import { StatsService } from '../stats/stats.service';
+import { loadParagraphHistory } from '../analyzer/helpers/paragraph-history';
+import { selectDeepParagraphs } from '../analyzer/templates/deepParagraph.registry';
 
 const logger = new Logger('InsightsService');
 
 @Injectable()
 export class InsightsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly statsService: StatsService,
+  ) {}
 
   /**
    * High-level entry point: build and persist Deep Insights for a session
@@ -62,6 +72,49 @@ export class InsightsService {
           sessionId,
           snapshot,
         );
+
+        // Step 5.8: Generate analyzer paragraphs for this mission
+        try {
+          const userMessages = snapshot.messages.filter((m) => m.role === 'USER');
+          if (userMessages.length > 0) {
+            // Select best message (highest score, or first if no scores)
+            const bestMessage = userMessages.reduce((best, msg) => {
+              const bestScore = typeof best.score === 'number' ? best.score : 0;
+              const msgScore = typeof msg.score === 'number' ? msg.score : 0;
+              return msgScore > bestScore ? msg : best;
+            }, userMessages[0]);
+
+            // Build breakdown for best message
+            const breakdown = this.statsService.buildMessageBreakdown(bestMessage);
+
+            // Load paragraph history for cooldown
+            const paragraphHistory = await loadParagraphHistory(
+              this.prisma,
+              snapshot.userId,
+            );
+
+            // Select deep paragraphs (deterministic, respects cooldown)
+            const paragraphs = selectDeepParagraphs(
+              breakdown,
+              paragraphHistory.usedParagraphIds,
+            );
+
+            // Store paragraph IDs in v2 meta
+            if (v2Payload.meta) {
+              v2Payload.meta.pickedParagraphIds = paragraphs.map((p) => p.id);
+            }
+
+            logger.debug(
+              `Generated ${paragraphs.length} analyzer paragraphs for session ${sessionId}`,
+            );
+          }
+        } catch (paragraphError: any) {
+          // Log but don't fail - insights v2 should still persist
+          logger.warn(
+            `Failed to generate analyzer paragraphs for session ${sessionId}: ${paragraphError.message}`,
+            paragraphError.stack,
+          );
+        }
 
         logger.debug(`Built insights v2 for session ${sessionId}`);
       } catch (v2Error: any) {
@@ -424,8 +477,141 @@ export class InsightsService {
       throw new Error(`Session ${sessionId} does not belong to user ${userId}`);
     }
 
-    // Return raw insightsJson (controller will normalize)
-    return insights.insightsJson;
+    const insightsJson = insights.insightsJson as any;
+
+    // Step 5.9: Reconstruct analyzer paragraphs if paragraph IDs exist
+    let analyzerParagraphs = undefined;
+    const paragraphIds = insightsJson?.insightsV2?.meta?.pickedParagraphIds;
+    if (Array.isArray(paragraphIds) && paragraphIds.length > 0) {
+      try {
+        // Load session snapshot to get best message
+        const snapshot = await loadSessionAnalyticsSnapshot(this.prisma, sessionId);
+        const userMessages = snapshot.messages.filter((m) => m.role === 'USER');
+        
+        if (userMessages.length > 0) {
+          // Select best message (same logic as in buildAndPersistForSession)
+          const bestMessage = userMessages.reduce((best, msg) => {
+            const bestScore = typeof best.score === 'number' ? best.score : 0;
+            const msgScore = typeof msg.score === 'number' ? msg.score : 0;
+            return msgScore > bestScore ? msg : best;
+          }, userMessages[0]);
+
+          // Build breakdown
+          const breakdown = this.statsService.buildMessageBreakdown(bestMessage);
+
+          // Reconstruct paragraphs by selecting with the stored IDs
+          // We'll filter templates to only include the stored IDs
+          const allParagraphs = selectDeepParagraphs(breakdown, []);
+          analyzerParagraphs = allParagraphs.filter((p) => paragraphIds.includes(p.id));
+
+          // If reconstruction didn't match (shouldn't happen, but safe fallback)
+          if (analyzerParagraphs.length === 0) {
+            analyzerParagraphs = undefined;
+          }
+        }
+      } catch (error: any) {
+        // Log but don't fail - insights should still return
+        logger.warn(
+          `Failed to reconstruct analyzer paragraphs for session ${sessionId}: ${error.message}`,
+        );
+      }
+    }
+
+    // Return insightsJson with optional analyzerParagraphs
+    return {
+      ...insightsJson,
+      analyzerParagraphs,
+    };
+  }
+
+  /**
+   * Step 5.11: Get insight candidates for rotation engine
+   * Converts already-generated InsightCards into CandidateInsight format
+   * 
+   * @param sessionId - Session ID
+   * @returns Array of CandidateInsight objects
+   */
+  async getCandidatesForRotation(sessionId: string): Promise<CandidateInsight[]> {
+    // Load MissionDeepInsights to get already-generated insights
+    const insights = await this.prisma.missionDeepInsights.findUnique({
+      where: { sessionId },
+      select: {
+        insightsJson: true,
+      },
+    });
+
+    if (!insights) {
+      return []; // No insights generated yet
+    }
+
+    const insightsJson = insights.insightsJson as any;
+    const v2Payload = insightsJson?.insightsV2;
+
+    if (!v2Payload) {
+      return []; // No v2 insights yet
+    }
+
+    const candidates: CandidateInsight[] = [];
+
+    // Helper to map kind to source
+    const mapKindToSource = (kind: InsightKind): InsightSource => {
+      switch (kind) {
+        case 'GATE_FAIL':
+          return 'GATES';
+        case 'POSITIVE_HOOK':
+          return 'HOOKS';
+        case 'NEGATIVE_PATTERN':
+          return 'PATTERNS';
+        case 'GENERAL_TIP':
+          return 'GENERAL';
+        default:
+          return 'GENERAL';
+      }
+    };
+
+    // Helper to map kind to priority
+    const mapKindToPriority = (kind: InsightKind): number => {
+      switch (kind) {
+        case 'GATE_FAIL':
+          return 100;
+        case 'POSITIVE_HOOK':
+          return 80;
+        case 'NEGATIVE_PATTERN':
+          return 60;
+        case 'GENERAL_TIP':
+          return 40;
+        default:
+          return 50;
+      }
+    };
+
+    // Convert all InsightCards to CandidateInsight
+    const allCards: InsightCard[] = [
+      ...(v2Payload.gateInsights || []),
+      ...(v2Payload.positiveInsights || []),
+      ...(v2Payload.negativeInsights || []),
+    ];
+
+    for (const card of allCards) {
+      candidates.push({
+        id: card.id,
+        kind: card.kind,
+        source: mapKindToSource(card.kind),
+        category: card.category,
+        priority: mapKindToPriority(card.kind),
+        weight: mapKindToPriority(card.kind), // Use priority as weight for now
+        evidence: {
+          turnIndex: card.relatedTurnIndex,
+        },
+        isPremium: card.isPremium ?? false,
+        surfaces: ['MISSION_END', 'ADVANCED_TAB'],
+        title: card.title, // Step 5.11: Preserve title
+        body: card.body, // Step 5.11: Preserve body
+        relatedTurnIndex: card.relatedTurnIndex, // Step 5.11: Preserve turn index
+      });
+    }
+
+    return candidates;
   }
 }
 

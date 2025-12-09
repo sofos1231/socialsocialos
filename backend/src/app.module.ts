@@ -33,6 +33,8 @@ import { PromptsModule } from './modules/prompts/prompts.module';
 import { BadgesModule } from './modules/badges/badges.module';
 // Step 5.7: Import analyzer module
 import { AnalyzerModule } from './modules/analyzer/analyzer.module';
+// Step 5.9: Import synergy module
+import { SynergyModule } from './modules/synergy/synergy.module';
 
 @Module({
   imports: [
@@ -64,6 +66,8 @@ import { AnalyzerModule } from './modules/analyzer/analyzer.module';
     BadgesModule,
     // Step 5.7: Analyzer module
     AnalyzerModule,
+    // Step 5.9: Synergy module
+    SynergyModule,
   ],
   controllers: [],
   providers: [

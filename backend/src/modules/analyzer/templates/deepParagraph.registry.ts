@@ -1,15 +1,16 @@
 // backend/src/modules/analyzer/templates/deepParagraph.registry.ts
-// Step 5.7: Deep paragraph template registry (deterministic)
+// Step 5.7: Deep paragraph registry with deterministic selection
+// Glue for Step 5.8: Stable IDs for cooldown tracking
 
-import type { DeepParagraphDTO } from '../analyzer.types';
+import { MessageBreakdownDTO } from '../../stats/stats.types';
+import { DeepParagraphDTO } from '../analyzer.types';
 
 /**
- * Step 5.7: Deep paragraph template
- * Stable IDs for cooldown tracking (glue for 5.8)
+ * Step 5.7: Deep paragraph template interface
  */
-export interface DeepParagraphTemplate {
-  id: string; // Stable ID for cooldown (glue for 5.8)
-  category: string;
+interface DeepParagraphTemplate {
+  id: string; // stable ID, never changes (glue for 5.8)
+  category: 'strengths' | 'improvement' | 'patterns' | 'insights';
   title: string;
   body: (ctx: {
     score: number;
@@ -20,235 +21,259 @@ export interface DeepParagraphTemplate {
 }
 
 /**
- * Step 5.7: Deep paragraph templates registry
- * Deterministic selection based on message signals
+ * Step 5.7: Deep paragraph templates (~13 deterministic templates)
  */
-export const DEEP_PARAGRAPH_TEMPLATES: DeepParagraphTemplate[] = [
-  // High score paragraphs
+const DEEP_PARAGRAPH_TEMPLATES: DeepParagraphTemplate[] = [
+  // High-score strengths
   {
     id: 'deep_high_score_confidence',
     category: 'strengths',
-    title: 'Strong Confidence',
+    title: 'Confidence That Resonates',
     body: (ctx) =>
-      `Your message scored ${ctx.score} points, with confidence at ${ctx.traits.confidence || 0}%. This demonstrates assertive communication that commands attention and respect.`,
+      `Your message demonstrates exceptional confidence (${ctx.traits.confidence}/100), which creates a strong presence. This level of assertiveness helps you communicate your ideas clearly and makes others take notice. Confidence is contagious—when you project it, others respond with respect and engagement.`,
+  },
+  {
+    id: 'deep_high_score_warmth',
+    category: 'strengths',
+    title: 'Emotional Connection',
+    body: (ctx) =>
+      `Your emotional warmth (${ctx.traits.emotionalWarmth}/100) shines through in this message. You're creating genuine connections by showing empathy and understanding. This trait is crucial for building lasting relationships and making others feel valued.`,
   },
   {
     id: 'deep_high_score_clarity',
     category: 'strengths',
-    title: 'Clear Communication',
+    title: 'Crystal Clear Communication',
     body: (ctx) =>
-      `Your clarity score of ${ctx.traits.clarity || 0}% shows you communicate effectively. Clear messages reduce misunderstandings and build stronger connections.`,
+      `Your clarity (${ctx.traits.clarity}/100) ensures your message is easily understood. Clear communication reduces misunderstandings and builds trust. You're making it easy for others to follow your thoughts and respond appropriately.`,
   },
   {
-    id: 'deep_high_score_emotional_warmth',
+    id: 'deep_high_score_humor',
     category: 'strengths',
-    title: 'Emotional Connection',
+    title: 'Humor That Connects',
     body: (ctx) =>
-      `Your emotional warmth (${ctx.traits.emotionalWarmth || 0}%) creates genuine connections. People feel understood and valued when you communicate this way.`,
+      `Your use of humor (${ctx.traits.humor}/100) adds lightness and connection to your message. Appropriate humor breaks down barriers and makes interactions more enjoyable. You're using this tool effectively to build rapport.`,
+  },
+  {
+    id: 'deep_high_score_mastery',
+    category: 'strengths',
+    title: 'Masterful Communication',
+    body: (ctx) =>
+      `With a score of ${ctx.score}/100, this message demonstrates mastery of social communication. Your balanced approach across multiple traits shows you understand how to adapt your style to different situations. This is the mark of a skilled communicator.`,
   },
 
-  // Medium score paragraphs
+  // Medium-score insights
   {
-    id: 'deep_medium_improve_clarity',
-    category: 'improvement',
-    title: 'Enhance Clarity',
+    id: 'deep_medium_insight_balance',
+    category: 'insights',
+    title: 'Finding Your Balance',
     body: (ctx) =>
-      `Your message shows potential, but clarity could be improved. Try being more direct and specific about your intent. Current clarity: ${ctx.traits.clarity || 0}%.`,
+      `Your message shows a solid foundation (score: ${ctx.score}/100) with room to grow. The key is finding the right balance between being assertive and being approachable. Consider how you can strengthen your weaker traits while maintaining your strengths.`,
   },
   {
-    id: 'deep_medium_confidence_growth',
-    category: 'improvement',
-    title: 'Building Confidence',
+    id: 'deep_medium_insight_adaptation',
+    category: 'insights',
+    title: 'Adaptive Communication',
     body: (ctx) =>
-      `Your confidence is at ${ctx.traits.confidence || 0}%. Practice asserting your boundaries and expressing your opinions directly to build stronger presence.`,
-  },
-
-  // Low score paragraphs
-  {
-    id: 'deep_low_score_general',
-    category: 'improvement',
-    title: 'Learning Opportunity',
-    body: (ctx) =>
-      `This message (score: ${ctx.score}) provides a valuable learning opportunity. Focus on clarity and directness. Break down complex thoughts into simpler statements.`,
-  },
-  {
-    id: 'deep_low_confidence',
-    category: 'improvement',
-    title: 'Confidence Building',
-    body: (ctx) =>
-      `Your confidence level (${ctx.traits.confidence || 0}%) suggests hesitation. Practice stating your opinions clearly without apologizing. Confidence grows with practice.`,
+      `This message reflects a developing communication style. Your score of ${ctx.score}/100 suggests you're on the right track, but there's potential to elevate your impact. Focus on understanding your audience and adjusting your approach accordingly.`,
   },
 
-  // Pattern-based paragraphs
+  // Low-score improvement
+  {
+    id: 'deep_low_score_foundation',
+    category: 'improvement',
+    title: 'Building Strong Foundations',
+    body: (ctx) =>
+      `With a score of ${ctx.score}/100, this message shows areas for significant improvement. Start by focusing on clarity and confidence—these are foundational traits that support everything else. Practice being more direct and assertive in your communication.`,
+  },
+  {
+    id: 'deep_low_score_engagement',
+    category: 'improvement',
+    title: 'Increasing Engagement',
+    body: (ctx) =>
+      `Your message needs more energy and engagement. A score of ${ctx.score}/100 suggests you're holding back. Try to express more enthusiasm, ask questions, and show genuine interest in the conversation. Engagement is a skill that improves with practice.`,
+  },
+
+  // Pattern-based tips
   {
     id: 'deep_pattern_filler_words',
     category: 'patterns',
-    title: 'Filler Words Impact',
+    title: 'Reducing Filler Words',
     body: (ctx) =>
-      `Your message contains filler words that reduce clarity. Eliminating "um," "like," and "you know" makes your communication more authoritative and clear.`,
+      `Your message shows patterns that reduce clarity. Filler words like "um," "like," or "you know" weaken your message. Practice pausing instead of filling silence—this makes you sound more confident and thoughtful.`,
   },
   {
     id: 'deep_pattern_overexplaining',
     category: 'patterns',
-    title: 'Over-Explanation',
+    title: 'Avoiding Over-Explanation',
     body: (ctx) =>
-      `You're providing more detail than necessary. Concise communication is often more powerful. Try to get to the point faster while maintaining essential context.`,
+      `You're providing more detail than necessary, which can overwhelm your listener. Practice being concise—get to the point faster and trust that others will ask for clarification if needed. Less is often more in communication.`,
   },
   {
-    id: 'deep_pattern_emotional_distance',
+    id: 'deep_pattern_confidence_issue',
     category: 'patterns',
-    title: 'Emotional Engagement',
+    title: 'Building Assertiveness',
     body: (ctx) =>
-      `Your message maintains emotional distance. Adding personal touches, acknowledging feelings, or showing empathy can deepen your connections.`,
+      `Your message shows hesitation or uncertainty. Work on stating your opinions and needs more directly. Confidence comes from practice—start with small assertions and build from there. You have valuable things to say.`,
   },
 
-  // Hook-based paragraphs
+  // Hook-based strengths
   {
-    id: 'deep_hook_questions',
+    id: 'deep_hook_positive_patterns',
     category: 'strengths',
-    title: 'Engaging Questions',
+    title: 'Positive Patterns in Action',
     body: (ctx) =>
-      `Your use of questions shows active engagement. Asking thoughtful questions demonstrates interest and encourages deeper conversation.`,
-  },
-  {
-    id: 'deep_hook_stories',
-    category: 'strengths',
-    title: 'Storytelling Impact',
-    body: (ctx) =>
-      `Your storytelling approach makes your message memorable. Stories create emotional connections and help others relate to your experiences.`,
+      `Your message demonstrates positive communication patterns: ${ctx.hooks.slice(0, 3).join(', ')}. These patterns show you're using effective communication strategies. Keep leveraging these strengths—they're working well for you.`,
   },
 
-  // Trait combination paragraphs
+  // Trait combination insights
   {
-    id: 'deep_trait_balance',
+    id: 'deep_trait_combination_power',
     category: 'insights',
-    title: 'Trait Balance',
+    title: 'The Power of Trait Combinations',
     body: (ctx) => {
-      const highTraits = Object.entries(ctx.traits)
-        .filter(([_, value]) => value >= 75)
-        .map(([key]) => key);
-      const lowTraits = Object.entries(ctx.traits)
-        .filter(([_, value]) => value < 50)
-        .map(([key]) => key);
-
-      if (highTraits.length > 0 && lowTraits.length > 0) {
-        return `You excel at ${highTraits.slice(0, 2).join(' and ')}, while ${lowTraits.slice(0, 2).join(' and ')} offer growth opportunities. Balancing these traits creates well-rounded communication.`;
+      const topTraits = Object.entries(ctx.traits)
+        .filter(([_, v]) => v >= 70)
+        .map(([k, _]) => k)
+        .slice(0, 2);
+      if (topTraits.length >= 2) {
+        return `Your combination of strong ${topTraits[0]} and ${topTraits[1]} creates a powerful communication style. When these traits work together, they amplify each other's impact. This is a signature strength you can leverage in future interactions.`;
       }
-      return 'Your communication traits show a balanced profile. Continue developing all areas for consistent growth.';
+      return `Your trait profile shows potential for growth. Focus on developing one or two key traits to a high level, then let them support the others. Strong traits create a foundation for overall improvement.`;
     },
   },
 ];
 
 /**
  * Step 5.7: Select deep paragraphs deterministically
- * Applies cooldown to avoid repeating recent paragraphs (glue for 5.8)
+ * Glue for Step 5.8: Excludes paragraphs by ID for cooldown
  */
 export function selectDeepParagraphs(
-  breakdown: {
-    score: number;
-    traits: Record<string, number>;
-    hooks: string[];
-    patterns: string[];
-  },
-  excludedIds: string[] = [], // Paragraph IDs from recent history (glue for 5.8)
+  breakdown: MessageBreakdownDTO,
+  excludedIds: string[] = [],
 ): DeepParagraphDTO[] {
-  // Filter out templates that are in cooldown
-  const availableTemplates = DEEP_PARAGRAPH_TEMPLATES.filter(
-    (template) => !excludedIds.includes(template.id),
+  // Filter out excluded templates
+  let candidates = DEEP_PARAGRAPH_TEMPLATES.filter(
+    (t) => !excludedIds.includes(t.id),
   );
 
-  // If all templates are in cooldown, allow repeats (fallback)
-  const candidates = availableTemplates.length > 0 ? availableTemplates : DEEP_PARAGRAPH_TEMPLATES;
+  // If all filtered out, fall back to using all templates
+  if (candidates.length === 0) {
+    candidates = DEEP_PARAGRAPH_TEMPLATES;
+  }
 
-  // Deterministic selection based on message signals
   const selected: DeepParagraphDTO[] = [];
+  const selectedIds = new Set<string>();
 
-  // 1. Select based on score range
+  // Deterministic selection logic
+  const ctx = {
+    score: breakdown.score,
+    traits: breakdown.traits,
+    hooks: breakdown.hooks,
+    patterns: breakdown.patterns,
+  };
+
+  // Step 1: Score-based primary selection
   if (breakdown.score >= 80) {
-    // High score: prefer strength paragraphs
-    const strengthTemplates = candidates.filter((t) => t.category === 'strengths');
-    if (strengthTemplates.length > 0) {
-      const template = strengthTemplates[0]; // Deterministic: first match
+    // Pick first 'strengths' template
+    const strengthTemplate = candidates.find(
+      (t) => t.category === 'strengths' && !selectedIds.has(t.id),
+    );
+    if (strengthTemplate) {
       selected.push({
-        id: template.id,
-        title: template.title,
-        body: template.body(breakdown),
-        category: template.category,
+        id: strengthTemplate.id,
+        title: strengthTemplate.title,
+        body: strengthTemplate.body(ctx),
+        category: strengthTemplate.category,
       });
+      selectedIds.add(strengthTemplate.id);
     }
   } else if (breakdown.score < 60) {
-    // Low score: prefer improvement paragraphs
-    const improvementTemplates = candidates.filter((t) => t.category === 'improvement');
-    if (improvementTemplates.length > 0) {
-      const template = improvementTemplates[0];
+    // Pick first 'improvement' template
+    const improvementTemplate = candidates.find(
+      (t) => t.category === 'improvement' && !selectedIds.has(t.id),
+    );
+    if (improvementTemplate) {
       selected.push({
-        id: template.id,
-        title: template.title,
-        body: template.body(breakdown),
-        category: template.category,
+        id: improvementTemplate.id,
+        title: improvementTemplate.title,
+        body: improvementTemplate.body(ctx),
+        category: improvementTemplate.category,
       });
+      selectedIds.add(improvementTemplate.id);
     }
   } else {
-    // Medium score: balanced approach
-    const insightTemplates = candidates.filter((t) => t.category === 'insights');
-    if (insightTemplates.length > 0) {
-      const template = insightTemplates[0];
-      selected.push({
-        id: template.id,
-        title: template.title,
-        body: template.body(breakdown),
-        category: template.category,
-      });
-    }
-  }
-
-  // 2. Select based on patterns
-  if (breakdown.patterns.length > 0 && selected.length < 2) {
-    const patternTemplates = candidates.filter(
-      (t) => t.category === 'patterns' && !selected.find((s) => s.id === t.id),
+    // Pick first 'insights' template
+    const insightTemplate = candidates.find(
+      (t) => t.category === 'insights' && !selectedIds.has(t.id),
     );
-    if (patternTemplates.length > 0) {
-      const template = patternTemplates[0];
+    if (insightTemplate) {
       selected.push({
-        id: template.id,
-        title: template.title,
-        body: template.body(breakdown),
-        category: template.category,
+        id: insightTemplate.id,
+        title: insightTemplate.title,
+        body: insightTemplate.body(ctx),
+        category: insightTemplate.category,
       });
+      selectedIds.add(insightTemplate.id);
     }
   }
 
-  // 3. Select based on hooks (if positive signals)
-  if (breakdown.hooks.length > 0 && selected.length < 2) {
-    const hookTemplates = candidates.filter(
-      (t) => t.category === 'strengths' && !selected.find((s) => s.id === t.id),
+  // Step 2: Pattern-based addition (if selected < 2)
+  if (selected.length < 2 && breakdown.patterns.length > 0) {
+    const patternTemplate = candidates.find(
+      (t) =>
+        t.category === 'patterns' &&
+        !selectedIds.has(t.id) &&
+        (t.id.includes('filler') ||
+          t.id.includes('overexplain') ||
+          t.id.includes('confidence')),
     );
-    if (hookTemplates.length > 0) {
-      const template = hookTemplates[0];
+    if (patternTemplate) {
       selected.push({
-        id: template.id,
-        title: template.title,
-        body: template.body(breakdown),
-        category: template.category,
+        id: patternTemplate.id,
+        title: patternTemplate.title,
+        body: patternTemplate.body(ctx),
+        category: patternTemplate.category,
       });
+      selectedIds.add(patternTemplate.id);
     }
   }
 
-  // Ensure we return at least 2 paragraphs (if templates are available)
-  while (selected.length < 2 && selected.length < candidates.length) {
-    const remaining = candidates.filter((t) => !selected.find((s) => s.id === t.id));
-    if (remaining.length === 0) break;
-
-    const template = remaining[0];
-    selected.push({
-      id: template.id,
-      title: template.title,
-      body: template.body(breakdown),
-      category: template.category,
-    });
+  // Step 3: Hook-based addition (if selected < 2)
+  if (selected.length < 2 && breakdown.hooks.length > 0) {
+    const hookTemplate = candidates.find(
+      (t) =>
+        t.category === 'strengths' &&
+        t.id.includes('hook') &&
+        !selectedIds.has(t.id),
+    );
+    if (hookTemplate) {
+      selected.push({
+        id: hookTemplate.id,
+        title: hookTemplate.title,
+        body: hookTemplate.body(ctx),
+        category: hookTemplate.category,
+      });
+      selectedIds.add(hookTemplate.id);
+    }
   }
 
-  return selected.slice(0, 3); // Max 3 paragraphs per analysis
+  // Step 4: Fill remaining slots (ensure at least 2, at most 3)
+  while (selected.length < 2 && candidates.length > 0) {
+    const nextTemplate = candidates.find((t) => !selectedIds.has(t.id));
+    if (nextTemplate) {
+      selected.push({
+        id: nextTemplate.id,
+        title: nextTemplate.title,
+        body: nextTemplate.body(ctx),
+        category: nextTemplate.category,
+      });
+      selectedIds.add(nextTemplate.id);
+    } else {
+      break;
+    }
+  }
+
+  // Limit to max 3 paragraphs
+  return selected.slice(0, 3);
 }
-
 

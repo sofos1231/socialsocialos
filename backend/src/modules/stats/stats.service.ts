@@ -23,7 +23,12 @@ import {
   HallOfFameMessageItem,
   MessageBreakdownDTO,
   WeekRangeDTO,
+  TraitSynergyResponse,
+  TraitSynergyNode,
+  TraitSynergyEdge,
+  MoodTimelineResponse,
 } from './stats.types';
+import { MoodTimelinePayload, MoodState } from '../mood/mood.types';
 import { getCurrentWeekRange, getPreviousWeekRange, getWeekRangeForDate, getLastNWeeks } from './time-windows';
 import { getAllImprovements } from './trait-improvement';
 import { normalizeTraitData } from '../shared/normalizers/chat-message.normalizer';
@@ -800,7 +805,8 @@ export class StatsService {
   /**
    * Step 5.6: Build message breakdown DTO from ChatMessage (minimal allowlisted DTO)
    */
-  private buildMessageBreakdown(message: any): MessageBreakdownDTO {
+  // Step 5.8: Made public for use by InsightsService
+  buildMessageBreakdown(message: any): MessageBreakdownDTO {
     const traitData = normalizeTraitData(message.traitData);
     const traits = traitData.traits || {};
     const hooks = Array.isArray(traitData.hooks) ? traitData.hooks : [];
@@ -1494,5 +1500,146 @@ export class StatsService {
         breakdown: this.buildMessageBreakdown(msg),
       };
     });
+  }
+
+  /**
+   * Step 5.9: Get trait synergy map for a user
+   * Returns the latest session's synergy data, or safe defaults if none exists
+   */
+  async getSynergyForUser(userId: string): Promise<TraitSynergyResponse> {
+    if (!userId) {
+      throw new UnauthorizedException({
+        code: 'AUTH_INVALID',
+        message: 'Missing user id in request',
+      });
+    }
+
+    // 1) Find latest completed PracticeSession for this user
+    const latestSession = await this.prisma.practiceSession.findFirst({
+      where: {
+        userId,
+        status: {
+          in: ['SUCCESS', 'FAIL', 'ABORTED'], // Only finalized sessions
+        },
+      },
+      orderBy: {
+        endedAt: 'desc', // Most recently ended first
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    // 2) Load SessionTraitSynergy for that sessionId (or return safe defaults)
+    if (!latestSession) {
+      // No sessions yet - return empty structure
+      return {
+        nodes: [],
+        edges: [],
+        correlationMatrix: {},
+      };
+    }
+
+    const synergy = await this.prisma.sessionTraitSynergy.findUnique({
+      where: { sessionId: latestSession.id },
+      select: {
+        synergyJson: true,
+      },
+    });
+
+    if (!synergy) {
+      // Synergy not computed yet - return empty structure
+      return {
+        nodes: [],
+        edges: [],
+        correlationMatrix: {},
+      };
+    }
+
+    // 3) Map stored synergyJson → TraitSynergyResponse
+    const json = synergy.synergyJson as any;
+
+    // Validate version
+    if (json?.version !== 'v1') {
+      // Unknown version - return safe defaults
+      return {
+        nodes: [],
+        edges: [],
+        correlationMatrix: {},
+      };
+    }
+
+    // Extract graph data
+    const graphData = json?.graphData;
+    const nodes: TraitSynergyNode[] = Array.isArray(graphData?.nodes)
+      ? graphData.nodes.map((n: any) => ({
+          id: String(n.id || ''),
+          label: String(n.label || ''),
+          x: typeof n.x === 'number' ? n.x : 0,
+          y: typeof n.y === 'number' ? n.y : 0,
+        }))
+      : [];
+
+    const edges: TraitSynergyEdge[] = Array.isArray(graphData?.edges)
+      ? graphData.edges.map((e: any) => ({
+          source: String(e.source || ''),
+          target: String(e.target || ''),
+          weight: typeof e.weight === 'number' ? e.weight : 0,
+        }))
+      : [];
+
+    // Extract correlation matrix
+    const correlationMatrix: Record<string, Record<string, number>> =
+      json?.correlationMatrix && typeof json.correlationMatrix === 'object'
+        ? json.correlationMatrix
+        : {};
+
+    return {
+      nodes,
+      edges,
+      correlationMatrix,
+    };
+  }
+
+  /**
+   * Step 5.10: Get mood timeline for a session
+   */
+  async getMoodTimelineForSession(
+    userId: string,
+    sessionId: string,
+  ): Promise<MoodTimelineResponse> {
+    // Validate ownership
+    const timeline = await this.prisma.missionMoodTimeline.findUnique({
+      where: { sessionId },
+      include: {
+        session: {
+          select: { userId: true },
+        },
+      },
+    });
+
+    if (!timeline) {
+      throw new Error(`Mood timeline not found for session ${sessionId}`);
+    }
+
+    if (timeline.session.userId !== userId) {
+      throw new Error(`Session ${sessionId} does not belong to user ${userId}`);
+    }
+
+    // Extract payload from timelineJson
+    const payload = timeline.timelineJson as any;
+
+    // Extract insights if available
+    const insights = payload?.moodInsights?.insights || [];
+
+    return {
+      sessionId,
+      payload: payload as MoodTimelinePayload,
+      current: {
+        moodState: timeline.currentMoodState as MoodState,
+        moodPercent: timeline.currentMoodPercent,
+      },
+      insights,
+    };
   }
 }

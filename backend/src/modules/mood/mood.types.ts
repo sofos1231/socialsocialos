@@ -2,9 +2,9 @@
 // Phase 0: State Machine / Mission Mood contract types
 
 /**
- * Mood state enum (extends current simple enum to support timeline)
+ * Step 5.10: Mood state enum (updated for Step 5.10)
  */
-export type MoodState = 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'RECOVERING' | 'COLLAPSED';
+export type MoodState = 'COLD' | 'NEUTRAL' | 'WARM' | 'TENSE' | 'FLOW';
 
 /**
  * Reason code for mood state transition
@@ -22,34 +22,59 @@ export type MoodTransitionReason =
   | 'CUSTOM'; // Custom reason from mission config
 
 /**
- * Single mood point in timeline
+ * Step 5.10: Single mood point in timeline (updated structure)
  */
 export interface MoodSnapshot {
-  messageIndex: number; // user message index at which this mood was computed
   turnIndex: number; // full transcript turn index
-  timestamp: string; // ISO 8601 timestamp
-  moodState: MoodState;
-  moodPercent: number; // 0-100, computed value (e.g., 0-30 = NEGATIVE, 31-50 = NEUTRAL, 51-75 = RECOVERING, 76-100 = POSITIVE)
-  reasonCode?: MoodTransitionReason; // why this state was reached
-  context?: {
-    recentScores?: number[]; // last N message scores
-    recentTraits?: Record<string, number>; // aggregated traits for last N messages
-    trendDirection?: 'up' | 'down' | 'stable';
+  rawScore: number; // 0-100, raw computed score
+  smoothedMoodScore: number; // 0-100, EMA-smoothed score (α=0.35)
+  moodState: MoodState; // Determined from smoothedMoodScore + tension/warmth
+  tension: number; // 0-100, computed from tensionControl trait + patterns
+  warmth: number; // 0-100, computed from emotionalWarmth trait
+  vibe: number; // 0-100, computed from humor + confidence
+  flow: number; // 0-100, EMA of score stability
+}
+
+/**
+ * Step 5.10: Mood insight (for timeline payload)
+ */
+export interface MoodInsight {
+  id: string;
+  title: string;
+  body: string;
+  categoryKey?: string;
+  evidence: string;
+  priorityScore: number;
+}
+
+/**
+ * Step 5.10: Runtime mood timeline for a session
+ * This is what will be stored in MissionMoodTimeline.timelineJson
+ */
+export interface MoodTimelinePayload {
+  version: 1;
+  snapshots: MoodSnapshot[];
+  current: {
+    moodState: MoodState;
+    moodPercent: number;
+  };
+  moodInsights?: {
+    pickedIds: string[];
+    insights: MoodInsight[];
   };
 }
 
 /**
- * Runtime mood timeline for a session
- * This is what will be stored in MissionMoodTimeline.timelineJson
+ * Legacy type alias for backward compatibility
  */
 export interface MissionMoodTimelinePayload {
   sessionId: string;
   userId: string;
   missionId: string;
-  snapshots: MoodSnapshot[]; // ordered by messageIndex/turnIndex
-  createdAt: string; // ISO 8601 timestamp when first snapshot created
-  updatedAt: string; // ISO 8601 timestamp when last snapshot added
-  version: string; // e.g. "v1"
+  snapshots: MoodSnapshot[];
+  createdAt: string;
+  updatedAt: string;
+  version: string;
 }
 
 /**

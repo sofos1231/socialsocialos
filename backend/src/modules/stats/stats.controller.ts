@@ -1,6 +1,6 @@
 // FILE: backend/src/modules/stats/stats.controller.ts
 
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, Req, UseGuards, Param } from '@nestjs/common';
 import { StatsService } from './stats.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -54,5 +54,26 @@ export class StatsController {
     const userId =
       req.user?.sub ?? req.user?.userId ?? req.user?.id ?? String(req.user);
     return this.statsService.getAdvancedMetricsForUser(String(userId));
+  }
+
+  /**
+   * Step 5.9: Get trait synergy map (Premium feature)
+   * Returns correlation matrix and graph data for trait relationships
+   */
+  @Get('synergy')
+  async getSynergy(@Req() req: any) {
+    const userId =
+      req.user?.sub ?? req.user?.userId ?? req.user?.id ?? String(req.user);
+    return this.statsService.getSynergyForUser(String(userId));
+  }
+
+  /**
+   * Step 5.10: Get mood timeline for a session
+   */
+  @Get('mood/session/:sessionId')
+  async getMoodTimeline(@Param('sessionId') sessionId: string, @Req() req: any) {
+    const userId =
+      req.user?.sub ?? req.user?.userId ?? req.user?.id ?? String(req.user);
+    return this.statsService.getMoodTimelineForSession(String(userId), sessionId);
   }
 }

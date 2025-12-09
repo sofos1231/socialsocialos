@@ -18,12 +18,15 @@ function normalizeRole(role: any): MessageRole {
  * Normalize traitData from DB (defensive normalization)
  * Handles null, undefined, malformed objects, and ensures consistent shape.
  * Phase 0: Extended to support optional fiveLayer field.
+ * Step 5.1: Extended to guarantee hooks[] and patterns[] arrays (default to [] if missing).
  * Exported for use by other modules (e.g., InsightsService).
  */
 export function normalizeTraitData(v: any): { 
   traits: Record<string, any>; 
   flags: string[]; 
   label: string | null;
+  hooks: string[];
+  patterns: string[];
   fiveLayer?: {
     L1: number;
     L2: number;
@@ -39,6 +42,10 @@ export function normalizeTraitData(v: any): {
   const traits = okObj && typeof v.traits === 'object' && v.traits ? v.traits : {};
   const flags = okObj && Array.isArray(v.flags) ? v.flags : [];
   const label = okObj && typeof v.label === 'string' ? v.label : null;
+  
+  // Step 5.1: Guarantee hooks and patterns arrays (default to [] for old sessions)
+  const hooks = okObj && Array.isArray(v.hooks) ? v.hooks : [];
+  const patterns = okObj && Array.isArray(v.patterns) ? v.patterns : [];
   
   // Phase 0: Support optional fiveLayer field
   let fiveLayer: {
@@ -81,6 +88,8 @@ export function normalizeTraitData(v: any): {
     traits: Record<string, any>;
     flags: string[];
     label: string | null;
+    hooks: string[];
+    patterns: string[];
     fiveLayer?: {
       L1: number;
       L2: number;
@@ -91,7 +100,7 @@ export function normalizeTraitData(v: any): {
       rareTier: string;
       version: string;
     };
-  } = { traits, flags, label };
+  } = { traits, flags, label, hooks, patterns };
   
   if (fiveLayer) {
     result.fiveLayer = fiveLayer;
@@ -115,7 +124,7 @@ export function normalizeChatMessageRead(
   role: MessageRole;
   content: string;
   score: number | null;
-  traitData: { traits: Record<string, any>; flags: string[]; label: string | null };
+  traitData: { traits: Record<string, any>; flags: string[]; label: string | null; hooks: string[]; patterns: string[] };
 } {
   // Normalize turnIndex: if m.turnIndex is a finite number >= 0 → Math.trunc(m.turnIndex)
   // else → Math.trunc(fallbackIndex) (always provided)

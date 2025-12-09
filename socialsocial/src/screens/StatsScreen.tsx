@@ -16,7 +16,7 @@ import TopBarWalletStrip from '../app/components/TopBarWalletStrip';
 import BadgesTab from './stats/BadgesTab';
 import PerformanceTab from './stats/PerformanceTab';
 import AdvancedTab from './stats/AdvancedTab';
-import PlaceholderTab from './stats/PlaceholderTab';
+import SocialTipsTab from './stats/SocialTipsTab';
 import { fetchStatsSummary, StatsSummaryResponse } from '../api/statsService';
 
 type TabName = 'Badges' | 'Performance' | 'Advanced' | 'Tips';
@@ -65,7 +65,7 @@ export default function StatsScreen() {
       case 'Advanced':
         return <AdvancedTab isPremium={isPremium} />;
       case 'Tips':
-        return <PlaceholderTab title="Social Tips" subtitle="Tips for improving your social skills" />;
+        return <SocialTipsTab isPremium={isPremium} />;
       default:
         return <BadgesTab />;
     }

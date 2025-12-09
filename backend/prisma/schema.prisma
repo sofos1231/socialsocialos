@@ -86,6 +86,9 @@ model User {
   hallOfFameMessages HallOfFameMessage[]
   burnedMessages     BurnedMessage[]
 
+  // Step 5.9: Trait Synergy relations
+  traitSynergy SessionTraitSynergy[]
+
   // Onboarding state tracking
   onboardingState UserOnboardingState?
 }
@@ -348,6 +351,9 @@ model PracticeSession {
 
   // Step 5.7: Hall of Fame and Burned Messages
   hallOfFameMessages HallOfFameMessage[]
+
+  // Step 5.9: Trait Synergy relation
+  traitSynergy SessionTraitSynergy?
 
   persona  AiPersona?               @relation(fields: [personaId], references: [id])
   template PracticeMissionTemplate? @relation(fields: [templateId], references: [id])
@@ -616,7 +622,7 @@ model MissionMoodTimeline {
   timelineJson Json
 
   // Denormalized fields for quick queries
-  currentMoodState   String // 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'RECOVERING' | 'COLLAPSED'
+  currentMoodState   String // Step 5.10: 'COLD' | 'NEUTRAL' | 'WARM' | 'TENSE' | 'FLOW'
   currentMoodPercent Int // 0-100
 
   // Relations
@@ -858,6 +864,24 @@ model BurnedMessage {
 
   @@unique([userId, messageId])
   @@index([userId, burnedAt])
+}
+
+/// --------------------------------------
+/// Step 5.9: Trait Synergy Map (per-session correlation analysis)
+/// --------------------------------------
+model SessionTraitSynergy {
+  id          String   @id @default(cuid())
+  sessionId   String   @unique
+  userId      String
+  synergyJson Json     // Versioned payload with correlationMatrix, graphData, emotionLinks
+  computedAt  DateTime @default(now())
+
+  // Relations
+  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, computedAt])
+  @@index([sessionId])
 }
 
 /// --------------------------------------

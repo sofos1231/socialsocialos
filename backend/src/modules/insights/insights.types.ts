@@ -118,11 +118,20 @@ export interface MissionDeepInsightsPayload {
 
 /**
  * Step 5.2: Insight kinds for v2 engine
+ * Step 5.11: Extended to include mood, synergy, and analyzer paragraph kinds
  */
-export type InsightKind = 'GATE_FAIL' | 'POSITIVE_HOOK' | 'NEGATIVE_PATTERN' | 'GENERAL_TIP';
+export type InsightKind =
+  | 'GATE_FAIL'
+  | 'POSITIVE_HOOK'
+  | 'NEGATIVE_PATTERN'
+  | 'GENERAL_TIP'
+  | 'MOOD'
+  | 'SYNERGY'
+  | 'ANALYZER_PARAGRAPH';
 
 /**
  * Step 5.2: Insight card shown to user (lightweight output)
+ * Step 5.11: Extended with premium flag
  */
 export interface InsightCard {
   id: string; // Stable unique ID (e.g. 'gate_min_messages_too_short')
@@ -131,6 +140,7 @@ export interface InsightCard {
   title: string;
   body: string;
   relatedTurnIndex?: number; // Optional: which message this relates to
+  isPremium?: boolean; // Step 5.11: Premium gating flag
 }
 
 /**
@@ -145,15 +155,18 @@ export interface InsightsV2Payload {
     seed: string; // Deterministic seed used for selection
     excludedIds: string[]; // Insight IDs excluded from last 5 missions
     pickedIds: string[]; // Insight IDs selected for this mission
+    pickedParagraphIds?: string[]; // Step 5.8: Analyzer paragraph IDs selected for this mission
     version: 'v2';
   };
 }
 
 /**
  * Step 5.2: Deep Insights API response (for FE/BE contract)
+ * Step 5.9: Extended to include analyzer paragraphs
  */
 export interface DeepInsightsResponse {
   insightsV2: InsightsV2Payload;
+  analyzerParagraphs?: import('../analyzer/analyzer.types').DeepParagraphDTO[]; // Step 5.9: Analyzer paragraphs for this session
   // v1 extras can be added here if needed for FE
 }
 
@@ -180,7 +193,30 @@ export interface InsightTemplate {
 }
 
 /**
+ * Step 5.11: Rotation surface types
+ */
+export type RotationSurface =
+  | 'MISSION_END'
+  | 'ADVANCED_TAB'
+  | 'ANALYZER'
+  | 'SYNERGY_MAP'
+  | 'MOOD_TIMELINE';
+
+/**
+ * Step 5.11: Insight source types
+ */
+export type InsightSource =
+  | 'GATES'
+  | 'HOOKS'
+  | 'PATTERNS'
+  | 'GENERAL'
+  | 'MOOD'
+  | 'SYNERGY'
+  | 'ANALYZER';
+
+/**
  * Candidate insight (before selection)
+ * Step 5.11: Extended with source, premium flag, and surface targeting
  */
 export interface CandidateInsight {
   id: string;
@@ -196,6 +232,12 @@ export interface CandidateInsight {
     strength?: number;
     severity?: number;
   };
+  source: InsightSource; // Step 5.11: Which subsystem produced this candidate
+  isPremium?: boolean; // Step 5.11: Premium gating flag
+  surfaces?: RotationSurface[]; // Step 5.11: Which surfaces this insight can appear on
+  title?: string; // Step 5.11: Title (preserved from InsightCard or loaded from catalog)
+  body?: string; // Step 5.11: Body (preserved from InsightCard or loaded from catalog)
+  relatedTurnIndex?: number; // Step 5.11: Optional turn index reference
 }
 
 /**
