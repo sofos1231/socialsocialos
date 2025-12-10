@@ -18,7 +18,7 @@ console.log('[apiClient] baseURL =', baseURL);
 
 const api: AxiosInstance = axios.create({
   baseURL,
-  timeout: 15000,
+  timeout: 45000, // 45 seconds - increased to handle AI chat processing (OpenAI API + backend analytics)
 });
 
 // one global callback for 401

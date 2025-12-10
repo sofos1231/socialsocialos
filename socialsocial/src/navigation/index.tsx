@@ -12,16 +12,21 @@ import PracticeHubScreen from '../screens/PracticeHubScreen';
 import PracticeScreen from '../screens/PracticeScreen';
 import VoicePracticeScreen from '../screens/VoicePracticeScreen';
 import ABPracticeScreen from '../screens/ABPracticeScreen';
-import StatsScreen from '../screens/StatsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import MissionRoadScreen from '../screens/MissionRoadScreen';
 import FreePlayConfigScreen from '../screens/FreePlayConfigScreen';
 import MissionEndScreen from '../screens/MissionEndScreen';
+import StatsHubScreen from '../screens/stats/StatsHubScreen';
+import StatsBadgesScreen from '../screens/stats/StatsBadgesScreen';
+import StatsPerformanceScreen from '../screens/stats/StatsPerformanceScreen';
+import StatsAdvancedScreen from '../screens/stats/StatsAdvancedScreen';
+import StatsTipsScreen from '../screens/stats/StatsTipsScreen';
 
 import {
   RootStackParamList,
   MainTabParamList,
   PracticeStackParamList,
+  StatsStackParamList,
 } from './types';
 import { getAccessToken, hydrateFromStorage } from '../store/tokens';
 import { useAppState } from '../store/appState';
@@ -29,6 +34,7 @@ import { useAppState } from '../store/appState';
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const PracticeStack = createNativeStackNavigator<PracticeStackParamList>();
+const StatsStack = createNativeStackNavigator<StatsStackParamList>();
 
 function PracticeStackNavigator() {
   return (
@@ -58,6 +64,22 @@ function PracticeStackNavigator() {
   );
 }
 
+function StatsStackNavigator() {
+  return (
+    <StatsStack.Navigator
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      <StatsStack.Screen name="StatsHub" component={StatsHubScreen} />
+      <StatsStack.Screen name="StatsBadges" component={StatsBadgesScreen} />
+      <StatsStack.Screen name="StatsPerformance" component={StatsPerformanceScreen} />
+      <StatsStack.Screen name="StatsAdvanced" component={StatsAdvancedScreen} />
+      <StatsStack.Screen name="StatsTips" component={StatsTipsScreen} />
+    </StatsStack.Navigator>
+  );
+}
+
 function MainTabsNavigator() {
   return (
     <Tab.Navigator
@@ -83,7 +105,7 @@ function MainTabsNavigator() {
       />
       <Tab.Screen
         name="StatsTab"
-        component={StatsScreen}
+        component={StatsStackNavigator}
         options={{
           title: 'Stats',
           tabBarLabel: ({ color }) => <Text style={{ color, fontSize: 12 }}>Stats</Text>,

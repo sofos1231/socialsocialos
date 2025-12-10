@@ -31,22 +31,32 @@ export interface RotationQuotas {
 }
 
 /**
+ * Step 5.12: Rotation pack meta (non-optional premium fields)
+ */
+export interface RotationPackMeta {
+  seed: string;
+  excludedIds: string[];
+  pickedIds: string[]; // IDs of insights visible to current user
+  quotas: RotationQuotas;
+  version: 'v1';
+  // Step 5.12: Premium metadata (always populated)
+  totalAvailable: number; // Total insights in base pack (premium + free)
+  filteredBecausePremium: number; // How many were removed for this user
+  isPremiumUser: boolean; // Premium status when pack was returned
+  premiumInsightIds: string[]; // IDs of premium insights in base pack (empty for premium users)
+}
+
+/**
  * Step 5.11: Rotation pack response
  * Contains selected insights for a specific surface
  * 
- * ⚠️ NOTE: This is the response type. Selection logic comes in Step 5.11 Part 2.
+ * Step 5.12: Meta is always fully populated with premium fields
  */
 export interface RotationPackResponse {
   sessionId: string;
   surface: RotationSurface;
-  selectedInsights: InsightCard[];
+  selectedInsights: InsightCard[]; // Visible insights for current user (filtered if free)
   selectedParagraphs?: DeepParagraphDTO[]; // For ANALYZER surface
-  meta: {
-    seed: string; // Deterministic seed used for selection
-    excludedIds: string[]; // All IDs excluded from last 5 sessions
-    pickedIds: string[]; // IDs selected for this pack
-    quotas: RotationQuotas; // Quotas applied for this surface
-    version: 'v1';
-  };
+  meta: RotationPackMeta;
 }
 

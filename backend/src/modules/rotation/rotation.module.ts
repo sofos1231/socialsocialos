@@ -1,7 +1,7 @@
 // backend/src/modules/rotation/rotation.module.ts
 // Step 5.11: Rotation module
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../../db/prisma.module';
 import { InsightsModule } from '../insights/insights.module';
 import { MoodModule } from '../mood/mood.module';
@@ -15,7 +15,7 @@ import { AuthModule } from '../auth/auth.module';
 @Module({
   imports: [
     PrismaModule,
-    InsightsModule,
+    forwardRef(() => InsightsModule), // Use forwardRef to break circular dependency
     MoodModule,
     SynergyModule,
     AnalyzerModule,

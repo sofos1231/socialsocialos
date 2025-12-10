@@ -1,7 +1,7 @@
 // backend/src/modules/insights/insights.controller.ts
 // Step 5.2: Insights API controller (glue to Step 5.3)
 
-import { Controller, Get, Param, Query, UseGuards, UnauthorizedException, NotFoundException, Req } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards, UnauthorizedException, NotFoundException, Req, Inject, forwardRef } from '@nestjs/common';
 import { InsightsService } from './insights.service';
 import { RotationService } from '../rotation/rotation.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -14,6 +14,7 @@ import { RotationSurface } from '../rotation/rotation.types';
 export class InsightsController {
   constructor(
     private readonly insightsService: InsightsService,
+    @Inject(forwardRef(() => RotationService))
     private readonly rotationService: RotationService,
   ) {}
 
@@ -63,12 +64,12 @@ export class InsightsController {
 
   /**
    * Step 5.11: GET /v1/insights/rotation/:sessionId
-   * Get rotation pack for a specific surface
+   * Get rotation pack for a specific surface (resilient - builds pack if missing)
    * 
    * @param sessionId - Session ID
    * @param surface - Rotation surface (default: 'MISSION_END')
    * @param req - Request with user from JWT
-   * @returns RotationPackResponse
+   * @returns RotationPackResponse (never 404, returns empty pack if needed)
    */
   @Get('rotation/:sessionId')
   async getRotationPack(
@@ -82,15 +83,60 @@ export class InsightsController {
     }
 
     try {
-      return await this.rotationService.getRotationPackForSurface(String(userId), sessionId, surface);
+      const pack = await this.rotationService.getRotationPackForSurface(String(userId), sessionId, surface);
+      
+      // If pack is null/undefined, return empty pack instead of 404
+      if (!pack) {
+        return {
+          sessionId,
+          surface,
+          selectedInsights: [],
+          meta: {
+            seed: '',
+            excludedIds: [],
+            pickedIds: [],
+            quotas: {
+              gate: 0,
+              hook: 0,
+              pattern: 0,
+              tip: 0,
+            },
+            version: 'v1',
+            totalAvailable: 0,
+            filteredBecausePremium: 0,
+            isPremiumUser: false,
+            premiumInsightIds: [],
+          },
+        };
+      }
+      
+      return pack;
     } catch (error: any) {
-      if (error.message?.includes('not found')) {
-        throw new NotFoundException('Session insights not found');
-      }
-      if (error.message?.includes('do not belong')) {
-        throw new UnauthorizedException('Access denied');
-      }
-      throw error;
+      // Log error but return empty pack instead of throwing
+      console.warn(`[InsightsController] Failed to load rotation pack for ${sessionId}:`, error);
+      
+      // Return empty pack as fallback
+      return {
+        sessionId,
+        surface,
+        selectedInsights: [],
+        meta: {
+          seed: '',
+          excludedIds: [],
+          pickedIds: [],
+          quotas: {
+            gate: 0,
+            hook: 0,
+            pattern: 0,
+            tip: 0,
+          },
+          version: 'v1',
+          totalAvailable: 0,
+          filteredBecausePremium: 0,
+          isPremiumUser: false,
+          premiumInsightIds: [],
+        },
+      };
     }
   }
 }

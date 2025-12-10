@@ -8,10 +8,11 @@ import { MessageListItemDTO } from '../../../api/analyzerService';
 interface MessageCardMiniProps {
   item: MessageListItemDTO;
   onPress: () => void;
+  onAnalyze?: () => void;
   onBurn?: () => void;
 }
 
-export default function MessageCardMini({ item, onPress, onBurn }: MessageCardMiniProps) {
+export default function MessageCardMini({ item, onPress, onAnalyze, onBurn }: MessageCardMiniProps) {
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.header}>
@@ -26,18 +27,32 @@ export default function MessageCardMini({ item, onPress, onBurn }: MessageCardMi
             Session • Turn {item.turnIndex}
           </Text>
         </View>
-        {onBurn && (
-          <TouchableOpacity
-            style={styles.burnButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              onBurn();
-            }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Text style={styles.burnIcon}>⋯</Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.actionButtons}>
+          {onAnalyze && (
+            <TouchableOpacity
+              style={styles.analyzeButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                onAnalyze();
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={styles.analyzeButtonText}>Analyze</Text>
+            </TouchableOpacity>
+          )}
+          {onBurn && (
+            <TouchableOpacity
+              style={styles.burnButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                onBurn();
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={styles.burnIcon}>⋯</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -76,9 +91,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9CA3AF',
   },
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 8,
+  },
+  analyzeButton: {
+    backgroundColor: '#22c55e',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  analyzeButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0B1220',
+  },
   burnButton: {
     padding: 4,
-    marginLeft: 8,
   },
   burnIcon: {
     fontSize: 20,

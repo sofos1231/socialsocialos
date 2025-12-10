@@ -33,6 +33,7 @@ import { getCurrentWeekRange, getPreviousWeekRange, getWeekRangeForDate, getLast
 import { getAllImprovements } from './trait-improvement';
 import { normalizeTraitData } from '../shared/normalizers/chat-message.normalizer';
 import { MessageRole, AccountTier } from '@prisma/client';
+import { isPremiumTier } from '../shared/helpers/premium.helper';
 import { getBiasExplanation } from './templates/bias.explanations';
 import { getSignatureStyleDescription } from './templates/signatureStyle.descriptions';
 import { generateWhyItWorked, generateWhatToImprove } from './templates/messageBreakdown.templates';
@@ -385,6 +386,9 @@ export class StatsService {
       };
     });
 
+    // Step 5.14: Category stats (read-only, non-breaking addition)
+    const categoryStats = await this.getCategoryStatsForUser(userId);
+
     return {
       ok: true,
       user: {
@@ -424,8 +428,38 @@ export class StatsService {
 
         // B8.2 recent sessions history:
         recentSessions,
+
+        // Step 5.14: Category stats (additive, non-breaking)
+        categoryStats,
       },
     };
+  }
+
+  /**
+   * Step 5.14: Get category stats for a user
+   * Returns per-category statistics (sessions count, average score, success/fail counts)
+   */
+  private async getCategoryStatsForUser(userId: string) {
+    const rows = await this.prisma.categoryStats.findMany({
+      where: { userId },
+      include: {
+        category: {
+          select: {
+            code: true,
+            label: true,
+          },
+        },
+      },
+    });
+
+    return rows.map((row) => ({
+      categoryKey: row.categoryKey,
+      categoryName: row.category.label,
+      sessionsCount: row.sessionsCount,
+      averageScore: row.avgScore,
+      successCount: row.successCount,
+      failCount: row.failCount,
+    }));
   }
 
   /**
@@ -584,18 +618,21 @@ export class StatsService {
           lte: currentWeek.end,
         },
         endedAt: { not: null },
-        score: { not: null },
+        // score is non-nullable Int with default 0
+        // we use gt: 0 to keep only sessions that actually have a computed score
+        score: { gt: 0 },
       },
       select: {
         score: true,
       },
     });
 
+    // Guard against empty arrays
     const avgScoreThisWeek =
       sessionsThisWeekWithScores.length > 0
         ? sessionsThisWeekWithScores.reduce((sum, s) => sum + (s.score ?? 0), 0) /
           sessionsThisWeekWithScores.length
-        : undefined;
+        : null;
 
     // Load improvements
     const improvements = getAllImprovements();
@@ -657,7 +694,7 @@ export class StatsService {
       select: { tier: true },
     });
 
-    const isPremium = user?.tier === 'PREMIUM';
+    const isPremium = isPremiumTier(user?.tier);
 
     // Get sessionsTotal from UserStats
     const stats = await this.prisma.userStats.findUnique({
@@ -689,18 +726,21 @@ export class StatsService {
           lte: currentWeek.end,
         },
         endedAt: { not: null },
-        score: { not: null },
+        // score is non-nullable Int with default 0
+        // we use gt: 0 to keep only sessions that actually have a computed score
+        score: { gt: 0 },
       },
       select: {
         score: true,
       },
     });
 
+    // Guard against empty arrays
     const avgScoreThisWeek =
       sessionsThisWeekWithScores.length > 0
         ? sessionsThisWeekWithScores.reduce((sum, s) => sum + (s.score ?? 0), 0) /
           sessionsThisWeekWithScores.length
-        : undefined;
+        : null;
 
     // Get lastSessionId
     const lastSession = await this.prisma.practiceSession.findFirst({
@@ -850,7 +890,7 @@ export class StatsService {
       where: { id: userId },
       select: { tier: true },
     });
-    const isPremium = user?.tier === AccountTier.PREMIUM;
+    const isPremium = isPremiumTier(user?.tier);
 
     // Get burned message IDs (exclude from all queries)
     const burnedMessages = await this.prisma.burnedMessage.findMany({
@@ -1096,12 +1136,16 @@ export class StatsService {
         where: {
           userId,
           endedAt: { not: null },
-          score: { not: null },
+          // score is non-nullable Int with default 0
+          // we use gt: 0 to keep only sessions that actually have a computed score
+          score: { gt: 0 },
         },
         _avg: { score: true },
       });
-      const overallAvg = allSessionsAvg._avg.score || 0;
-      const deltaPct = overallAvg > 0 ? ((avgScore - overallAvg) / overallAvg) * 100 : undefined;
+      const overallAvg = allSessionsAvg._avg?.score ?? null;
+      const deltaPct = overallAvg !== null && overallAvg > 0 && avgScore > 0
+        ? ((avgScore - overallAvg) / overallAvg) * 100
+        : undefined;
 
       // Generate deterministic explanation
       const explanation = data.code
@@ -1603,11 +1647,12 @@ export class StatsService {
 
   /**
    * Step 5.10: Get mood timeline for a session
+   * Returns null if no timeline exists (non-fatal, "no data yet" case)
    */
   async getMoodTimelineForSession(
     userId: string,
     sessionId: string,
-  ): Promise<MoodTimelineResponse> {
+  ): Promise<MoodTimelineResponse | null> {
     // Validate ownership
     const timeline = await this.prisma.missionMoodTimeline.findUnique({
       where: { sessionId },
@@ -1619,11 +1664,13 @@ export class StatsService {
     });
 
     if (!timeline) {
-      throw new Error(`Mood timeline not found for session ${sessionId}`);
+      // No data yet – signal with null, do NOT throw
+      return null;
     }
 
     if (timeline.session.userId !== userId) {
-      throw new Error(`Session ${sessionId} does not belong to user ${userId}`);
+      // Ownership mismatch – return null instead of throwing
+      return null;
     }
 
     // Extract payload from timelineJson

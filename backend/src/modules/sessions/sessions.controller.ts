@@ -40,4 +40,15 @@ export class SessionsController {
     const userId = req.user?.sub;
     return this.sessionsService.getSessionByIdPublic(userId, id);
   }
+
+  /**
+   * Step 5.13: GET /v1/sessions/:id/summary
+   * Returns unified session-end read model for finalized sessions
+   * Note: This endpoint is NOT wrapped in LockedResponse (plain DTO for now)
+   */
+  @Get(':id/summary')
+  async getSessionSummary(@Req() req: any, @Param('id') id: string) {
+    const userId = req.user?.sub ?? req.user?.userId ?? req.user?.id ?? String(req.user);
+    return this.sessionsService.getSessionEndReadModel(String(userId), id);
+  }
 }

@@ -27,7 +27,7 @@ export default function StatsScreen() {
   const [activeTab, setActiveTab] = useState<TabName>('Badges');
   const [isPremium, setIsPremium] = useState(false); // Step 5.5→5.6 glue
 
-  // Fetch premium status on mount
+  // Fetch premium status on mount (resilient - fallback to false on error)
   useEffect(() => {
     fetchStatsSummary()
       .then((stats: StatsSummaryResponse) => {
@@ -35,7 +35,9 @@ export default function StatsScreen() {
       })
       .catch((err) => {
         console.warn('[StatsScreen] Failed to load premium status:', err);
-        // Default to false on error
+        // Fallback: assume not premium, but do NOT show a fatal error card
+        // Premium status is a background check, not critical for screen functionality
+        setIsPremium(false);
       });
   }, []);
 

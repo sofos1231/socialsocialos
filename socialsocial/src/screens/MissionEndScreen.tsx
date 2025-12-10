@@ -22,7 +22,11 @@ import { PracticeStackParamList } from '../navigation/types';
 import { fetchSessionById } from '../api/sessionsService';
 import { fetchInsightsBySessionId } from '../api/insightsService';
 import { buildMissionEndSelectedPack } from '../logic/missionEndPackBuilder';
+import { fetchStatsSummary, fetchRotationPack, RotationPackResponse, fetchMoodTimeline } from '../api/statsService';
+import { isFeatureLocked } from '../utils/featureGate';
 import { MissionEndSelectedPack } from '../types/MissionEndTypes';
+import { MoodTimelineResponse } from '../types/InsightsDTO';
+import MoodTimelineCard from '../components/MoodTimelineCard';
 
 type Props = NativeStackScreenProps<PracticeStackParamList, 'MissionEnd'>;
 
@@ -35,9 +39,21 @@ export default function MissionEndScreen({ route, navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [insightsFailed, setInsightsFailed] = useState(false);
+  // Step 5.12: Premium status and rotation pack
+  const [isPremium, setIsPremium] = useState(false);
+  const [rotationPack, setRotationPack] = useState<RotationPackResponse | null>(null);
+  const [rotationLoading, setRotationLoading] = useState(false);
+  
+  // Mood timeline state (mission-specific)
+  const [moodTimeline, setMoodTimeline] = useState<MoodTimelineResponse | null>(null);
+  const [moodTimelineLoading, setMoodTimelineLoading] = useState(false);
+  const [moodTimelineError, setMoodTimelineError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
+    loadPremiumStatus();
+    loadRotationPack();
+    loadMoodTimeline();
   }, [sessionId]);
 
   const loadData = async () => {
@@ -67,6 +83,58 @@ export default function MissionEndScreen({ route, navigation }: Props) {
       setError(err.message || 'Failed to load session data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Step 5.12: Load premium status (resilient - fallback to false on error)
+  const loadPremiumStatus = async () => {
+    try {
+      const stats = await fetchStatsSummary();
+      setIsPremium(stats.isPremium);
+    } catch (err: any) {
+      console.warn('[MissionEndScreen] Failed to load premium status:', err);
+      // Fallback: assume not premium, but do NOT show a fatal error card
+      setIsPremium(false);
+    }
+  };
+
+  // Step 5.12: Load rotation pack (resilient - handles 404 gracefully)
+  const loadRotationPack = async () => {
+    setRotationLoading(true);
+    try {
+      const pack = await fetchRotationPack(sessionId, 'MISSION_END');
+      setRotationPack(pack);
+    } catch (err: any) {
+      console.warn('[MissionEndScreen] Failed to load rotation pack:', err);
+      // Continue without rotation pack (fallback to old insights)
+      // Backend now returns empty pack instead of 404, so this should rarely happen
+      setRotationPack(null);
+    } finally {
+      setRotationLoading(false);
+    }
+  };
+
+  // Load mood timeline for this mission session
+  const loadMoodTimeline = async () => {
+    setMoodTimelineLoading(true);
+    setMoodTimelineError(null);
+    try {
+      const response = await fetchMoodTimeline(sessionId);
+      
+      // Handle LockedResponse wrapper
+      if (response.locked) {
+        // For locked responses, we can show preview or just show "not available"
+        setMoodTimeline(response.preview || null);
+      } else {
+        setMoodTimeline(response.full || null);
+      }
+    } catch (err: any) {
+      // 404 or other errors - treat as "no data yet" (non-fatal)
+      console.warn('[MissionEndScreen] Mood timeline not available for this session:', err);
+      setMoodTimelineError(null); // Don't show error, just show "not available" message
+      setMoodTimeline(null);
+    } finally {
+      setMoodTimelineLoading(false);
     }
   };
 
@@ -409,27 +477,40 @@ export default function MissionEndScreen({ route, navigation }: Props) {
         </View>
       )}
 
-      {/* Step 5.10: Mood Summary Card */}
-      {moodTeaser && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Mood Summary</Text>
-          <Text style={styles.moodText}>
-            Average Score: {moodTeaser.averageScore}
-          </Text>
-          {/* TODO: Add start → end mood transition when timeline data is available */}
-          <TouchableOpacity
-            style={styles.premiumCta}
-            onPress={() => {
-              // Navigate to stats tab with mood timeline (premium feature)
-              handleViewStats();
-            }}
-          >
-            <Text style={styles.premiumCtaText}>
-              🔒 See full mood timeline (Premium)
+      {/* Mood Timeline Card (mission-specific) */}
+      <MoodTimelineCard
+        moodTimeline={moodTimeline}
+        loading={moodTimelineLoading}
+        error={moodTimelineError}
+      />
+
+      {/* Step 5.12: Premium Teaser for Filtered Insights */}
+      {(() => {
+        const rotationMeta = rotationPack?.meta;
+        const filteredBecausePremium = rotationMeta?.filteredBecausePremium ?? 0;
+        const totalAvailable = rotationMeta?.totalAvailable ?? rotationPack?.selectedInsights?.length ?? 0;
+        const isPremiumUser = rotationMeta?.isPremiumUser ?? isPremium;
+        const hasLockedInsights = !isPremiumUser && filteredBecausePremium > 0;
+
+        return hasLockedInsights ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>More Insights Available</Text>
+            <Text style={styles.moodText}>
+              +{filteredBecausePremium} more insight{filteredBecausePremium > 1 ? 's' : ''} unlocked on Premium
             </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+            <TouchableOpacity
+              style={styles.premiumCta}
+              onPress={() => {
+                handleViewStats();
+              }}
+            >
+              <Text style={styles.premiumCtaText}>
+                🔒 Upgrade to Premium
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null;
+      })()}
 
       {/* Synergy Teaser (Locked) */}
       <View style={styles.card}>

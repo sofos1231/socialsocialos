@@ -267,7 +267,7 @@ export class AnalyzerService {
       evidence: {
         // Store message snippet or breakdown data if needed
       },
-      isPremium: false, // Step 5.11: Can be extended later
+      isPremium: true, // Step 5.12: Analyzer paragraphs are premium (behind MESSAGE_ANALYZER gate)
       surfaces: ['ANALYZER'] as RotationSurface[],
       title: paragraph.title, // Step 5.11: Preserve title
       body: paragraph.body, // Step 5.11: Preserve body

@@ -8,7 +8,7 @@ import DeepParagraphCard from './DeepParagraphCard';
 
 interface AnalysisResultCardProps {
   breakdown: MessageBreakdownDTO;
-  paragraphs: DeepParagraphDTO[];
+  paragraphs?: DeepParagraphDTO[];
 }
 
 const TRAIT_LABELS: Record<string, string> = {
@@ -20,7 +20,7 @@ const TRAIT_LABELS: Record<string, string> = {
   dominance: 'Dominance',
 };
 
-export default function AnalysisResultCard({ breakdown, paragraphs }: AnalysisResultCardProps) {
+export default function AnalysisResultCard({ breakdown, paragraphs = [] }: AnalysisResultCardProps) {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Score */}

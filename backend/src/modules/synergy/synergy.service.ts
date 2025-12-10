@@ -385,7 +385,7 @@ export class SynergyService {
             evidence: {
               // Store correlation value in evidence
             },
-            isPremium: false, // Step 5.11: Can be extended later
+            isPremium: true, // Step 5.12: Synergy insights are premium (advanced analytics)
             surfaces: ['SYNERGY_MAP', 'ADVANCED_TAB'] as RotationSurface[],
             title: title, // Step 5.11: Include generated title
             body: body, // Step 5.11: Include generated body

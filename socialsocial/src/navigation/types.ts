@@ -17,6 +17,16 @@ export type MainTabParamList = {
   ProfileTab: undefined;
 };
 
+// ----- Stats stack -----
+
+export type StatsStackParamList = {
+  StatsHub: undefined;
+  StatsBadges: undefined;
+  StatsPerformance: undefined;
+  StatsAdvanced: undefined;
+  StatsTips: undefined;
+};
+
 // ----- FreePlay types -----
 
 export type FreePlayPlace =

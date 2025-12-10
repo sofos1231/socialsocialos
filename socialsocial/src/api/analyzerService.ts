@@ -2,6 +2,7 @@
 // Step 5.7: Analyzer API client
 
 import apiClient from './apiClient';
+import { LockedResponse } from './types';
 
 /**
  * Step 5.7: Message list item DTO
@@ -56,18 +57,20 @@ export interface AnalyzeMessageResponse {
 }
 
 /**
- * Step 5.7: Fetch analyzer lists (positive and negative messages)
+ * Step 5.12: Fetch analyzer lists (positive and negative messages)
+ * Returns LockedResponse wrapper for premium gating
  */
-export async function fetchAnalyzerLists(): Promise<AnalyzerListsResponse> {
-  const res = await apiClient.get<AnalyzerListsResponse>('/analyzer/lists');
+export async function fetchAnalyzerLists(): Promise<LockedResponse<AnalyzerListsResponse>> {
+  const res = await apiClient.get<LockedResponse<AnalyzerListsResponse>>('/analyzer/lists');
   return res.data;
 }
 
 /**
- * Step 5.7: Analyze a specific message
+ * Step 5.12: Analyze a specific message
+ * Returns LockedResponse wrapper for premium gating
  */
-export async function analyzeMessage(messageId: string): Promise<AnalyzeMessageResponse> {
-  const res = await apiClient.post<AnalyzeMessageResponse>('/analyzer/analyze', { messageId });
+export async function analyzeMessage(messageId: string): Promise<LockedResponse<AnalyzeMessageResponse>> {
+  const res = await apiClient.post<LockedResponse<AnalyzeMessageResponse>>('/analyzer/analyze', { messageId });
   return res.data;
 }
 

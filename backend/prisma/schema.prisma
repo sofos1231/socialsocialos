@@ -89,6 +89,11 @@ model User {
   // Step 5.9: Trait Synergy relations
   traitSynergy SessionTraitSynergy[]
 
+  // Step 5.14: Persona memory and category relations
+  personaMemories      PersonaMemory[]
+  categoryStats        CategoryStats[]
+  categoryProgress     UserCategoryProgress[]
+
   // Onboarding state tracking
   onboardingState UserOnboardingState?
 }
@@ -164,6 +169,8 @@ model AiPersona {
   // Relations
   sessions         PracticeSession[]
   missionTemplates PracticeMissionTemplate[]
+  // Step 5.14: Persona memory
+  memories         PersonaMemory[]
 }
 
 /// --------------------------------------
@@ -176,6 +183,9 @@ model MissionCategory {
   description String?
 
   templates PracticeMissionTemplate[]
+  // Step 5.14: Category stats and progress
+  categoryStats        CategoryStats[]
+  categoryProgress     UserCategoryProgress[]
 }
 
 /// --------------------------------------
@@ -454,6 +464,69 @@ model MissionProgress {
   template PracticeMissionTemplate @relation(fields: [templateId], references: [id])
 
   @@unique([userId, templateId])
+}
+
+/// --------------------------------------
+/// Step 5.14: Persona Memory
+/// --------------------------------------
+model PersonaMemory {
+  id          String   @id @default(cuid())
+  userId      String
+  personaId   String
+  memoryKey   String
+  memoryValue Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  persona AiPersona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, personaId, memoryKey])
+  @@index([userId, personaId])
+  @@index([personaId, updatedAt])
+}
+
+/// --------------------------------------
+/// Step 5.14: Category Statistics (per-user, per-category)
+/// --------------------------------------
+model CategoryStats {
+  id            String   @id @default(cuid())
+  userId        String
+  categoryId    String
+  categoryKey   String
+  avgScore      Float?
+  sessionsCount Int      @default(0)
+  successCount  Int      @default(0)
+  failCount     Int      @default(0)
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category MissionCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId])
+  @@index([userId, categoryKey])
+  @@index([categoryKey, updatedAt])
+}
+
+/// --------------------------------------
+/// Step 5.14: User Category Progress (category completion tracking)
+/// --------------------------------------
+model UserCategoryProgress {
+  id          String                @id @default(cuid())
+  userId      String
+  categoryId  String
+  status      MissionProgressStatus @default(LOCKED)
+  completedAt DateTime?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category MissionCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId])
+  @@index([userId, status])
+  @@index([categoryId, completedAt])
 }
 
 /// --------------------------------------

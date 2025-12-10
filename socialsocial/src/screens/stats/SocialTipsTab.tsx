@@ -21,7 +21,8 @@ import {
 } from '../../api/analyzerService';
 import { isFeatureLocked, getFeatureLockMessage } from '../../utils/featureGate';
 import MessageCardMini from './components/MessageCardMini';
-import AnalysisResultCard from './components/AnalysisResultCard';
+import MessageAnalyzerPanel from '../../components/stats/MessageAnalyzerPanel';
+import MessageAnalysisModal from '../../components/stats/MessageAnalysisModal';
 import BurnButton from './components/BurnButton';
 
 interface SocialTipsTabProps {
@@ -35,6 +36,13 @@ export default function SocialTipsTab({ isPremium }: SocialTipsTabProps) {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLockedState, setIsLockedState] = useState(false);
+  
+  // New state for Message Analyzer modal
+  const [analyzerMessage, setAnalyzerMessage] = useState<MessageListItemDTO | null>(null);
+  const [analyzerAnalysis, setAnalyzerAnalysis] = useState<AnalyzeMessageResponse | null>(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [analyzerError, setAnalyzerError] = useState<string | null>(null);
 
   const isLocked = isFeatureLocked('MESSAGE_ANALYZER', isPremium);
 
@@ -46,11 +54,21 @@ export default function SocialTipsTab({ isPremium }: SocialTipsTabProps) {
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchAnalyzerLists();
-      setLists(data);
+      const response = await fetchAnalyzerLists();
+      
+      // Step 5.12: Unwrap LockedResponse
+      if (response.locked) {
+        setIsLockedState(true);
+        setLists(response.preview ?? null);
+      } else {
+        setIsLockedState(false);
+        setLists(response.full ?? null);
+      }
     } catch (err: any) {
       console.error('[SocialTipsTab] Failed to load lists:', err);
       setError(err.message || 'Failed to load messages');
+      setIsLockedState(false);
+      setLists(null);
     } finally {
       setLoading(false);
     }
@@ -62,16 +80,62 @@ export default function SocialTipsTab({ isPremium }: SocialTipsTabProps) {
     try {
       setAnalyzing(true);
       setError(null);
-      const result = await analyzeMessage(item.messageId);
-      setSelectedMessage(item);
-      setAnalysis(result);
+      const response = await analyzeMessage(item.messageId);
+      
+      // Step 5.12: Unwrap LockedResponse
+      if (response.locked) {
+        setIsLockedState(true);
+        setSelectedMessage(item);
+        setAnalysis(response.preview ?? null);
+      } else {
+        setIsLockedState(false);
+        setSelectedMessage(item);
+        setAnalysis(response.full ?? null);
+      }
     } catch (err: any) {
       console.error('[SocialTipsTab] Failed to analyze message:', err);
       Alert.alert('Error', err.message || 'Failed to analyze message');
       setError(err.message || 'Failed to analyze message');
+      setAnalysis(null);
     } finally {
       setAnalyzing(false);
     }
+  };
+
+  const handleAnalyzeMessage = async (item: MessageListItemDTO) => {
+    if (isLocked) return;
+
+    try {
+      setAnalyzerError(null);
+      setAnalyzerMessage(item);
+      setIsModalVisible(true);
+      
+      const response = await analyzeMessage(item.messageId);
+      
+      // Step 5.12: Unwrap LockedResponse
+      if (response.locked) {
+        setIsLockedState(true);
+        setAnalyzerAnalysis(response.preview ?? null);
+      } else {
+        setIsLockedState(false);
+        setAnalyzerAnalysis(response.full ?? null);
+      }
+    } catch (err: any) {
+      console.error('[SocialTipsTab] Failed to analyze message:', err);
+      setAnalyzerError(err.message || 'Failed to analyze message');
+      setAnalyzerAnalysis(null);
+    }
+  };
+
+  const handleViewFullAnalysis = () => {
+    // Modal is already visible, just ensure it's showing the latest data
+    setIsModalVisible(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalVisible(false);
+    setAnalyzerError(null);
+    // Keep analyzerMessage and analyzerAnalysis for panel display
   };
 
   const handleBurn = async (messageId: string) => {
@@ -83,8 +147,8 @@ export default function SocialTipsTab({ isPremium }: SocialTipsTabProps) {
       // Remove from local lists
       if (lists) {
         setLists({
-          positive: lists.positive.filter((m) => m.messageId !== messageId),
-          negative: lists.negative.filter((m) => m.messageId !== messageId),
+          positive: lists.positive?.filter((m) => m.messageId !== messageId) ?? [],
+          negative: lists.negative?.filter((m) => m.messageId !== messageId) ?? [],
         });
       }
 
@@ -150,8 +214,15 @@ export default function SocialTipsTab({ isPremium }: SocialTipsTabProps) {
 
   return (
     <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      {/* Message Analyzer Panel */}
+      <MessageAnalyzerPanel
+        analyzedMessage={analyzerMessage}
+        analysis={analyzerAnalysis}
+        onViewFull={handleViewFullAnalysis}
+      />
+
       {/* Positive Messages */}
-      {lists && lists.positive.length > 0 && (
+      {lists?.positive && lists.positive.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Top Positive Messages</Text>
           {lists.positive.map((item) => (
@@ -159,6 +230,7 @@ export default function SocialTipsTab({ isPremium }: SocialTipsTabProps) {
               key={item.messageId}
               item={item}
               onPress={() => handleMessagePress(item)}
+              onAnalyze={() => handleAnalyzeMessage(item)}
               onBurn={() => handleBurn(item.messageId)}
             />
           ))}
@@ -166,7 +238,7 @@ export default function SocialTipsTab({ isPremium }: SocialTipsTabProps) {
       )}
 
       {/* Negative Messages */}
-      {lists && lists.negative.length > 0 && (
+      {lists?.negative && lists.negative.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Learning Opportunities</Text>
           {lists.negative.map((item) => (
@@ -174,6 +246,7 @@ export default function SocialTipsTab({ isPremium }: SocialTipsTabProps) {
               key={item.messageId}
               item={item}
               onPress={() => handleMessagePress(item)}
+              onAnalyze={() => handleAnalyzeMessage(item)}
               onBurn={() => handleBurn(item.messageId)}
             />
           ))}
@@ -181,14 +254,14 @@ export default function SocialTipsTab({ isPremium }: SocialTipsTabProps) {
       )}
 
       {/* Empty State */}
-      {lists && lists.positive.length === 0 && lists.negative.length === 0 && (
+      {lists && (!lists.positive?.length && !lists.negative?.length) && (
         <View style={styles.centerContainer}>
           <Text style={styles.emptyText}>No messages to analyze yet</Text>
           <Text style={styles.emptySubtext}>Complete some practice sessions to see your messages here</Text>
         </View>
       )}
 
-      {/* Analysis Result */}
+      {/* Analysis Result (kept for backward compatibility, but modal is preferred) */}
       {analyzing && (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color="#22c55e" />
@@ -196,7 +269,7 @@ export default function SocialTipsTab({ isPremium }: SocialTipsTabProps) {
         </View>
       )}
 
-      {analysis && selectedMessage && (
+      {analysis && analysis.breakdown && analysis.paragraphs && selectedMessage && (
         <View style={styles.section}>
           <View style={styles.analysisHeader}>
             <Text style={styles.sectionTitle}>Analysis</Text>
@@ -223,6 +296,17 @@ export default function SocialTipsTab({ isPremium }: SocialTipsTabProps) {
           />
         </View>
       )}
+
+      {/* Message Analysis Modal */}
+      <MessageAnalysisModal
+        visible={isModalVisible}
+        message={analyzerMessage}
+        analysis={analyzerAnalysis}
+        loading={isModalVisible && !analyzerAnalysis && !analyzerError}
+        error={analyzerError}
+        onClose={handleCloseModal}
+        onRetry={analyzerMessage ? () => handleAnalyzeMessage(analyzerMessage) : undefined}
+      />
     </ScrollView>
   );
 }

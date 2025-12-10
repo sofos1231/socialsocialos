@@ -20,6 +20,7 @@ import { RotationSurface, RotationQuotas, RotationPackResponse } from './rotatio
 import { getQuotasForSurface } from './rotation.policy';
 import { generateInsightsV2Seed } from '../insights/engine/insight-prng';
 import { loadSessionAnalyticsSnapshot } from '../shared/helpers/session-snapshot.helper';
+import { isPremiumTier } from '../shared/helpers/premium.helper';
 
 const logger = new Logger('RotationService');
 
@@ -253,8 +254,99 @@ export class RotationService {
   }
 
   /**
-   * Step 5.11: Select rotation pack for a surface
-   * Applies all filters and quotas, returns formatted pack
+   * Step 5.12: Select base rotation pack (without premium filtering)
+   * This is the "unfiltered" pack that gets persisted to DB
+   * 
+   * @param candidates - All candidate insights
+   * @param history - Unified insight history
+   * @param surface - Target surface
+   * @param seed - Deterministic seed
+   * @returns RotationPackResponse (base pack, includes premium insights)
+   */
+  selectBaseRotationPack(
+    candidates: CandidateInsight[],
+    history: UnifiedInsightHistory,
+    surface: RotationSurface,
+    seed: string,
+  ): RotationPackResponse {
+    // Step 1: Apply cooldown
+    let filtered = this.applyCooldown(candidates, history);
+
+    // Step 2: Filter by surface
+    filtered = this.filterBySurface(filtered, surface);
+
+    // Step 3: NO premium filtering - this is the base pack
+
+    // Step 4: Sort deterministically: priority DESC → weight DESC → id ASC
+    filtered.sort((a, b) => {
+      if (a.priority !== b.priority) return b.priority - a.priority;
+      if (a.weight !== b.weight) return b.weight - a.weight;
+      return a.id.localeCompare(b.id);
+    });
+
+    // Step 5: Apply quotas
+    const selected = this.applyQuotas(filtered, surface);
+
+    // Step 6: Convert to InsightCard format
+    const selectedInsights: InsightCard[] = selected
+      .filter((c) => c.kind !== 'ANALYZER_PARAGRAPH')
+      .map((c) => ({
+        id: c.id,
+        kind: c.kind,
+        category: c.category,
+        title: c.title || this.getTitleForCandidate(c),
+        body: c.body || this.getBodyForCandidate(c),
+        relatedTurnIndex: c.relatedTurnIndex,
+        isPremium: c.isPremium,
+      }));
+
+    // Step 7: Extract analyzer paragraphs separately (if ANALYZER surface)
+    let selectedParagraphs: DeepParagraphDTO[] | undefined = undefined;
+    if (surface === 'ANALYZER') {
+      // For analyzer paragraphs, we need to reconstruct them from candidates
+      // This is a simplified version - in practice, you'd load the actual paragraphs
+      selectedParagraphs = [];
+    }
+
+    // Step 8: Build excluded IDs list
+    const excludedIds = [
+      ...history.insightIds,
+      ...history.moodIds,
+      ...history.paragraphIds,
+      ...history.synergyIds,
+    ];
+
+    // Step 9: Build picked IDs (all selected insights, including premium)
+    const pickedIds = selected.map((c) => c.id);
+
+    // Step 10: Get quotas
+    const quotas = getQuotasForSurface(surface);
+
+    // Step 11: Calculate premium metadata for base pack
+    const premiumInsightIds = selected.filter((c) => c.isPremium).map((c) => c.id);
+
+    return {
+      sessionId: '', // Will be set by caller
+      surface,
+      selectedInsights,
+      selectedParagraphs,
+      meta: {
+        seed,
+        excludedIds,
+        pickedIds, // Base pack: all selected insights (premium + free)
+        quotas,
+        version: 'v1',
+        totalAvailable: selectedInsights.length,
+        filteredBecausePremium: 0, // Base pack has no filtering
+        isPremiumUser: false, // Will be set on read
+        premiumInsightIds,
+      },
+    };
+  }
+
+  /**
+   * Step 5.11: Select rotation pack for a surface (with premium filtering)
+   * Applies all filters including premium, returns formatted pack
    * 
    * @param candidates - All candidate insights
    * @param history - Unified insight history
@@ -360,12 +452,13 @@ export class RotationService {
   }
 
   /**
-   * Step 5.11: Build and persist rotation pack
+   * Step 5.12: Build and persist base rotation pack (without premium filtering)
+   * The base pack is persisted to DB and premium filtering happens on read
    * 
    * @param userId - User ID
    * @param sessionId - Session ID
    * @param surface - Target surface
-   * @returns RotationPackResponse
+   * @returns RotationPackResponse (base pack, unfiltered)
    */
   async buildAndPersistRotationPack(
     userId: string,
@@ -378,21 +471,14 @@ export class RotationService {
     // Step 2: Load history
     const history = await this.loadHistory(userId, sessionId);
 
-    // Step 3: Load premium status
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { tier: true },
-    });
-    const isPremium = user?.tier === 'PREMIUM' || user?.tier === 'PREMIUM_PLUS';
-
-    // Step 4: Generate seed
+    // Step 3: Generate seed
     const seed = generateInsightsV2Seed(userId, sessionId, `rotation_${surface}`);
 
-    // Step 5: Select pack
-    const pack = this.selectRotationPack(allCandidates, history, surface, seed, isPremium);
+    // Step 4: Select base pack (NO premium filtering)
+    const pack = this.selectBaseRotationPack(allCandidates, history, surface, seed);
     pack.sessionId = sessionId;
 
-    // Step 6: Persist in MissionDeepInsights.insightsJson.rotationPacks
+    // Step 5: Persist base pack in MissionDeepInsights.insightsJson.rotationPacks
     const insights = await this.prisma.missionDeepInsights.findUnique({
       where: { sessionId },
       select: { insightsJson: true },
@@ -419,20 +505,20 @@ export class RotationService {
   }
 
   /**
-   * Step 5.11: Get rotation pack for surface
-   * Loads saved pack if exists, else recomputes
+   * Step 5.12: Get rotation pack for surface with premium filtering on read
+   * Loads base pack (unfiltered) and applies premium filtering based on current user tier
    * 
    * @param userId - User ID
    * @param sessionId - Session ID
    * @param surface - Target surface
-   * @returns RotationPackResponse
+   * @returns RotationPackResponse (filtered for current premium status)
    */
   async getRotationPackForSurface(
     userId: string,
     sessionId: string,
     surface: RotationSurface,
   ): Promise<RotationPackResponse> {
-    // Try to load saved pack
+    // Step 1: Try to load saved base pack
     const insights = await this.prisma.missionDeepInsights.findUnique({
       where: { sessionId },
       select: {
@@ -445,21 +531,86 @@ export class RotationService {
 
     // Ownership check
     if (!insights) {
-      throw new Error(`Session ${sessionId} insights not found`);
+      // If insights record doesn't exist, try to build pack anyway (might work if session exists)
+      try {
+        return await this.buildAndPersistRotationPack(userId, sessionId, surface);
+      } catch (err: any) {
+        // If building fails, return null (controller will handle as empty pack)
+        logger.warn(`[RotationService] Cannot build pack for ${sessionId}: ${err.message}`);
+        return null as any; // Return null, controller will convert to empty pack
+      }
     }
     if (insights.session.userId !== userId) {
       throw new Error(`Session ${sessionId} does not belong to user ${userId}`);
     }
 
     const insightsJson = insights.insightsJson as any;
-    const savedPack = insightsJson?.rotationPacks?.[surface];
+    let basePack: RotationPackResponse | null = insightsJson?.rotationPacks?.[surface] || null;
 
-    if (savedPack) {
-      return savedPack as RotationPackResponse;
+    // Step 2: If no saved pack, build and persist base pack
+    if (!basePack) {
+      try {
+        basePack = await this.buildAndPersistRotationPack(userId, sessionId, surface);
+      } catch (err: any) {
+        // If building fails, return null (controller will handle as empty pack)
+        logger.warn(`[RotationService] Cannot build pack for ${sessionId}: ${err.message}`);
+        return null as any; // Return null, controller will convert to empty pack
+      }
     }
 
-    // Recompute on the fly
-    return this.buildAndPersistRotationPack(userId, sessionId, surface);
+    // Step 3: Filter pack by premium status
+    return this.filterPackByPremium(basePack, userId);
+  }
+
+  /**
+   * Helper: Filter rotation pack by premium status
+   */
+  private async filterPackByPremium(
+    basePack: RotationPackResponse,
+    userId: string,
+  ): Promise<RotationPackResponse> {
+    // Load current premium status
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { tier: true },
+    });
+    const isPremiumUser = isPremiumTier(user?.tier);
+
+    // Compute visible insights based on premium status
+    const allInsights = basePack.selectedInsights ?? [];
+    const premiumInsights = allInsights.filter((i) => i.isPremium);
+    const freeInsights = allInsights.filter((i) => !i.isPremium);
+    const visibleInsights = isPremiumUser ? allInsights : freeInsights;
+
+    // Calculate premium metadata
+    const totalAvailable = allInsights.length;
+    const filteredBecausePremium = totalAvailable - visibleInsights.length;
+    const premiumInsightIds = premiumInsights.map((i) => i.id);
+
+    // Build new meta object preserving base fields but updating premium-aware fields
+    const baseMeta = basePack.meta ?? {};
+    const meta: RotationPackResponse['meta'] = {
+      ...baseMeta,
+      // Core fields preserved as-is
+      seed: baseMeta.seed,
+      excludedIds: baseMeta.excludedIds ?? [],
+      quotas: baseMeta.quotas,
+      version: baseMeta.version ?? 'v1',
+      // Premium-aware fields
+      totalAvailable,
+      isPremiumUser,
+      filteredBecausePremium,
+      premiumInsightIds: isPremiumUser ? [] : premiumInsightIds, // Only include if filtered
+      // pickedIds should always represent what THIS user sees
+      pickedIds: visibleInsights.map((i) => i.id),
+    };
+
+    // Return filtered pack (do not mutate base pack)
+    return {
+      ...basePack,
+      selectedInsights: visibleInsights,
+      meta,
+    };
   }
 
   /**
@@ -482,7 +633,7 @@ export class RotationService {
       where: { id: userId },
       select: { tier: true },
     });
-    const isPremium = user?.tier === 'PREMIUM' || user?.tier === 'PREMIUM_PLUS';
+    const isPremium = isPremiumTier(user?.tier);
     const seed = generateInsightsV2Seed(userId, sessionId, `rotation_${surface}`);
 
     const afterCooldown = this.applyCooldown(allCandidates, history);

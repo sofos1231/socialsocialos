@@ -11,12 +11,13 @@ import {
   TouchableOpacity,
   Modal,
 } from 'react-native';
-import Svg, { Polyline } from 'react-native-svg';
-import { fetchAdvancedMetrics, AdvancedMetricsResponse, MessageBreakdownDTO, fetchTraitSynergy, TraitSynergyResponse, fetchMoodTimeline } from '../../api/statsService';
-import { MoodTimelineResponse, MoodState } from '../../types/InsightsDTO';
+import { fetchAdvancedMetrics, AdvancedMetricsResponse, MessageBreakdownDTO, fetchTraitSynergy, TraitSynergyResponse } from '../../api/statsService';
 import { fetchStatsSummary } from '../../api/statsService';
 import { TraitKey, TRAIT_KEYS, TraitLabels } from '../../logic/traitKeys';
 import { isFeatureLocked, getFeatureLockMessage } from '../../utils/featureGate';
+import { LockedResponse } from '../../api/types';
+import LockedCard from '../../components/LockedCard';
+import PremiumUpsellModal from '../../components/PremiumUpsellModal';
 
 interface AdvancedTabProps {
   isPremium: boolean;
@@ -28,15 +29,15 @@ export default function AdvancedTab({ isPremium }: AdvancedTabProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<MessageBreakdownDTO | null>(null);
   
+  // Step 5.12: Locked response state
+  const [advancedLocked, setAdvancedLocked] = useState<LockedResponse<AdvancedMetricsResponse> | null>(null);
+  const [upsellModalVisible, setUpsellModalVisible] = useState(false);
+  
   // Step 5.9: Synergy state
   const [synergy, setSynergy] = useState<TraitSynergyResponse | null>(null);
+  const [synergyLocked, setSynergyLocked] = useState<LockedResponse<TraitSynergyResponse> | null>(null);
   const [synergyLoading, setSynergyLoading] = useState(false);
   const [synergyError, setSynergyError] = useState<string | null>(null);
-
-  // Step 5.10: Mood timeline state
-  const [moodTimeline, setMoodTimeline] = useState<MoodTimelineResponse | null>(null);
-  const [moodLoading, setMoodLoading] = useState(false);
-  const [moodError, setMoodError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -47,17 +48,24 @@ export default function AdvancedTab({ isPremium }: AdvancedTabProps) {
     setError(null);
     try {
       const response = await fetchAdvancedMetrics();
-      setData(response);
       
-      // Step 5.9: Load synergy data if not feature-locked
-      if (!isFeatureLocked('ADVANCED_METRICS', isPremium)) {
+      // Step 5.12: Handle LockedResponse
+      if (response.locked) {
+        setAdvancedLocked(response);
+        setData(response.preview || null);
+      } else {
+        setAdvancedLocked(null);
+        setData(response.full || null);
+        
+        // Step 5.9: Load synergy data if unlocked
         loadSynergy();
-        // Step 5.10: Load mood timeline if we have a sessionId
-        loadMoodTimeline();
       }
     } catch (err: any) {
-      console.error('[AdvancedTab] Failed to load advanced metrics:', err);
+      console.warn('[AdvancedTab] Failed to load advanced metrics:', err);
+      // Show inline error state for this tab, but don't break other tabs
       setError(err.message || 'Failed to load advanced metrics');
+      // Set premium status based on error (likely backend 500 means not premium)
+      // Don't show fatal error card - just show inline error
     } finally {
       setLoading(false);
     }
@@ -68,7 +76,15 @@ export default function AdvancedTab({ isPremium }: AdvancedTabProps) {
     setSynergyError(null);
     try {
       const response = await fetchTraitSynergy();
-      setSynergy(response);
+      
+      // Step 5.12: Handle LockedResponse
+      if (response.locked) {
+        setSynergyLocked(response);
+        setSynergy(response.preview || null);
+      } else {
+        setSynergyLocked(null);
+        setSynergy(response.full || null);
+      }
     } catch (err: any) {
       console.error('[AdvancedTab] Failed to load trait synergy:', err);
       setSynergyError(err.message || 'Failed to load trait synergy');
@@ -77,71 +93,6 @@ export default function AdvancedTab({ isPremium }: AdvancedTabProps) {
     }
   };
 
-  const loadMoodTimeline = async () => {
-    setMoodLoading(true);
-    setMoodError(null);
-    try {
-      // Get latest sessionId from stats summary
-      const statsSummary = await fetchStatsSummary();
-      if (statsSummary.lastSessionId) {
-        const response = await fetchMoodTimeline(statsSummary.lastSessionId);
-        setMoodTimeline(response);
-      }
-    } catch (err: any) {
-      console.error('[AdvancedTab] Failed to load mood timeline:', err);
-      setMoodError(err.message || 'Failed to load mood timeline');
-    } finally {
-      setMoodLoading(false);
-    }
-  };
-
-  // Step 5.10: Render mood chart with color-coded segments
-  const renderMoodChart = (snapshots: Array<{ turnIndex: number; smoothedMoodScore: number; moodState: MoodState }>) => {
-    if (snapshots.length === 0) return null;
-
-    const width = 300;
-    const height = 60;
-    const padding = 8;
-
-    const scores = snapshots.map(s => s.smoothedMoodScore);
-    const min = Math.min(...scores);
-    const max = Math.max(...scores);
-    const range = max - min || 1;
-
-    // Color mapping for mood states
-    const getMoodColor = (state: MoodState): string => {
-      switch (state) {
-        case 'COLD': return '#3b82f6'; // blue
-        case 'NEUTRAL': return '#9ca3af'; // gray
-        case 'WARM': return '#f97316'; // orange
-        case 'TENSE': return '#ef4444'; // red
-        case 'FLOW': return '#22c55e'; // green
-        default: return '#9ca3af';
-      }
-    };
-
-    // Generate points for polyline
-    const points = snapshots.map((snapshot, index) => {
-      const x = padding + (index / (snapshots.length - 1 || 1)) * (width - 2 * padding);
-      const y = height - padding - ((snapshot.smoothedMoodScore - min) / range) * (height - 2 * padding);
-      return { x, y, color: getMoodColor(snapshot.moodState) };
-    });
-
-    const svgPoints = points.map(p => `${p.x},${p.y}`).join(' ');
-
-    return (
-      <View style={styles.moodChartWrapper}>
-        <Svg width={width} height={height}>
-          <Polyline
-            points={svgPoints}
-            fill="none"
-            stroke="#22c55e"
-            strokeWidth="2"
-          />
-        </Svg>
-      </View>
-    );
-  };
 
   if (loading) {
     return (
@@ -171,19 +122,38 @@ export default function AdvancedTab({ isPremium }: AdvancedTabProps) {
     );
   }
 
-  // Premium lock UI (using FeatureGate helper)
-  if (isFeatureLocked('ADVANCED_METRICS', isPremium)) {
+  // Step 5.12: Premium lock UI (using LockedResponse)
+  if (advancedLocked?.locked || isFeatureLocked('ADVANCED_METRICS', isPremium)) {
     return (
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.premiumLockCard}>
-          <Text style={styles.premiumLockTitle}>🔒 Advanced Metrics</Text>
-          <Text style={styles.premiumLockText}>
-            {getFeatureLockMessage('ADVANCED_METRICS')}
-          </Text>
-          <TouchableOpacity style={styles.upgradeButton}>
-            <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
-          </TouchableOpacity>
-        </View>
+        <LockedCard
+          title="🔒 Advanced Metrics"
+          description={advancedLocked?.upsell?.body || getFeatureLockMessage('ADVANCED_METRICS')}
+          upsell={advancedLocked?.upsell}
+          onUpgrade={() => setUpsellModalVisible(true)}
+        >
+          {advancedLocked?.preview && (
+            <View>
+              {/* Show preview content if available */}
+              <Text style={styles.cardTextMuted}>Preview: Limited data available</Text>
+            </View>
+          )}
+        </LockedCard>
+        <PremiumUpsellModal
+          visible={upsellModalVisible}
+          featureKey={advancedLocked?.featureKey || 'ADVANCED_METRICS'}
+          upsell={advancedLocked?.upsell || {
+            title: 'Unlock Advanced Metrics',
+            body: getFeatureLockMessage('ADVANCED_METRICS'),
+            ctaLabel: 'Upgrade to Premium',
+          }}
+          onClose={() => setUpsellModalVisible(false)}
+          onUpgrade={() => {
+            setUpsellModalVisible(false);
+            // Navigate to upgrade screen or handle upgrade
+            console.log('Upgrade to premium');
+          }}
+        />
       </ScrollView>
     );
   }
@@ -290,16 +260,21 @@ export default function AdvancedTab({ isPremium }: AdvancedTabProps) {
         )}
       </View>
 
-      {/* Step 5.9: Trait Synergy Map */}
-      {isFeatureLocked('ADVANCED_METRICS', isPremium) ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Trait Synergy Map</Text>
-          <View style={styles.premiumLockCard}>
-            <Text style={styles.premiumLockText}>
-              {getFeatureLockMessage('ADVANCED_METRICS')}
-            </Text>
-          </View>
-        </View>
+      {/* Step 5.12: Trait Synergy Map with LockedResponse */}
+      {synergyLocked?.locked ? (
+        <LockedCard
+          title="Trait Synergy Map"
+          upsell={synergyLocked.upsell}
+          onUpgrade={() => setUpsellModalVisible(true)}
+        >
+          {synergyLocked.preview && (
+            <View>
+              <Text style={styles.cardTextMuted}>
+                Preview: {synergyLocked.preview.nodes.length} traits, {synergyLocked.preview.edges.length} connections
+              </Text>
+            </View>
+          )}
+        </LockedCard>
       ) : synergyLoading ? (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Trait Synergy Map</Text>
@@ -365,59 +340,6 @@ export default function AdvancedTab({ isPremium }: AdvancedTabProps) {
           )}
         </View>
       ) : null}
-
-      {/* Step 5.10: Mood Timeline */}
-      {isFeatureLocked('ADVANCED_METRICS', isPremium) ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Mood Timeline</Text>
-          <View style={styles.premiumLockCard}>
-            <Text style={styles.premiumLockText}>
-              {getFeatureLockMessage('ADVANCED_METRICS')}
-            </Text>
-          </View>
-        </View>
-      ) : moodLoading ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Mood Timeline</Text>
-          <ActivityIndicator size="small" color="#22c55e" />
-          <Text style={styles.cardTextMuted}>Loading mood timeline...</Text>
-        </View>
-      ) : moodError ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Mood Timeline</Text>
-          <Text style={styles.errorText}>{moodError}</Text>
-        </View>
-      ) : moodTimeline && moodTimeline.payload.snapshots.length > 0 ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Mood Timeline</Text>
-          <Text style={styles.cardSubtitle}>
-            Current: {moodTimeline.current.moodState} ({moodTimeline.current.moodPercent}%)
-          </Text>
-          
-          {/* Simple line chart */}
-          <View style={styles.moodChartContainer}>
-            {renderMoodChart(moodTimeline.payload.snapshots)}
-          </View>
-
-          {/* Top mood insights */}
-          {moodTimeline.insights.length > 0 && (
-            <>
-              <Text style={styles.cardSubtitle}>Mood Insights</Text>
-              {moodTimeline.insights.slice(0, 3).map((insight, idx) => (
-                <View key={idx} style={styles.insightRow}>
-                  <Text style={styles.insightTitle}>{insight.title}</Text>
-                  <Text style={styles.insightBody}>{insight.body}</Text>
-                </View>
-              ))}
-            </>
-          )}
-        </View>
-      ) : (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Mood Timeline</Text>
-          <Text style={styles.cardTextMuted}>No mood data available yet</Text>
-        </View>
-      )}
 
       {/* Hall of Fame */}
       <View style={styles.card}>
@@ -640,14 +562,6 @@ const styles = StyleSheet.create({
   insightBody: {
     fontSize: 13,
     color: '#93C5FD',
-  },
-  moodChartContainer: {
-    marginVertical: 12,
-    alignItems: 'center',
-  },
-  moodChartWrapper: {
-    width: 300,
-    height: 60,
   },
   insightRow: {
     marginBottom: 12,

@@ -18,6 +18,8 @@ import { BadgesService } from '../badges/badges.service';
 import { SynergyService } from '../synergy/synergy.service';
 // Step 5.11: Import rotation service
 import { RotationService } from '../rotation/rotation.service';
+// Step 5.14: Import category stats service
+import { CategoryStatsService } from '../stats/category-stats.service';
 import {
   computeSessionRewards,
   MessageEvaluationInput,
@@ -42,6 +44,9 @@ import { deriveHooks, derivePatterns } from '../analytics/hook-taxonomy';
 import { toSessionsMockResponsePublic, toPracticeSessionResponsePublic } from '../shared/serializers/api-serializers';
 // ✅ Step 5.7: Import shared normalizeEndReason
 import { normalizeEndReason } from '../shared/normalizers/end-reason.normalizer';
+// Step 5.13: Import SessionEndReadModel builder
+import { SessionEndReadModelBuilder } from './session-end-read-model.builder';
+import { SessionEndReadModel } from '../shared/types/session-end-read-model.types';
 
 // Temporary: mock scores for the /sessions/mock endpoint
 const MOCK_MESSAGE_SCORES: number[] = [62, 74, 88, 96];
@@ -116,7 +121,15 @@ export class SessionsService {
     private readonly synergyService: SynergyService,
     // Step 5.11: Inject rotation service
     private readonly rotationService: RotationService,
-  ) {}
+    // Step 5.14: Inject category stats service
+    private readonly categoryStatsService: CategoryStatsService,
+  ) {
+    // Step 5.13: Initialize builder (inject Prisma)
+    this.sessionEndReadModelBuilder = new SessionEndReadModelBuilder(this.prisma);
+  }
+
+  // Step 5.13: SessionEndReadModel builder instance
+  private readonly sessionEndReadModelBuilder: SessionEndReadModelBuilder;
 
   /**
    * ✅ STEP 4.4: Validate mission status transitions
@@ -823,6 +836,13 @@ export class SessionsService {
         console.error(`[SessionsService] Rotation engine failed for ${usedSessionId}:`, err);
       }
 
+      // Step 5.14: Category Stats update (after rotation, before Hall of Fame)
+      try {
+        await this.categoryStatsService.updateForSession(usedSessionId, userId);
+      } catch (err: any) {
+        console.error(`[SessionsService] Category stats update failed for ${usedSessionId}:`, err);
+      }
+
       // 5.7: Hall of Fame persistence (after insights, before badges)
       try {
         await this.upsertHallOfFameMessages(userId, usedSessionId);
@@ -991,6 +1011,18 @@ export class SessionsService {
    * ✅ Step 5.7: Get session by ID (read endpoint)
    * Returns the same public payload shape as POST /v1/practice/session
    */
+  /**
+   * Step 5.13: Get unified session end read model
+   * Returns complete, normalized session-end summary for finalized sessions
+   * 
+   * @param userId - User ID (for ownership validation)
+   * @param sessionId - Session ID
+   * @returns SessionEndReadModel with all fields populated
+   */
+  async getSessionEndReadModel(userId: string, sessionId: string): Promise<SessionEndReadModel> {
+    return this.sessionEndReadModelBuilder.buildForSession(sessionId, userId);
+  }
+
   async getSessionByIdPublic(userId: string, sessionId: string) {
     if (!userId) {
       throw new UnauthorizedException({

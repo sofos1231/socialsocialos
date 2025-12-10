@@ -231,10 +231,12 @@ export interface AdvancedMetricsResponse {
 }
 
 /**
- * Step 5.6: Fetch advanced metrics
+ * Step 5.12: Fetch advanced metrics (returns LockedResponse)
  */
-export async function fetchAdvancedMetrics(): Promise<AdvancedMetricsResponse> {
-  const res = await apiClient.get('/stats/advanced');
+import { LockedResponse } from './types';
+
+export async function fetchAdvancedMetrics(): Promise<LockedResponse<AdvancedMetricsResponse>> {
+  const res = await apiClient.get<LockedResponse<AdvancedMetricsResponse>>('/stats/advanced');
   return res.data;
 }
 
@@ -261,10 +263,10 @@ export interface TraitSynergyResponse {
 }
 
 /**
- * Step 5.9: Fetch trait synergy map
+ * Step 5.12: Fetch trait synergy map (returns LockedResponse)
  */
-export async function fetchTraitSynergy(): Promise<TraitSynergyResponse> {
-  const res = await apiClient.get<TraitSynergyResponse>('/stats/synergy');
+export async function fetchTraitSynergy(): Promise<LockedResponse<TraitSynergyResponse>> {
+  const res = await apiClient.get<LockedResponse<TraitSynergyResponse>>('/stats/synergy');
   return res.data;
 }
 
@@ -274,10 +276,10 @@ export async function fetchTraitSynergy(): Promise<TraitSynergyResponse> {
 import { MoodTimelineResponse } from '../types/InsightsDTO';
 
 /**
- * Step 5.10: Fetch mood timeline for a session
+ * Step 5.12: Fetch mood timeline for a session (returns LockedResponse)
  */
-export async function fetchMoodTimeline(sessionId: string): Promise<MoodTimelineResponse> {
-  const { data } = await apiClient.get<MoodTimelineResponse>(`/v1/stats/mood/session/${sessionId}`);
+export async function fetchMoodTimeline(sessionId: string): Promise<LockedResponse<MoodTimelineResponse>> {
+  const { data } = await apiClient.get<LockedResponse<MoodTimelineResponse>>(`/v1/stats/mood/session/${sessionId}`);
   return data;
 }
 
@@ -325,6 +327,11 @@ export interface RotationPackResponse {
       analyzer?: number;
     };
     version: 'v1';
+    // Step 5.12: Premium metadata
+    totalAvailable?: number;
+    filteredBecausePremium?: number;
+    isPremiumUser?: boolean;
+    premiumInsightIds?: string[];
   };
 }
 
