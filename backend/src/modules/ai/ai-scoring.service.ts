@@ -513,7 +513,7 @@ export class AiScoringService {
         strengths: this.deriveMessageStrengths(entry),
         weaknesses: [],
         advice:
-          'Keep using this kind of structure – it carries clear intent and attractive energy. Next step is to mirror her vibe a bit more.',
+          'Keep using this kind of structure – it carries clear intent and attractive energy. Next step is to mirror their vibe a bit more.',
       };
     });
   }

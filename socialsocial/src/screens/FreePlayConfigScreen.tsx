@@ -514,7 +514,7 @@ export default function FreePlayConfigScreen({ navigation }: Props) {
                 <TextInput
                   value={situation}
                   onChangeText={setSituation}
-                  placeholder="Example: You matched on Tinder. She replied 'hey'. You want a confident playful opener…"
+                  placeholder="Example: You matched on Tinder. They replied 'hey'. You want a confident playful opener…"
                   placeholderTextColor="#64748b"
                   style={styles.textArea}
                   multiline

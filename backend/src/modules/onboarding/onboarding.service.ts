@@ -197,6 +197,16 @@ export class OnboardingService {
       updateData.preferredStyles = ['CHILL'];
     }
 
+    // Set safe defaults for gender/attraction to ensure mission routing has stable inputs
+    // This prevents users from getting stuck with UNKNOWN preferences that would hide all attraction-sensitive missions
+    if (user.gender === Gender.UNKNOWN || user.gender === null || user.gender === undefined) {
+      updateData.gender = Gender.OTHER;
+    }
+    if (user.attractedTo === AttractionPreference.UNKNOWN || user.attractedTo === null || user.attractedTo === undefined) {
+      updateData.attractedTo = AttractionPreference.OTHER;
+      updateData.preferencePath = PreferencePath.OTHER_PATH;
+    }
+
     // Update User
     await this.prisma.user.update({
       where: { id: userId },
@@ -245,6 +255,8 @@ export class OnboardingService {
         id: true,
         mainGoal: true,
         dailyEffortMinutes: true,
+        gender: true,
+        attractedTo: true,
         onboardingState: true,
         createdAt: true,
         onboardingVersion: true,
@@ -270,6 +282,16 @@ export class OnboardingService {
     }
     if (user.dailyEffortMinutes === null || user.dailyEffortMinutes === undefined) {
       updateData.dailyEffortMinutes = 15;
+    }
+
+    // Set safe defaults for gender/attraction to ensure mission routing has stable inputs
+    // This prevents users from getting stuck with UNKNOWN preferences that would hide all attraction-sensitive missions
+    if (user.gender === Gender.UNKNOWN || user.gender === null || user.gender === undefined) {
+      updateData.gender = Gender.OTHER;
+    }
+    if (user.attractedTo === AttractionPreference.UNKNOWN || user.attractedTo === null || user.attractedTo === undefined) {
+      updateData.attractedTo = AttractionPreference.OTHER;
+      updateData.preferencePath = PreferencePath.OTHER_PATH;
     }
 
     // Update User

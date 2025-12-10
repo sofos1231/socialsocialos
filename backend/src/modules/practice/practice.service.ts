@@ -23,6 +23,7 @@ import { getGateRequirementsForObjective } from '../ai-engine/registries/objecti
 import { MicroDynamicsService } from '../ai-engine/micro-dynamics.service';
 // Step 6.8: Import persona drift service
 import { PersonaDriftService } from '../ai-engine/persona-drift.service';
+import { MissionsService } from '../missions/missions.service';
 import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
 import {
   normalizeMissionConfigV1,
@@ -548,6 +549,8 @@ export class PracticeService {
     private readonly microDynamicsService: MicroDynamicsService,
     // Step 6.8: Inject persona drift service
     private readonly personaDriftService: PersonaDriftService,
+    // Persona compatibility: use missions service as single source of truth
+    private readonly missionsService: MissionsService,
   ) {}
 
   private async resolveFreePlayAiStyle(params: {
@@ -625,6 +628,9 @@ export class PracticeService {
             timeLimitSec: true,
             wordLimit: true,
             aiContract: true,
+            isAttractionSensitive: true,
+            targetRomanticGender: true,
+            aiStyleId: true,
             aiStyle: {
               select: {
                 id: true,
@@ -642,8 +648,18 @@ export class PracticeService {
     if (templateId && template?.personaId) {
       const persona = await this.prisma.aiPersona.findUnique({
         where: { id: template.personaId },
-        select: { id: true, active: true },
+        select: { 
+          id: true, 
+          active: true, 
+          personaGender: true,
+          name: true,
+          description: true,
+          style: true,
+          avatarUrl: true,
+          voicePreset: true,
+        },
       });
+      
       if (!persona) {
         throw new BadRequestException({
           code: 'MISSION_TEMPLATE_INVALID_PERSONA',
@@ -655,6 +671,19 @@ export class PracticeService {
           code: 'MISSION_TEMPLATE_INACTIVE_PERSONA',
           message: `Template references persona "${template.personaId}" that is inactive`,
         });
+      }
+
+      // Use missions service as single source of truth for persona compatibility
+      // This ensures consistent behavior across mission start and practice session creation
+      const compatiblePersona = await this.missionsService.selectCompatiblePersona(
+        template as any,
+        persona as any,
+      );
+
+      // Update template's personaId to use compatible persona for this session
+      // Note: This doesn't persist to the template, just uses it for this session
+      if (compatiblePersona && compatiblePersona.id !== template.personaId) {
+        (template as any).personaId = compatiblePersona.id;
       }
     }
 

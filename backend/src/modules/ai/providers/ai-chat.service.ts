@@ -192,7 +192,15 @@ export class AiChatService {
 
     const system = this.buildSystemPrompt({
       topic,
-      mission: ctx?.template ?? null,
+      mission: ctx?.template ? {
+        id: ctx.template.id,
+        code: ctx.template.code,
+        title: ctx.template.title,
+        description: ctx.template.description,
+        aiStyle: ctx.template.aiStyle,
+        isAttractionSensitive: ctx.template.isAttractionSensitive ?? false,
+        targetRomanticGender: ctx.template.targetRomanticGender ?? null,
+      } : null,
       category: ctx?.category ?? null,
       persona,
       aiStyle: effectiveAiStyle,
@@ -330,6 +338,8 @@ export class AiChatService {
           title: string;
           description: string | null;
           aiStyle: AiStyle | null;
+          isAttractionSensitive?: boolean;
+          targetRomanticGender?: any;
         }
       | null;
     category: { id: string; code: string; label: string } | null;
@@ -340,6 +350,7 @@ export class AiChatService {
           name: string;
           description?: string | null;
           style?: string | null;
+          personaGender?: any;
         }
       | null;
     aiStyle: AiStyle | null;
@@ -371,6 +382,8 @@ export class AiChatService {
       isFirstMessage,
       openingText,
     } = params;
+
+    const isAttractionSensitive = mission?.isAttractionSensitive ?? false;
 
     const preset = stylePreset(aiStyle);
     const aiStyleKey = aiStyle?.key ?? null;
@@ -458,6 +471,17 @@ export class AiChatService {
             .filter(Boolean)
             .join('\n')
         : `Persona: (none)`,
+      // Gender context for attraction-sensitive missions
+      isAttractionSensitive && persona?.personaGender
+        ? [
+            ``,
+            `GENDER CONTEXT:`,
+            `- This is a romantic interaction practice scenario.`,
+            `- The AI persona's gender is ${persona.personaGender}.`,
+            `- Maintain consistent gender identity throughout the conversation.`,
+            `- Do NOT change your gender or role during the conversation.`,
+          ].join('\n')
+        : null,
       ``,
       styleBlock,
       dynamicsBlock ? `\n${dynamicsBlock}\n` : ``,
@@ -537,9 +561,11 @@ export class AiChatService {
         description: true,
         aiStyle: true,
         aiContract: true,
+        isAttractionSensitive: true,
+        targetRomanticGender: true,
         category: { select: { id: true, code: true, label: true } },
         persona: {
-          select: { id: true, code: true, name: true, description: true, style: true },
+          select: { id: true, code: true, name: true, description: true, style: true, personaGender: true },
         },
       },
     });
@@ -553,6 +579,8 @@ export class AiChatService {
         title: template.title,
         description: template.description ?? null,
         aiStyle: template.aiStyle ?? null,
+        isAttractionSensitive: template.isAttractionSensitive ?? false,
+        targetRomanticGender: template.targetRomanticGender ?? null,
       },
       aiContract: template.aiContract ?? null,
       category: template.category ?? null,

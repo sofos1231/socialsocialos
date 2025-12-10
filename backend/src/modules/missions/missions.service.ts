@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
 import { normalizeMissionConfigV1 } from '../practice/mission-config-runtime';
-import { MissionProgressStatus } from '@prisma/client';
+import { MissionProgressStatus, Gender, AttractionPreference } from '@prisma/client';
 
 const STATUS_LOCKED = MissionProgressStatus.LOCKED;
 const STATUS_UNLOCKED = MissionProgressStatus.UNLOCKED;
@@ -19,15 +19,55 @@ export class MissionsService {
   /**
    * Used by Mission Road UI.
    * Returns ordered mission templates + per-user progress + computed unlock/current flags.
+   * Filters attraction-sensitive missions based on user's attraction preference.
    */
   async getRoadForUser(userId: string) {
+    // Load user preferences for filtering
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        gender: true,
+        attractedTo: true,
+        preferencePath: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
     const templates = await this.prisma.practiceMissionTemplate.findMany({
       where: { active: true },
       orderBy: [{ laneIndex: 'asc' }, { orderIndex: 'asc' }],
       include: { persona: true, category: true },
     });
 
-    const ids = (templates as any[]).map((t) => t.id);
+    // Filter templates by attraction sensitivity
+    const filteredTemplates = templates.filter((t) => {
+      // Non-attraction-sensitive missions: always include
+      if (!t.isAttractionSensitive) {
+        return true;
+      }
+
+      // Attraction-sensitive missions: filter based on user preference
+      const targetGender = t.targetRomanticGender;
+
+      switch (user.attractedTo) {
+        case AttractionPreference.WOMEN:
+          return targetGender === Gender.FEMALE;
+        case AttractionPreference.MEN:
+          return targetGender === Gender.MALE;
+        case AttractionPreference.BOTH:
+          return targetGender === Gender.FEMALE || targetGender === Gender.MALE;
+        case AttractionPreference.OTHER:
+        case AttractionPreference.UNKNOWN:
+        default:
+          // Hide attraction-sensitive missions for OTHER/UNKNOWN
+          return false;
+      }
+    });
+
+    const ids = (filteredTemplates as any[]).map((t) => t.id);
 
     const progresses =
       ids.length > 0
@@ -46,7 +86,7 @@ export class MissionsService {
 
     // group templates by lane and sort inside lane
     const templatesByLane = new Map<number, any[]>();
-    for (const t of templates as any[]) {
+    for (const t of filteredTemplates as any[]) {
       const lane = Number((t as any).laneIndex ?? 0);
       const arr = templatesByLane.get(lane) ?? [];
       arr.push(t);
@@ -75,14 +115,46 @@ export class MissionsService {
 
     // current: first unlocked-but-not-completed in overall order
     let currentId: string | null = null;
-    for (const t of templates as any[]) {
+    for (const t of filteredTemplates as any[]) {
       const isUnlocked = unlockedById.get(t.id) ?? false;
       const prog = progressByTemplateId.get(t.id);
       const isCompleted = prog?.status === STATUS_COMPLETED;
       if (!currentId && isUnlocked && !isCompleted) currentId = t.id;
     }
 
-    return (templates as any[]).map((t) => {
+    // Helper to compute dynamic category label
+    const computeCategoryLabel = (category: any): string => {
+      if (!category) return '';
+      
+      // If category is not attraction-sensitive or has no template, use static label
+      if (!category.isAttractionSensitive || !category.dynamicLabelTemplate) {
+        return category.label;
+      }
+
+      // Compute targetPlural based on user's attraction preference
+      let targetPlural = 'People';
+      switch (user.attractedTo) {
+        case AttractionPreference.WOMEN:
+          targetPlural = 'Women';
+          break;
+        case AttractionPreference.MEN:
+          targetPlural = 'Men';
+          break;
+        case AttractionPreference.BOTH:
+          targetPlural = 'Women & Men';
+          break;
+        case AttractionPreference.OTHER:
+        case AttractionPreference.UNKNOWN:
+        default:
+          targetPlural = 'People';
+          break;
+      }
+
+      // Replace {{targetPlural}} placeholder
+      return category.dynamicLabelTemplate.replace('{{targetPlural}}', targetPlural);
+    };
+
+    return (filteredTemplates as any[]).map((t) => {
       const prog = progressByTemplateId.get(t.id);
       const isUnlocked = unlockedById.get(t.id) ?? false;
       const isCompleted = prog?.status === STATUS_COMPLETED;
@@ -106,7 +178,12 @@ export class MissionsService {
         estMinutes,
 
         category: t.category
-          ? { id: t.category.id, code: t.category.code, label: t.category.label }
+          ? {
+              id: t.category.id,
+              code: t.category.code,
+              label: t.category.label,
+              displayLabel: computeCategoryLabel(t.category),
+            }
           : null,
 
         persona: t.persona
@@ -142,6 +219,20 @@ export class MissionsService {
    * - ensure MissionProgress row exists (UNLOCKED, not LOCKED)
    */
   async startMissionForUser(userId: string, templateId: string) {
+    // Load user preferences for persona compatibility check
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        gender: true,
+        attractedTo: true,
+        preferencePath: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
     const template = await this.prisma.practiceMissionTemplate.findUnique({
       where: { id: templateId },
       include: { persona: true, category: true },
@@ -177,6 +268,12 @@ export class MissionsService {
     const isUnlocked = await this.isUnlockedForUser(userId, template as any);
     if (!isUnlocked)
       throw new ForbiddenException('You must complete earlier missions first.');
+
+    // Select compatible persona for attraction-sensitive missions
+    const compatiblePersona = await this.selectCompatiblePersona(
+      template as any,
+      (template as any).persona,
+    );
 
     const existing = await this.prisma.missionProgress.findFirst({
       where: { userId, templateId },
@@ -216,19 +313,65 @@ export class MissionsService {
           }
         : null,
 
-      persona: (template as any).persona
+      persona: compatiblePersona
         ? {
-            id: (template as any).persona.id,
-            name: (template as any).persona.name,
+            id: compatiblePersona.id,
+            name: compatiblePersona.name,
             bio:
-              (template as any).persona.bio ??
-              (template as any).persona.description ??
+              compatiblePersona.bio ??
+              compatiblePersona.description ??
               '',
-            avatarUrl: (template as any).persona.avatarUrl ?? null,
-            voicePreset: (template as any).persona.voicePreset ?? null,
+            avatarUrl: compatiblePersona.avatarUrl ?? null,
+            voicePreset: compatiblePersona.voicePreset ?? null,
+            personaGender: compatiblePersona.personaGender ?? null,
           }
         : null,
     };
+  }
+
+  /**
+   * Single source of truth: Select compatible persona for attraction-sensitive missions
+   * Returns the persona that matches the mission's target gender, or falls back to current persona
+   * 
+   * This method is used by both startMissionForUser() and practice service to ensure
+   * persona compatibility is handled consistently across the codebase.
+   */
+  async selectCompatiblePersona(
+    template: any,
+    currentPersona: any,
+  ): Promise<any> {
+    // If mission is not attraction-sensitive, use current persona as-is
+    if (!template.isAttractionSensitive) {
+      return currentPersona;
+    }
+
+    const targetGender = template.targetRomanticGender;
+    
+    // If no target gender specified, treat as ANY and keep current persona
+    if (!targetGender) {
+      return currentPersona;
+    }
+
+    // If current persona exists and matches target gender, use it
+    if (currentPersona && currentPersona.personaGender === targetGender) {
+      return currentPersona;
+    }
+
+    // Find a compatible persona with matching gender
+    const compatiblePersona = await this.prisma.aiPersona.findFirst({
+      where: {
+        active: true,
+        personaGender: targetGender,
+      },
+    });
+
+    if (compatiblePersona) {
+      return compatiblePersona;
+    }
+
+    // Fallback: return current persona to avoid hard crashes
+    // TODO: Log warning that no compatible persona was found
+    return currentPersona;
   }
 
   /**

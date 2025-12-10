@@ -41,12 +41,50 @@ export function OnboardingStepSummary({ appState }: OnboardingStepSummaryProps) 
     }
   };
 
+  const getGenderLabel = (gender: string | null) => {
+    switch (gender) {
+      case 'MALE':
+        return 'Man';
+      case 'FEMALE':
+        return 'Woman';
+      case 'OTHER':
+        return 'Other';
+      default:
+        return 'Not set';
+    }
+  };
+
+  const getAttractionLabel = (attractedTo: string | null) => {
+    switch (attractedTo) {
+      case 'WOMEN':
+        return 'Women';
+      case 'MEN':
+        return 'Men';
+      case 'BOTH':
+        return 'Both';
+      case 'OTHER':
+        return "Not here for dating";
+      default:
+        return 'Not set';
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Review Your Preferences</Text>
       <Text style={styles.subtitle}>Make sure everything looks good before finishing</Text>
 
       <View style={styles.summary}>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Gender:</Text>
+          <Text style={styles.summaryValue}>{getGenderLabel(prefs.gender)}</Text>
+        </View>
+
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Attraction:</Text>
+          <Text style={styles.summaryValue}>{getAttractionLabel(prefs.attractedTo)}</Text>
+        </View>
+
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Main Goal:</Text>
           <Text style={styles.summaryValue}>{getGoalLabel(prefs.mainGoal)}</Text>

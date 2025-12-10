@@ -18,8 +18,11 @@ import {
   completeOnboarding,
   MainGoal,
   CommitmentLevel,
+  Gender,
+  AttractionPreference,
   OnboardingPreferencesPayload,
 } from '../api/onboardingService';
+import { OnboardingStepGender } from '../components/onboarding/OnboardingStepGender';
 import { OnboardingStepGoal } from '../components/onboarding/OnboardingStepGoal';
 import { OnboardingStepCommitment } from '../components/onboarding/OnboardingStepCommitment';
 import { OnboardingStepAssessment } from '../components/onboarding/OnboardingStepAssessment';
@@ -28,6 +31,8 @@ import { OnboardingStepNotifications } from '../components/onboarding/Onboarding
 import { OnboardingStepSummary } from '../components/onboarding/OnboardingStepSummary';
 
 type OnboardingDraft = {
+  gender?: Gender;
+  attractedTo?: AttractionPreference;
   mainGoal?: MainGoal;
   goalTags?: string[];
   dailyEffortMinutes?: number;
@@ -46,7 +51,7 @@ function getInitialStep(appState: AppState | null): number {
   const step = appState.user.onboardingStep ?? 0;
 
   if (step <= 0) return 1;
-  if (step >= 6) return 6; // If somehow > 5, clamp to summary
+  if (step >= 7) return 7; // If somehow > 6, clamp to summary
   return step;
 }
 
@@ -66,6 +71,8 @@ export default function OnboardingScreen() {
 
       // Initialize draft from appState.preferences
       setDraft({
+        gender: (appState.preferences.gender as Gender) || undefined,
+        attractedTo: (appState.preferences.attractedTo as AttractionPreference) || undefined,
         mainGoal: (appState.preferences.mainGoal as MainGoal) || undefined,
         goalTags: appState.preferences.interestTags || [],
         dailyEffortMinutes: appState.preferences.dailyEffortMinutes || undefined,
@@ -83,14 +90,16 @@ export default function OnboardingScreen() {
   const validateStep = (step: number): boolean => {
     switch (step) {
       case 1:
-        return !!draft.mainGoal;
+        return !!draft.gender && !!draft.attractedTo;
       case 2:
-        return !!draft.commitmentLevel && !!draft.dailyEffortMinutes && draft.dailyEffortMinutes >= 1;
+        return !!draft.mainGoal;
       case 3:
-        return draft.selfRatedLevel !== null && draft.selfRatedLevel !== undefined && draft.wantsHarshFeedback !== null && draft.wantsHarshFeedback !== undefined;
+        return !!draft.commitmentLevel && !!draft.dailyEffortMinutes && draft.dailyEffortMinutes >= 1;
       case 4:
-        return draft.preferredStyles && draft.preferredStyles.length > 0;
+        return draft.selfRatedLevel !== null && draft.selfRatedLevel !== undefined && draft.wantsHarshFeedback !== null && draft.wantsHarshFeedback !== undefined;
       case 5:
+        return draft.preferredStyles && draft.preferredStyles.length > 0;
+      case 6:
         // Notifications are optional
         return true;
       default:
@@ -103,22 +112,26 @@ export default function OnboardingScreen() {
 
     switch (step) {
       case 1:
+        if (draft.gender) base.gender = draft.gender;
+        if (draft.attractedTo) base.attractedTo = draft.attractedTo;
+        break;
+      case 2:
         if (draft.mainGoal) base.mainGoal = draft.mainGoal;
         if (draft.goalTags && draft.goalTags.length > 0) base.goalTags = draft.goalTags;
         break;
-      case 2:
+      case 3:
         if (draft.commitmentLevel) base.commitmentLevel = draft.commitmentLevel;
         if (draft.dailyEffortMinutes) base.dailyEffortMinutes = draft.dailyEffortMinutes;
         break;
-      case 3:
+      case 4:
         if (draft.selfRatedLevel !== undefined) base.selfRatedLevel = draft.selfRatedLevel;
         if (draft.wantsHarshFeedback !== undefined) base.wantsHarshFeedback = draft.wantsHarshFeedback;
         break;
-      case 4:
+      case 5:
         if (draft.preferredStyles) base.preferredStyles = draft.preferredStyles;
         if (draft.interestTags) base.interestTags = draft.interestTags;
         break;
-      case 5:
+      case 6:
         base.notificationsEnabled = draft.notificationsEnabled ?? false;
         if (draft.preferredReminderTime) base.preferredReminderTime = draft.preferredReminderTime;
         break;
@@ -133,7 +146,7 @@ export default function OnboardingScreen() {
       return;
     }
 
-    if (currentStep >= 6) return; // Already at summary
+    if (currentStep >= 7) return; // Already at summary
 
     setIsSaving(true);
     setError(null);
@@ -143,7 +156,7 @@ export default function OnboardingScreen() {
       await updateOnboardingPreferences(payload);
       await useAppState.getState().fetchAppState();
 
-      if (currentStep < 6) {
+      if (currentStep < 7) {
         setCurrentStep(currentStep + 1);
       }
     } catch (e: any) {
@@ -267,6 +280,15 @@ export default function OnboardingScreen() {
     switch (currentStep) {
       case 1:
         return (
+          <OnboardingStepGender
+            gender={draft.gender}
+            attractedTo={draft.attractedTo}
+            onChangeGender={(value) => setDraft({ ...draft, gender: value })}
+            onChangeAttractedTo={(value) => setDraft({ ...draft, attractedTo: value })}
+          />
+        );
+      case 2:
+        return (
           <OnboardingStepGoal
             mainGoal={draft.mainGoal}
             goalTags={draft.goalTags || []}
@@ -274,7 +296,7 @@ export default function OnboardingScreen() {
             onChangeGoalTags={(tags) => setDraft({ ...draft, goalTags: tags })}
           />
         );
-      case 2:
+      case 3:
         return (
           <OnboardingStepCommitment
             commitmentLevel={draft.commitmentLevel}
@@ -283,7 +305,7 @@ export default function OnboardingScreen() {
             onChangeDailyEffortMinutes={(value) => setDraft({ ...draft, dailyEffortMinutes: value })}
           />
         );
-      case 3:
+      case 4:
         return (
           <OnboardingStepAssessment
             selfRatedLevel={draft.selfRatedLevel || null}
@@ -292,7 +314,7 @@ export default function OnboardingScreen() {
             onChangeWantsHarshFeedback={(value) => setDraft({ ...draft, wantsHarshFeedback: value })}
           />
         );
-      case 4:
+      case 5:
         return (
           <OnboardingStepPreferences
             preferredStyles={draft.preferredStyles || []}
@@ -301,7 +323,7 @@ export default function OnboardingScreen() {
             onChangeInterestTags={(tags) => setDraft({ ...draft, interestTags: tags })}
           />
         );
-      case 5:
+      case 6:
         return (
           <OnboardingStepNotifications
             notificationsEnabled={draft.notificationsEnabled ?? false}
@@ -310,20 +332,20 @@ export default function OnboardingScreen() {
             onChangePreferredReminderTime={(value) => setDraft({ ...draft, preferredReminderTime: value })}
           />
         );
-      case 6:
+      case 7:
         return <OnboardingStepSummary appState={appState} />;
       default:
         return null;
     }
   };
 
-  const progress = (currentStep / 6) * 100;
+  const progress = (currentStep / 7) * 100;
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.stepText}>Step {currentStep} of 6</Text>
+        <Text style={styles.stepText}>Step {currentStep} of 7</Text>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${progress}%` }]} />
         </View>
@@ -346,7 +368,7 @@ export default function OnboardingScreen() {
             <Text style={styles.buttonTextSecondary}>Back</Text>
           </TouchableOpacity>
 
-          {currentStep < 6 ? (
+          {currentStep < 7 ? (
             <>
               <TouchableOpacity
                 style={[styles.button, styles.buttonSkip]}

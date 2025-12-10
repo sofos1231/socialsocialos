@@ -166,6 +166,9 @@ model AiPersona {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
 
+  // Gender compatibility
+  personaGender Gender @default(UNKNOWN)
+
   // Relations
   sessions         PracticeSession[]
   missionTemplates PracticeMissionTemplate[]
@@ -181,6 +184,10 @@ model MissionCategory {
   code        String  @unique // "OPENERS", "FLIRTING"
   label       String // "Openers"
   description String?
+
+  // Attraction-based routing
+  isAttractionSensitive Boolean  @default(false)
+  dynamicLabelTemplate String? // e.g. "Approach {{targetPlural}}"
 
   templates PracticeMissionTemplate[]
   // Step 5.14: Category stats and progress
@@ -264,6 +271,10 @@ model PracticeMissionTemplate {
   // ✅ Optional AI style override for this mission (DB-mapped)
   aiStyleId String?
   aiStyle   AiStyle? @relation(fields: [aiStyleId], references: [id], onDelete: SetNull)
+
+  // Attraction-based routing
+  isAttractionSensitive Boolean @default(false)
+  targetRomanticGender  Gender? // Nullable; only meaningful when isAttractionSensitive = true
 
   aiContract Json?
 

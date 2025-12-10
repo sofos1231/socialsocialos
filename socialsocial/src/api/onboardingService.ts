@@ -5,10 +5,14 @@ import apiClient from './apiClient';
 // Enum types matching backend
 export type MainGoal = 'DATING' | 'SOCIAL' | 'CAREER' | 'ALL';
 export type CommitmentLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
+export type Gender = 'MALE' | 'FEMALE' | 'OTHER' | 'UNKNOWN';
+export type AttractionPreference = 'WOMEN' | 'MEN' | 'BOTH' | 'OTHER' | 'UNKNOWN';
 
 // Payload for PUT /onboarding/preferences
 export type OnboardingPreferencesPayload = {
   stepNumber: number;
+  gender?: Gender;
+  attractedTo?: AttractionPreference;
   mainGoal?: MainGoal;
   goalTags?: string[];
   dailyEffortMinutes?: number;

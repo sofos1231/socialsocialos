@@ -22,6 +22,12 @@ type Mission = {
   laneIndex?: number;
   orderIndex?: number;
   persona?: { id?: string } | null;
+  category?: {
+    id?: string;
+    code?: string;
+    label?: string;
+    displayLabel?: string;
+  } | null;
 };
 
 type Lane = {
@@ -148,6 +154,11 @@ export default function MissionRoadScreen() {
 
             {(lane.missions ?? []).map((mission) => (
               <View key={mission.id} style={styles.card}>
+                {mission.category && (
+                  <Text style={styles.categoryLabel}>
+                    {mission.category.displayLabel || mission.category.label || ''}
+                  </Text>
+                )}
                 <Text style={styles.cardTitle}>
                   {mission.title || 'Untitled mission'}
                 </Text>
@@ -193,7 +204,13 @@ const styles = StyleSheet.create({
 
   laneWrap: { marginBottom: 24 },
   laneTitle: { color: '#aaa', marginBottom: 8, fontWeight: '600' },
-
+  categoryLabel: {
+    fontSize: 12,
+    color: '#22c55e',
+    fontWeight: '600',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
   card: {
     backgroundColor: '#1b1b1b',
     padding: 16,
