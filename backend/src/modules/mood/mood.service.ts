@@ -23,36 +23,62 @@ const logger = new Logger('MoodService');
 
 /**
  * EMA smoothing constant (α = 0.35)
+ * Step 7.2: This is now loaded from EngineConfig, but kept as fallback default
  */
-const EMA_ALPHA = 0.35;
+const EMA_ALPHA_DEFAULT = 0.35;
 
 /**
  * Step 5.10: Deterministic mood state classification
  * Based on smoothedMoodScore, tension, warmth, and flow
+ */
+/**
+ * Classify mood state (now uses config thresholds if available)
  */
 function classifyMoodState(
   smoothedMoodScore: number,
   tension: number,
   warmth: number,
   flow: number,
+  moodConfig?: any,
 ): MoodState {
+  const thresholds = moodConfig?.moodStateThresholds;
+
   // FLOW: High score, high flow, low tension
-  if (smoothedMoodScore >= 80 && flow > 70 && tension < 40) {
+  const flowThresholds = thresholds?.flow || { minScore: 80, minFlow: 70, maxTension: 40 };
+  if (
+    smoothedMoodScore >= flowThresholds.minScore &&
+    flow > flowThresholds.minFlow &&
+    tension < flowThresholds.maxTension
+  ) {
     return 'FLOW';
   }
 
   // TENSE: High tension OR (low score AND moderate tension)
-  if (tension > 70 || (smoothedMoodScore < 50 && tension > 50)) {
+  const tenseThresholds = thresholds?.tense || {
+    minTension: 70,
+    orLowScore: { maxScore: 50, minTension: 50 },
+  };
+  if (
+    tension > tenseThresholds.minTension ||
+    (smoothedMoodScore < tenseThresholds.orLowScore.maxScore &&
+      tension > tenseThresholds.orLowScore.minTension)
+  ) {
     return 'TENSE';
   }
 
   // WARM: Moderate-high score with good warmth
-  if (smoothedMoodScore >= 60 && smoothedMoodScore < 80 && warmth > 50) {
+  const warmThresholds = thresholds?.warm || { minScore: 60, maxScore: 80, minWarmth: 50 };
+  if (
+    smoothedMoodScore >= warmThresholds.minScore &&
+    smoothedMoodScore < warmThresholds.maxScore &&
+    warmth > warmThresholds.minWarmth
+  ) {
     return 'WARM';
   }
 
   // COLD: Low score AND low warmth
-  if (smoothedMoodScore < 30 && warmth < 40) {
+  const coldThresholds = thresholds?.cold || { maxScore: 30, maxWarmth: 40 };
+  if (smoothedMoodScore < coldThresholds.maxScore && warmth < coldThresholds.maxWarmth) {
     return 'COLD';
   }
 
@@ -139,7 +165,34 @@ function computeFlow(scores: number[], index: number, previousFlow: number | nul
 
 @Injectable()
 export class MoodService {
-  constructor(private readonly prisma: PrismaService) {}
+  private moodConfig: any = null; // Cached mood config
+  private emaAlpha: number = EMA_ALPHA_DEFAULT;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    @Inject(forwardRef(() => EngineConfigService))
+    private readonly engineConfigService?: EngineConfigService,
+  ) {
+    // Load mood config on startup
+    this.loadMoodConfig();
+  }
+
+  /**
+   * Load mood config from EngineConfig
+   */
+  private async loadMoodConfig() {
+    try {
+      if (this.engineConfigService) {
+        const config = await this.engineConfigService.getGlobalConfig();
+        this.moodConfig = config.mood;
+        this.emaAlpha = config.mood?.emaAlpha ?? EMA_ALPHA_DEFAULT;
+      }
+    } catch (e) {
+      // Fallback to defaults
+      this.emaAlpha = EMA_ALPHA_DEFAULT;
+    }
+  }
 
   /**
    * Step 5.10: Build mood timeline for a session
@@ -185,11 +238,11 @@ export class MoodService {
       const rawScore = msg.score ?? 50;
       scores.push(rawScore);
 
-      // Compute EMA smoothing
+      // Compute EMA smoothing (using config value)
       const smoothedMoodScore =
         previousSmoothed === null
           ? rawScore
-          : Math.round(EMA_ALPHA * rawScore + (1 - EMA_ALPHA) * previousSmoothed);
+          : Math.round(this.emaAlpha * rawScore + (1 - this.emaAlpha) * previousSmoothed);
 
       // Extract traits
       const traits = msg.traitData.traits || {};
@@ -205,8 +258,14 @@ export class MoodService {
       const vibe = computeVibe(humor, confidence);
       const flow = computeFlow(scores, scores.length - 1, previousFlow);
 
-      // Classify mood state
-      const moodState = classifyMoodState(smoothedMoodScore, tension, warmth, flow);
+      // Classify mood state (pass mood config for thresholds)
+      const moodState = classifyMoodState(
+        smoothedMoodScore,
+        tension,
+        warmth,
+        flow,
+        this.moodConfig,
+      );
 
       snapshots.push({
         turnIndex: msg.turnIndex,

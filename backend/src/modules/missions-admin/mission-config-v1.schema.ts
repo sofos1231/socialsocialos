@@ -264,6 +264,9 @@ export interface MissionConfigV1 {
   responseArchitecture?: MissionConfigV1ResponseArchitecture | null;
   // Step 6.9: AI runtime profile (optional for backward compatibility)
   aiRuntimeProfile?: MissionConfigV1AiRuntimeProfile | null;
+  // Step 7.2: Engine config profile references (optional for backward compatibility)
+  scoringProfileCode?: string | null;
+  dynamicsProfileCode?: string | null;
 }
 
 // ============================================================================

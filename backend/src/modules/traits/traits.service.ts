@@ -1,8 +1,9 @@
 // backend/src/modules/traits/traits.service.ts
 // Step 5.1: Trait history and long-term scores service
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef, Optional } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
+import { EngineConfigService } from '../engine-config/engine-config.service';
 import { Prisma } from '@prisma/client';
 import { loadSessionAnalyticsSnapshot } from '../shared/helpers/session-snapshot.helper';
 
@@ -39,7 +40,34 @@ function clampTrait(value: number): number {
 
 @Injectable()
 export class TraitsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private traitEmaAlpha: number = 0.3; // Default, will be loaded from config
+
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    @Inject(forwardRef(() => EngineConfigService))
+    private readonly engineConfigService?: EngineConfigService,
+  ) {
+    // Load trait EMA alpha from config
+    this.loadTraitEmaAlpha();
+  }
+
+  /**
+   * Load trait EMA alpha from EngineConfig
+   */
+  private async loadTraitEmaAlpha() {
+    try {
+      if (this.engineConfigService) {
+        const profile = await this.engineConfigService.getScoringProfile();
+        if (profile?.traitEmaAlpha !== undefined) {
+          this.traitEmaAlpha = profile.traitEmaAlpha;
+        }
+      }
+    } catch (e) {
+      // Fallback to default
+      this.traitEmaAlpha = 0.3;
+    }
+  }
 
   /**
    * Computes trait snapshot for a session
@@ -140,8 +168,8 @@ export class TraitsService {
       return { ...current };
     }
 
-    // Exponential moving average (70% current, 30% previous)
-    const alpha = 0.7;
+    // Exponential moving average (loaded from config, default 0.7)
+    const alpha = this.traitEmaAlpha;
     const result: TraitSnapshot = {
       confidence: clampTrait(current.confidence * alpha + previous.confidence * (1 - alpha)),
       clarity: clampTrait(current.clarity * alpha + previous.clarity * (1 - alpha)),

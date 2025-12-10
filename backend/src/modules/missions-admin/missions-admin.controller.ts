@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { MissionsAdminService } from './missions-admin.service';
 import { CreateMissionDto, UpdateMissionDto } from './dto/admin-mission.dto';
@@ -119,5 +120,78 @@ export class MissionsAdminController {
   @Post('road/reorder')
   reorderAlias(@Body() dto: ReorderMissionsDto) {
     return this.missionsAdminService.reorderMissions(dto);
+  }
+
+  // Note: Category routes are handled by MissionsAdminCategoriesController
+  // to avoid duplicate route registration.
+
+  /**
+   * Step 7.2: GET /v1/admin/missions/attachments
+   * List missions with their profile attachments
+   */
+  @Get('attachments')
+  async getAttachments() {
+    return this.missionsAdminService.getMissionAttachments();
+  }
+
+  /**
+   * Step 7.2: PUT /v1/admin/missions/:id/attachments
+   * Update mission profile attachments
+   */
+  @Put(':id/attachments')
+  async updateAttachments(
+    @Param('id') id: string,
+    @Body() body: { scoringProfileCode?: string | null; dynamicsProfileCode?: string | null },
+  ) {
+    return this.missionsAdminService.updateMissionAttachments(id, body);
+  }
+
+  /**
+   * Step 7.5: GET /v1/admin/missions/sessions/:sessionId/messages
+   * Get session messages with scores and gate triggers
+   * NOTE: This route must come before :id routes to avoid route conflicts
+   */
+  @Get('sessions/:sessionId/messages')
+  async getSessionMessages(@Param('sessionId') sessionId: string) {
+    return this.missionsAdminService.getSessionMessages(sessionId);
+  }
+
+  /**
+   * Step 7.3: GET /v1/admin/missions/:id/stats
+   * Get mission stats summary
+   */
+  @Get(':id/stats')
+  async getMissionStats(
+    @Param('id') id: string,
+    @Query('timeWindow') timeWindow?: string,
+  ) {
+    const timeWindowDays = timeWindow === 'all' ? null : (timeWindow ? parseInt(timeWindow, 10) : 7);
+    return this.missionsAdminService.getMissionStats(id, timeWindowDays);
+  }
+
+  /**
+   * Step 7.4: GET /v1/admin/missions/:id/mood-timelines
+   * Get mood timelines for a mission
+   */
+  @Get(':id/mood-timelines')
+  async getMissionMoodTimelines(
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.missionsAdminService.getMissionMoodTimelines(id, limitNum);
+  }
+
+  /**
+   * Step 7.5: GET /v1/admin/missions/:id/sessions
+   * Get recent sessions for a mission
+   */
+  @Get(':id/sessions')
+  async getMissionSessions(
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.missionsAdminService.getMissionSessions(id, limitNum);
   }
 }

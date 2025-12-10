@@ -35,6 +35,9 @@ import { BadgesModule } from './modules/badges/badges.module';
 import { AnalyzerModule } from './modules/analyzer/analyzer.module';
 // Step 5.9: Import synergy module
 import { SynergyModule } from './modules/synergy/synergy.module';
+// Step 7.2: Import engine config and hooks modules
+import { EngineConfigModule } from './modules/engine-config/engine-config.module';
+import { HooksModule } from './modules/hooks/hooks.module';
 
 @Module({
   imports: [
@@ -68,6 +71,9 @@ import { SynergyModule } from './modules/synergy/synergy.module';
     AnalyzerModule,
     // Step 5.9: Synergy module
     SynergyModule,
+    // Step 7.2: Engine config and hooks modules
+    EngineConfigModule,
+    HooksModule,
   ],
   controllers: [],
   providers: [

@@ -511,6 +511,1151 @@
 
               <div id="contractErrorBox" class="dangerBox" style="margin-top:10px;"></div>
             </div>
+
+            <!-- Practice Hub Designer: Mission Attraction Fields -->
+            <div class="field" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line);">
+              <label style="font-weight: 700; margin-bottom: 8px;">Attraction Routing</label>
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <label style="display: flex; align-items: center; gap: 8px;">
+                  <input type="checkbox" id="missionIsAttractionSensitiveCheckbox" />
+                  <span>Attraction-Sensitive Mission</span>
+                </label>
+                <div id="missionTargetGenderField" style="display: none;">
+                  <label>Target Romantic Gender</label>
+                  <select id="missionTargetRomanticGenderSelect">
+                    <option value="">(select)</option>
+                    <option value="FEMALE">FEMALE</option>
+                    <option value="MALE">MALE</option>
+                    <option value="OTHER">OTHER</option>
+                    <option value="UNKNOWN">UNKNOWN</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 7: Mission Monitor / Deep Insights Section -->
+      <div id="missionMonitorSection" class="panel" style="margin-top: 14px; display: none;">
+        <div class="panelHead">
+          <div class="left">
+            <h2 style="margin: 0; font-size: 16px; font-weight: 800;">Mission Monitor</h2>
+            <span class="mini" style="margin-left: 12px;">Step 7.1-7.6: Mission Stats, Config View, Mood Timeline, Message Log</span>
+          </div>
+          <div class="right">
+            <button id="loadMissionStatsBtn" class="btn">Refresh Stats</button>
+            <button id="loadMissionTimelineBtn" class="btn">Load Timeline</button>
+            <button id="loadMissionMessagesBtn" class="btn">Load Messages</button>
+          </div>
+        </div>
+        <div class="body">
+          <div id="missionMonitorEmpty" style="text-align: center; padding: 40px; color: var(--muted);">
+            Select a mission to view details, stats, and analytics.
+          </div>
+          <div id="missionMonitorContent" style="display: none;">
+            <!-- Mission Config View (7.2) -->
+            <div style="margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--line);">
+              <h3 style="font-size: 14px; font-weight: 700; margin-bottom: 12px;">Mission Config (7.2)</h3>
+              <div id="missionConfigView" style="font-size: 12px; color: var(--muted);">
+                <div id="missionConfigEmpty" style="color: var(--muted);">No config data available.</div>
+                <div id="missionConfigDetails" style="display: none;">
+                  <div class="split" style="margin-bottom: 8px;">
+                    <div><strong>Objective:</strong> <span id="configObjective"></span></div>
+                    <div><strong>Difficulty:</strong> <span id="configDifficulty"></span></div>
+                  </div>
+                  <div class="split" style="margin-bottom: 8px;">
+                    <div><strong>AI Style:</strong> <span id="configAiStyle"></span></div>
+                    <div><strong>Runtime Profile:</strong> <span id="configRuntimeProfile"></span></div>
+                  </div>
+                  <div style="margin-top: 8px;">
+                    <strong>Gate Config:</strong> <span id="configGateConfig"></span>
+                  </div>
+                  <div style="margin-top: 8px;">
+                    <button id="viewRawConfigBtn" class="btn" style="font-size: 11px;">View Raw JSON</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Mission Stats Summary (7.3) -->
+            <div style="margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--line);">
+              <h3 style="font-size: 14px; font-weight: 700; margin-bottom: 12px;">Stats Summary (7.3)</h3>
+              <div style="margin-bottom: 8px;">
+                <label style="font-size: 11px; color: var(--muted);">Time Window:</label>
+                <select id="statsTimeWindow" style="margin-left: 8px; background: var(--controlBg); border: 1px solid var(--controlBorder); border-radius: 6px; padding: 4px 8px; color: var(--text);">
+                  <option value="7">Last 7 days</option>
+                  <option value="30">Last 30 days</option>
+                  <option value="all">All time</option>
+                </select>
+              </div>
+              <div id="missionStatsView" style="font-size: 12px;">
+                <div id="missionStatsEmpty" style="color: var(--muted);">No session data available yet.</div>
+                <div id="missionStatsDetails" style="display: none;">
+                  <div class="split" style="margin-bottom: 8px;">
+                    <div><strong>Sessions:</strong> <span id="statsSessionCount">0</span></div>
+                    <div><strong>Success Rate:</strong> <span id="statsSuccessRate">0%</span></div>
+                  </div>
+                  <div class="split" style="margin-bottom: 8px;">
+                    <div><strong>Avg Messages:</strong> <span id="statsAvgMessages">0</span></div>
+                    <div><strong>Avg Duration:</strong> <span id="statsAvgDuration">0s</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Mood Timeline Visualization (7.4) -->
+            <div style="margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--line);">
+              <h3 style="font-size: 14px; font-weight: 700; margin-bottom: 12px;">Mood Timeline (7.4)</h3>
+              <div id="moodTimelineView">
+                <div id="moodTimelineEmpty" style="color: var(--muted);">No mood timeline data available.</div>
+                <div id="moodTimelineChart" style="display: none; min-height: 200px;">
+                  <canvas id="moodTimelineCanvas" style="max-width: 100%;"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <!-- Per-Message Log (7.5) -->
+            <div>
+              <h3 style="font-size: 14px; font-weight: 700; margin-bottom: 12px;">Per-Message Log (7.5)</h3>
+              <div style="margin-bottom: 8px;">
+                <label style="font-size: 11px; color: var(--muted);">Session:</label>
+                <select id="messageLogSessionSelect" style="margin-left: 8px; background: var(--controlBg); border: 1px solid var(--controlBorder); border-radius: 6px; padding: 4px 8px; color: var(--text);">
+                  <option value="">Select a session...</option>
+                </select>
+              </div>
+              <div id="messageLogView" style="max-height: 400px; overflow-y: auto;">
+                <div id="messageLogEmpty" style="color: var(--muted);">Select a session to view messages.</div>
+                <div id="messageLogTable" style="display: none;">
+                  <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                    <thead>
+                      <tr style="border-bottom: 1px solid var(--line);">
+                        <th style="text-align: left; padding: 8px;">Turn</th>
+                        <th style="text-align: left; padding: 8px;">Role</th>
+                        <th style="text-align: left; padding: 8px;">Content</th>
+                        <th style="text-align: left; padding: 8px;">Score</th>
+                        <th style="text-align: left; padding: 8px;">Rarity</th>
+                        <th style="text-align: left; padding: 8px;">Mood Δ</th>
+                        <th style="text-align: left; padding: 8px;">Gates</th>
+                      </tr>
+                    </thead>
+                    <tbody id="messageLogTableBody">
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Practice Hub Designer Section -->
+      <div class="panel" style="margin-top: 14px;">
+        <div class="panelHead">
+          <div class="left">
+            <h2 style="margin: 0; font-size: 16px; font-weight: 800;">Practice Hub Designer</h2>
+          </div>
+          <div class="right">
+            <button id="loadCategoriesBtn" class="btn">Load Categories</button>
+            <button id="addCategoryBtn" class="btn">Add Category</button>
+            <button id="reorderCategoriesBtn" class="btn">Reorder Categories</button>
+          </div>
+        </div>
+        <div class="body">
+          <div id="categoriesGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-top: 12px;">
+            <!-- Categories will be rendered here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Category Editor Modal -->
+      <div id="categoryModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; overflow: auto; padding: 20px;">
+        <div class="panel" style="max-width: 600px; margin: 20px auto;">
+          <div class="panelHead">
+            <div class="left">
+              <h3 style="margin: 0;">Category Editor</h3>
+            </div>
+            <div class="right">
+              <button id="closeCategoryModalBtn" class="btn">Close</button>
+            </div>
+          </div>
+          <div class="body">
+            <div class="field">
+              <label>Category Label</label>
+              <input id="categoryLabelInput" placeholder="e.g. 'Openers'" />
+            </div>
+            <div class="field">
+              <label>Description</label>
+              <textarea id="categoryDescriptionInput" style="min-height: 80px;" placeholder="Optional description"></textarea>
+            </div>
+            <div class="field">
+              <label>Code (read-only)</label>
+              <input id="categoryCodeInput" readonly style="background: rgba(255,255,255,0.05);" />
+            </div>
+            <div class="field">
+              <label>Attraction Path</label>
+              <select id="categoryAttractionPathSelect">
+                <option value="UNISEX">Unisex</option>
+                <option value="FEMALE_PATH">Approach Women</option>
+                <option value="MALE_PATH">Approach Men</option>
+              </select>
+            </div>
+            <div class="field" id="categoryDynamicLabelField" style="display: none;">
+              <label>Dynamic Label Template</label>
+              <input id="categoryDynamicLabelInput" placeholder="e.g. 'Approach {{targetPlural}}'" />
+            </div>
+            <div class="split">
+              <div class="field">
+                <label>Display Order</label>
+                <input type="number" id="categoryDisplayOrderInput" value="0" min="0" />
+              </div>
+              <div class="field">
+                <label>Icon URL (optional)</label>
+                <input id="categoryIconUrlInput" placeholder="https://..." />
+              </div>
+            </div>
+            <div class="field">
+              <label>
+                <input type="checkbox" id="categoryActiveCheckbox" checked />
+                Active
+              </label>
+            </div>
+            <div id="categoryErrorBox" class="dangerBox" style="margin-top: 10px;"></div>
+            <div style="margin-top: 16px; display: flex; gap: 8px;">
+              <button id="saveCategoryBtn" class="btn">Save Category</button>
+              <button id="deleteCategoryBtn" class="btn" style="background: var(--bad);">Delete Category</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Missions View Modal -->
+      <div id="missionsViewModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; overflow: auto; padding: 20px;">
+        <div class="panel" style="max-width: 900px; margin: 20px auto;">
+          <div class="panelHead">
+            <div class="left">
+              <h3 id="missionsViewTitle" style="margin: 0;">Missions in Category</h3>
+            </div>
+            <div class="right">
+              <button id="closeMissionsViewBtn" class="btn">Close</button>
+            </div>
+          </div>
+          <div class="body">
+            <div id="missionsViewTable" style="overflow-x: auto;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                  <tr style="border-bottom: 1px solid var(--line);">
+                    <th style="text-align: left; padding: 8px;">Title</th>
+                    <th style="text-align: left; padding: 8px;">Code</th>
+                    <th style="text-align: left; padding: 8px;">Difficulty</th>
+                    <th style="text-align: left; padding: 8px;">Attraction</th>
+                    <th style="text-align: left; padding: 8px;">Target</th>
+                    <th style="text-align: left; padding: 8px;">Active</th>
+                    <th style="text-align: left; padding: 8px;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="missionsViewTableBody">
+                  <!-- Missions will be rendered here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Engine Config Section (Step 7.2) -->
+      <div class="panel" style="margin-top: 14px;">
+        <div class="panelHead">
+          <div class="left">
+            <h2 style="margin: 0; font-size: 16px; font-weight: 800;">Engine Config</h2>
+            <span class="mini" style="margin-left: 12px;">Step 5-6 Knobs: Scoring, Dynamics, Gates, Mood, Hooks, Insights</span>
+          </div>
+          <div class="right">
+            <button id="engineConfigLoadBtn" class="btn">Load Config</button>
+            <button id="engineConfigSaveBtn" class="btn">Save Config</button>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div style="display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap;">
+          <button class="engineConfigTab" data-tab="scoring" style="padding: 6px 12px; background: var(--btn); border: 1px solid var(--line); border-radius: 6px; color: var(--text); cursor: pointer;">Scoring & Traits</button>
+          <button class="engineConfigTab" data-tab="dynamics" style="padding: 6px 12px; background: var(--btn); border: 1px solid var(--line); border-radius: 6px; color: var(--text); cursor: pointer;">Dynamics Profiles</button>
+          <button class="engineConfigTab" data-tab="gates" style="padding: 6px 12px; background: var(--btn); border: 1px solid var(--line); border-radius: 6px; color: var(--text); cursor: pointer;">Gates & Objectives</button>
+          <button class="engineConfigTab" data-tab="hooks" style="padding: 6px 12px; background: var(--btn); border: 1px solid var(--line); border-radius: 6px; color: var(--text); cursor: pointer;">Hooks & Triggers</button>
+          <button class="engineConfigTab" data-tab="mood" style="padding: 6px 12px; background: var(--btn); border: 1px solid var(--line); border-radius: 6px; color: var(--text); cursor: pointer;">Mood & State Policy</button>
+          <button class="engineConfigTab" data-tab="insights" style="padding: 6px 12px; background: var(--btn); border: 1px solid var(--line); border-radius: 6px; color: var(--text); cursor: pointer;">Insights Catalog</button>
+          <button class="engineConfigTab" data-tab="attachments" style="padding: 6px 12px; background: var(--btn); border: 1px solid var(--line); border-radius: 6px; color: var(--text); cursor: pointer;">Mission Attachments</button>
+          <button class="engineConfigTab" data-tab="monitoring" style="padding: 6px 12px; background: var(--btn); border: 1px solid var(--line); border-radius: 6px; color: var(--text); cursor: pointer;">Monitoring</button>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="body" style="padding: 16px;">
+          <!-- Scoring & Traits Tab -->
+          <div id="engineConfigTabScoring" class="engineConfigTabContent" style="display: none;">
+            <div class="row" style="grid-template-columns: 300px 1fr;">
+              <div class="panel" style="background: var(--panel);">
+                <div class="panelHead">
+                  <div class="left">
+                    <span class="mini">Scoring Profiles</span>
+                  </div>
+                  <div class="right">
+                    <button id="engineConfigAddScoringProfileBtn" class="btn" style="font-size: 11px;">Add</button>
+                  </div>
+                </div>
+                <div class="listWrap">
+                  <div id="engineConfigScoringProfilesList" class="list"></div>
+                </div>
+              </div>
+              <div class="panel" style="background: var(--panel);">
+                <div class="panelHead">
+                  <div class="left">
+                    <span class="mini">Profile Editor</span>
+                  </div>
+                </div>
+                <div class="body">
+                  <div id="engineConfigScoringProfileEditor" style="display: none;">
+                    <div class="field">
+                      <label>Code</label>
+                      <input id="engineConfigScoringCode" readonly style="background: rgba(255,255,255,0.05);" />
+                    </div>
+                    <div class="field">
+                      <label>Name</label>
+                      <input id="engineConfigScoringName" />
+                    </div>
+                    <div class="field">
+                      <label>Description</label>
+                      <textarea id="engineConfigScoringDescription" style="min-height: 60px;"></textarea>
+                    </div>
+                    <div class="field">
+                      <label>
+                        <input type="checkbox" id="engineConfigScoringActive" /> Active
+                      </label>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">Trait Weights (should sum to ~1.0)</label>
+                      <div class="split3" style="margin-top: 8px;">
+                        <div class="field">
+                          <label>Confidence</label>
+                          <input type="number" id="engineConfigScoringWeightConfidence" step="0.01" min="0" max="1" />
+                        </div>
+                        <div class="field">
+                          <label>Clarity</label>
+                          <input type="number" id="engineConfigScoringWeightClarity" step="0.01" min="0" max="1" />
+                        </div>
+                        <div class="field">
+                          <label>Humor</label>
+                          <input type="number" id="engineConfigScoringWeightHumor" step="0.01" min="0" max="1" />
+                        </div>
+                        <div class="field">
+                          <label>Tension Control</label>
+                          <input type="number" id="engineConfigScoringWeightTensionControl" step="0.01" min="0" max="1" />
+                        </div>
+                        <div class="field">
+                          <label>Emotional Warmth</label>
+                          <input type="number" id="engineConfigScoringWeightEmotionalWarmth" step="0.01" min="0" max="1" />
+                        </div>
+                        <div class="field">
+                          <label>Dominance</label>
+                          <input type="number" id="engineConfigScoringWeightDominance" step="0.01" min="0" max="1" />
+                        </div>
+                      </div>
+                      <button id="engineConfigScoringNormalizeWeightsBtn" class="btn" style="margin-top: 8px;">Normalize to 1.0</button>
+                      <div id="engineConfigScoringWeightsSum" style="margin-top: 8px; font-size: 12px; color: var(--muted);"></div>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">Length Thresholds</label>
+                      <div class="split3" style="margin-top: 8px;">
+                        <div class="field">
+                          <label>Empty (0)</label>
+                          <input type="number" id="engineConfigScoringLengthEmpty" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>Very Short (&lt;5)</label>
+                          <input type="number" id="engineConfigScoringLengthVeryShort" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>Short (&lt;15)</label>
+                          <input type="number" id="engineConfigScoringLengthShort" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>Medium (&lt;40)</label>
+                          <input type="number" id="engineConfigScoringLengthMedium" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>Long (&lt;80)</label>
+                          <input type="number" id="engineConfigScoringLengthLong" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>Very Long (≥80)</label>
+                          <input type="number" id="engineConfigScoringLengthVeryLong" min="0" max="100" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">Punctuation Bonuses</label>
+                      <div class="split" style="margin-top: 8px;">
+                        <div class="field">
+                          <label>Question Per Mark</label>
+                          <input type="number" id="engineConfigScoringPunctQuestionPerMark" min="0" max="10" />
+                        </div>
+                        <div class="field">
+                          <label>Question Max</label>
+                          <input type="number" id="engineConfigScoringPunctQuestionMax" min="0" max="20" />
+                        </div>
+                        <div class="field">
+                          <label>Exclamation Per Mark</label>
+                          <input type="number" id="engineConfigScoringPunctExclamationPerMark" min="0" max="10" />
+                        </div>
+                        <div class="field">
+                          <label>Exclamation Max</label>
+                          <input type="number" id="engineConfigScoringPunctExclamationMax" min="0" max="20" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">Position Bonuses</label>
+                      <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <div class="field" style="flex: 1;">
+                          <label>Index 0</label>
+                          <input type="number" id="engineConfigScoringPosition0" min="0" max="10" />
+                        </div>
+                        <div class="field" style="flex: 1;">
+                          <label>Index 1</label>
+                          <input type="number" id="engineConfigScoringPosition1" min="0" max="10" />
+                        </div>
+                        <div class="field" style="flex: 1;">
+                          <label>Index 2</label>
+                          <input type="number" id="engineConfigScoringPosition2" min="0" max="10" />
+                        </div>
+                        <div class="field" style="flex: 1;">
+                          <label>Index 3+</label>
+                          <input type="number" id="engineConfigScoringPosition3" min="0" max="10" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">Rarity Thresholds</label>
+                      <div class="split3" style="margin-top: 8px;">
+                        <div class="field">
+                          <label>S+</label>
+                          <input type="number" id="engineConfigScoringRaritySPlus" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>S</label>
+                          <input type="number" id="engineConfigScoringRarityS" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>A</label>
+                          <input type="number" id="engineConfigScoringRarityA" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>B</label>
+                          <input type="number" id="engineConfigScoringRarityB" min="0" max="100" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">XP Multipliers</label>
+                      <div class="split3" style="margin-top: 8px;">
+                        <div class="field">
+                          <label>S+</label>
+                          <input type="number" id="engineConfigScoringXpSPlus" step="0.1" min="0" max="3" />
+                        </div>
+                        <div class="field">
+                          <label>S</label>
+                          <input type="number" id="engineConfigScoringXpS" step="0.1" min="0" max="3" />
+                        </div>
+                        <div class="field">
+                          <label>A</label>
+                          <input type="number" id="engineConfigScoringXpA" step="0.1" min="0" max="3" />
+                        </div>
+                        <div class="field">
+                          <label>B</label>
+                          <input type="number" id="engineConfigScoringXpB" step="0.1" min="0" max="3" />
+                        </div>
+                        <div class="field">
+                          <label>C</label>
+                          <input type="number" id="engineConfigScoringXpC" step="0.1" min="0" max="3" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">Coins Multipliers</label>
+                      <div class="split3" style="margin-top: 8px;">
+                        <div class="field">
+                          <label>S+</label>
+                          <input type="number" id="engineConfigScoringCoinsSPlus" step="0.1" min="0" max="3" />
+                        </div>
+                        <div class="field">
+                          <label>S</label>
+                          <input type="number" id="engineConfigScoringCoinsS" step="0.1" min="0" max="3" />
+                        </div>
+                        <div class="field">
+                          <label>A</label>
+                          <input type="number" id="engineConfigScoringCoinsA" step="0.1" min="0" max="3" />
+                        </div>
+                        <div class="field">
+                          <label>B</label>
+                          <input type="number" id="engineConfigScoringCoinsB" step="0.1" min="0" max="3" />
+                        </div>
+                        <div class="field">
+                          <label>C</label>
+                          <input type="number" id="engineConfigScoringCoinsC" step="0.1" min="0" max="3" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">Trait Adjustments</label>
+                      <div id="engineConfigScoringTraitAdjustmentsList" style="margin-top: 8px;"></div>
+                      <button id="engineConfigScoringAddTraitAdjustmentBtn" class="btn" style="margin-top: 8px; font-size: 11px;">Add Adjustment</button>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">Filler Words</label>
+                      <div id="engineConfigScoringFillerWords" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--controlBg); border-radius: 6px; min-height: 40px;"></div>
+                      <input type="text" id="engineConfigScoringFillerWordInput" placeholder="Add filler word..." style="margin-top: 8px; width: 100%;" />
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">Trait EMA Alpha</label>
+                      <div class="field" style="margin-top: 8px;">
+                        <input type="number" id="engineConfigScoringTraitEmaAlpha" step="0.01" min="0" max="1" />
+                      </div>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">Flags</label>
+                      <div style="margin-top: 8px; display: flex; gap: 16px;">
+                        <label><input type="checkbox" id="engineConfigScoringStrictMode" /> Strict Mode</label>
+                        <label><input type="checkbox" id="engineConfigScoringSoftCoachingMode" /> Soft Coaching Mode</label>
+                      </div>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">Micro Feedback Messages (Read-Only)</label>
+                      <div style="margin-top: 8px;">
+                        <button id="engineConfigLoadMicroFeedbackBtn" class="btn" style="font-size: 11px; margin-bottom: 8px;">Load Micro Feedback</button>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                          <thead>
+                            <tr style="border-bottom: 1px solid var(--line);">
+                              <th style="padding: 8px; text-align: left;">Score Range</th>
+                              <th style="padding: 8px; text-align: left;">Rarity</th>
+                              <th style="padding: 8px; text-align: left;">Feedback Message</th>
+                            </tr>
+                          </thead>
+                          <tbody id="engineConfigMicroFeedbackTableBody"></tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                  <div id="engineConfigScoringProfileEditorEmpty" style="text-align: center; padding: 40px; color: var(--muted);">
+                    Select a scoring profile to edit
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamics Profiles Tab -->
+          <div id="engineConfigTabDynamics" class="engineConfigTabContent" style="display: none;">
+            <div class="row" style="grid-template-columns: 300px 1fr;">
+              <div class="panel" style="background: var(--panel);">
+                <div class="panelHead">
+                  <div class="left">
+                    <span class="mini">Dynamics Profiles</span>
+                  </div>
+                  <div class="right">
+                    <button id="engineConfigAddDynamicsProfileBtn" class="btn" style="font-size: 11px;">Add</button>
+                  </div>
+                </div>
+                <div class="listWrap">
+                  <div id="engineConfigDynamicsProfilesList" class="list"></div>
+                </div>
+              </div>
+              <div class="panel" style="background: var(--panel);">
+                <div class="panelHead">
+                  <div class="left">
+                    <span class="mini">Profile Editor</span>
+                  </div>
+                </div>
+                <div class="body">
+                  <div id="engineConfigDynamicsProfileEditor" style="display: none;">
+                    <div class="field">
+                      <label>Code</label>
+                      <input id="engineConfigDynamicsCode" />
+                    </div>
+                    <div class="field">
+                      <label>Name</label>
+                      <input id="engineConfigDynamicsName" />
+                    </div>
+                    <div class="field">
+                      <label>Description</label>
+                      <textarea id="engineConfigDynamicsDescription" style="min-height: 60px;"></textarea>
+                    </div>
+                    <div class="field">
+                      <label>
+                        <input type="checkbox" id="engineConfigDynamicsActive" /> Active
+                      </label>
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <label style="font-weight: 700;">Dynamics (0-100)</label>
+                      <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 12px;">
+                        <div>
+                          <label>Pace</label>
+                          <input type="range" id="engineConfigDynamicsPace" min="0" max="100" value="50" style="width: 100%;" />
+                          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);">
+                            <span>Slow</span>
+                            <span id="engineConfigDynamicsPaceValue">50</span>
+                            <span>Fast</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label>Emoji Density</label>
+                          <input type="range" id="engineConfigDynamicsEmojiDensity" min="0" max="100" value="30" style="width: 100%;" />
+                          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);">
+                            <span>None</span>
+                            <span id="engineConfigDynamicsEmojiDensityValue">30</span>
+                            <span>Heavy</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label>Flirtiveness</label>
+                          <input type="range" id="engineConfigDynamicsFlirtiveness" min="0" max="100" value="40" style="width: 100%;" />
+                          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);">
+                            <span>Platonic</span>
+                            <span id="engineConfigDynamicsFlirtivenessValue">40</span>
+                            <span>Very Flirty</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label>Hostility</label>
+                          <input type="range" id="engineConfigDynamicsHostility" min="0" max="100" value="10" style="width: 100%;" />
+                          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);">
+                            <span>Friendly</span>
+                            <span id="engineConfigDynamicsHostilityValue">10</span>
+                            <span>Hostile</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label>Dryness</label>
+                          <input type="range" id="engineConfigDynamicsDryness" min="0" max="100" value="40" style="width: 100%;" />
+                          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);">
+                            <span>Warm</span>
+                            <span id="engineConfigDynamicsDrynessValue">40</span>
+                            <span>Dry/Sarcastic</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label>Vulnerability</label>
+                          <input type="range" id="engineConfigDynamicsVulnerability" min="0" max="100" value="50" style="width: 100%;" />
+                          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);">
+                            <span>Guarded</span>
+                            <span id="engineConfigDynamicsVulnerabilityValue">50</span>
+                            <span>Open</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label>Escalation Speed</label>
+                          <input type="range" id="engineConfigDynamicsEscalationSpeed" min="0" max="100" value="50" style="width: 100%;" />
+                          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);">
+                            <span>Slow</span>
+                            <span id="engineConfigDynamicsEscalationSpeedValue">50</span>
+                            <span>Fast</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label>Randomness</label>
+                          <input type="range" id="engineConfigDynamicsRandomness" min="0" max="100" value="25" style="width: 100%;" />
+                          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);">
+                            <span>Predictable</span>
+                            <span id="engineConfigDynamicsRandomnessValue">25</span>
+                            <span>Chaotic</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div id="engineConfigDynamicsPreview" style="margin-top: 16px; padding: 12px; background: var(--panel2); border-radius: 6px; font-size: 12px; color: var(--muted);">
+                        Preview: This profile is...
+                      </div>
+                    </div>
+                  </div>
+                  <div id="engineConfigDynamicsProfileEditorEmpty" style="text-align: center; padding: 40px; color: var(--muted);">
+                    Select a dynamics profile to edit
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Gates & Objectives Tab -->
+          <div id="engineConfigTabGates" class="engineConfigTabContent" style="display: none;">
+            <div class="panel" style="background: var(--panel);">
+              <div class="panelHead">
+                <div class="left">
+                  <span class="mini">Gate Configurations</span>
+                </div>
+                <div class="right">
+                  <button id="engineConfigAddGateBtn" class="btn" style="font-size: 11px;">Add Gate</button>
+                </div>
+              </div>
+              <div class="body">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <thead>
+                    <tr style="border-bottom: 1px solid var(--line);">
+                      <th style="padding: 8px; text-align: left;">Key</th>
+                      <th style="padding: 8px; text-align: left;">Description</th>
+                      <th style="padding: 8px; text-align: left;">Thresholds</th>
+                      <th style="padding: 8px; text-align: left;">Active</th>
+                      <th style="padding: 8px; text-align: left;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="engineConfigGatesTableBody"></tbody>
+                </table>
+                <div id="engineConfigGateEditor" style="display: none; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                  <div class="field">
+                    <label>Gate Key</label>
+                    <input id="engineConfigGateKey" />
+                  </div>
+                  <div class="field">
+                    <label>Description</label>
+                    <textarea id="engineConfigGateDescription" style="min-height: 60px;"></textarea>
+                  </div>
+                  <div class="field">
+                    <label><input type="checkbox" id="engineConfigGateActive" /> Active</label>
+                  </div>
+                  <div class="split3" style="margin-top: 12px;">
+                    <div class="field">
+                      <label>Min Messages</label>
+                      <input type="number" id="engineConfigGateMinMessages" min="0" />
+                    </div>
+                    <div class="field">
+                      <label>Success Threshold</label>
+                      <input type="number" id="engineConfigGateSuccessThreshold" min="0" max="100" />
+                    </div>
+                    <div class="field">
+                      <label>Fail Floor</label>
+                      <input type="number" id="engineConfigGateFailFloor" min="0" max="100" />
+                    </div>
+                  </div>
+                  <button id="engineConfigGateSaveBtn" class="btn" style="margin-top: 12px;">Save Gate</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hooks & Triggers Tab -->
+          <div id="engineConfigTabHooks" class="engineConfigTabContent" style="display: none;">
+            <div class="panel" style="background: var(--panel); margin-bottom: 14px;">
+              <div class="panelHead">
+                <div class="left">
+                  <span class="mini">Hook Catalog</span>
+                </div>
+                <div class="right">
+                  <button id="engineConfigLoadHooksBtn" class="btn" style="font-size: 11px;">Load Hooks</button>
+                  <button id="engineConfigAddHookBtn" class="btn" style="font-size: 11px;">Add Hook</button>
+                </div>
+              </div>
+              <div class="body">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <thead>
+                    <tr style="border-bottom: 1px solid var(--line);">
+                      <th style="padding: 8px; text-align: left;">Name</th>
+                      <th style="padding: 8px; text-align: left;">Type</th>
+                      <th style="padding: 8px; text-align: left;">Priority</th>
+                      <th style="padding: 8px; text-align: left;">Enabled</th>
+                      <th style="padding: 8px; text-align: left;">Tags</th>
+                      <th style="padding: 8px; text-align: left;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="engineConfigHooksTableBody"></tbody>
+                </table>
+                <div id="engineConfigHookEditor" style="display: none; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                  <div class="field">
+                    <label>Name</label>
+                    <input id="engineConfigHookName" />
+                  </div>
+                  <div class="split">
+                    <div class="field">
+                      <label>Type</label>
+                      <select id="engineConfigHookType">
+                        <option value="POSITIVE">POSITIVE</option>
+                        <option value="NEGATIVE">NEGATIVE</option>
+                        <option value="NEUTRAL">NEUTRAL</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Priority (1-100)</label>
+                      <input type="number" id="engineConfigHookPriority" min="1" max="100" />
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Text Template</label>
+                    <textarea id="engineConfigHookTextTemplate" style="min-height: 100px;"></textarea>
+                  </div>
+                  <div class="field">
+                    <label>Conditions (JSON)</label>
+                    <textarea id="engineConfigHookConditionsJson" style="min-height: 150px; font-family: monospace;"></textarea>
+                  </div>
+                  <div class="field">
+                    <label>Category</label>
+                    <input id="engineConfigHookCategory" />
+                  </div>
+                  <div class="field">
+                    <label>Tags (comma-separated)</label>
+                    <input id="engineConfigHookTags" placeholder="tag1, tag2, tag3" />
+                  </div>
+                  <div class="field">
+                    <label><input type="checkbox" id="engineConfigHookEnabled" checked /> Enabled</label>
+                  </div>
+                  <button id="engineConfigHookSaveBtn" class="btn" style="margin-top: 12px;">Save Hook</button>
+                </div>
+              </div>
+            </div>
+            <div class="panel" style="background: var(--panel);">
+              <div class="panelHead">
+                <div class="left">
+                  <span class="mini">Triggers Monitor (Last 7 Days)</span>
+                </div>
+                <div class="right">
+                  <button id="engineConfigRefreshTriggersBtn" class="btn" style="font-size: 11px;">Refresh</button>
+                </div>
+              </div>
+              <div class="body">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <thead>
+                    <tr style="border-bottom: 1px solid var(--line);">
+                      <th style="padding: 8px; text-align: left;">Hook Name</th>
+                      <th style="padding: 8px; text-align: left;">Type</th>
+                      <th style="padding: 8px; text-align: left;">Trigger Count</th>
+                    </tr>
+                  </thead>
+                  <tbody id="engineConfigTriggersTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mood & State Policy Tab -->
+          <div id="engineConfigTabMood" class="engineConfigTabContent" style="display: none;">
+            <div class="panel" style="background: var(--panel);">
+              <div class="panelHead">
+                <div class="left">
+                  <span class="mini">Mood & State Policy Configuration</span>
+                </div>
+              </div>
+              <div class="body">
+                <div style="margin-bottom: 24px;">
+                  <label style="font-weight: 700;">Mood EMA Alpha</label>
+                  <div class="field" style="margin-top: 8px;">
+                    <input type="number" id="engineConfigMoodEmaAlpha" step="0.01" min="0" max="1" />
+                  </div>
+                </div>
+
+                <div style="margin-bottom: 24px; padding-top: 16px; border-top: 1px solid var(--line);">
+                  <label style="font-weight: 700;">Mood State Classification Thresholds</label>
+                  <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 16px;">
+                    <div>
+                      <label>FLOW State</label>
+                      <div class="split3" style="margin-top: 4px;">
+                        <div class="field">
+                          <label>Min Score</label>
+                          <input type="number" id="engineConfigMoodFlowMinScore" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>Min Flow</label>
+                          <input type="number" id="engineConfigMoodFlowMinFlow" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>Max Tension</label>
+                          <input type="number" id="engineConfigMoodFlowMaxTension" min="0" max="100" />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label>TENSE State</label>
+                      <div class="split3" style="margin-top: 4px;">
+                        <div class="field">
+                          <label>Min Tension</label>
+                          <input type="number" id="engineConfigMoodTenseMinTension" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>Or: Max Score</label>
+                          <input type="number" id="engineConfigMoodTenseOrMaxScore" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>Or: Min Tension (if low score)</label>
+                          <input type="number" id="engineConfigMoodTenseOrMinTension" min="0" max="100" />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label>WARM State</label>
+                      <div class="split3" style="margin-top: 4px;">
+                        <div class="field">
+                          <label>Min Score</label>
+                          <input type="number" id="engineConfigMoodWarmMinScore" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>Max Score</label>
+                          <input type="number" id="engineConfigMoodWarmMaxScore" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>Min Warmth</label>
+                          <input type="number" id="engineConfigMoodWarmMinWarmth" min="0" max="100" />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label>COLD State</label>
+                      <div class="split" style="margin-top: 4px;">
+                        <div class="field">
+                          <label>Max Score</label>
+                          <input type="number" id="engineConfigMoodColdMaxScore" min="0" max="100" />
+                        </div>
+                        <div class="field">
+                          <label>Max Warmth</label>
+                          <input type="number" id="engineConfigMoodColdMaxWarmth" min="0" max="100" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="margin-bottom: 24px; padding-top: 16px; border-top: 1px solid var(--line);">
+                  <label style="font-weight: 700;">Mood Bands</label>
+                  <div id="engineConfigMoodBandsList" style="margin-top: 8px;"></div>
+                  <button id="engineConfigMoodAddBandBtn" class="btn" style="margin-top: 8px; font-size: 11px;">Add Band</button>
+                </div>
+
+                <div style="margin-bottom: 24px; padding-top: 16px; border-top: 1px solid var(--line);">
+                  <label style="font-weight: 700;">State Policy</label>
+                  <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+                    <div class="field">
+                      <label>Min Messages For Verdict</label>
+                      <input type="number" id="engineConfigStatePolicyMinMessages" min="0" />
+                    </div>
+                    <div class="field">
+                      <label><input type="checkbox" id="engineConfigStatePolicyFailOnThreeCritical" /> Fail On Three Critical Messages</label>
+                    </div>
+                    <div class="field">
+                      <label><input type="checkbox" id="engineConfigStatePolicyAllowRecovery" checked /> Allow Recovery After Fail Gate</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Insights Catalog Tab -->
+          <div id="engineConfigTabInsights" class="engineConfigTabContent" style="display: none;">
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+              <button class="btn" data-insights-subtab="insights" style="padding: 6px 12px; background: var(--btn); border: 1px solid var(--line); border-radius: 6px; color: var(--text); cursor: pointer;">Insights</button>
+              <button class="btn" data-insights-subtab="openings" style="padding: 6px 12px; background: var(--btn); border: 1px solid var(--line); border-radius: 6px; color: var(--text); cursor: pointer;">Opening Templates</button>
+            </div>
+            
+            <!-- Insights Sub-tab -->
+            <div id="engineConfigInsightsSubtabInsights" class="engineConfigInsightsSubtab">
+              <div class="panel" style="background: var(--panel);">
+                <div class="panelHead">
+                  <div class="left">
+                    <span class="mini">Insights Catalog (Read-Only)</span>
+                  </div>
+                  <div class="right">
+                    <select id="engineConfigInsightsKindFilter" style="background: var(--controlBg); border: 1px solid var(--controlBorder); border-radius: 6px; padding: 4px 8px; color: var(--text);">
+                      <option value="">All Kinds</option>
+                      <option value="GATE_FAIL">GATE_FAIL</option>
+                      <option value="POSITIVE_HOOK">POSITIVE_HOOK</option>
+                      <option value="NEGATIVE_PATTERN">NEGATIVE_PATTERN</option>
+                      <option value="GENERAL_TIP">GENERAL_TIP</option>
+                    </select>
+                    <button id="engineConfigLoadInsightsBtn" class="btn" style="font-size: 11px; margin-left: 8px;">Load Insights</button>
+                  </div>
+                </div>
+                <div class="body">
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                      <tr style="border-bottom: 1px solid var(--line);">
+                        <th style="padding: 8px; text-align: left;">ID</th>
+                        <th style="padding: 8px; text-align: left;">Kind</th>
+                        <th style="padding: 8px; text-align: left;">Title</th>
+                        <th style="padding: 8px; text-align: left;">Category</th>
+                        <th style="padding: 8px; text-align: left;">Requires</th>
+                        <th style="padding: 8px; text-align: left;">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="engineConfigInsightsTableBody"></tbody>
+                  </table>
+                  <div id="engineConfigInsightDetail" style="display: none; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                    <div class="field">
+                      <label>Title</label>
+                      <input id="engineConfigInsightTitle" readonly style="background: rgba(255,255,255,0.05);" />
+                    </div>
+                    <div class="field">
+                      <label>Body</label>
+                      <textarea id="engineConfigInsightBody" readonly style="min-height: 100px; background: rgba(255,255,255,0.05);"></textarea>
+                    </div>
+                    <div class="field">
+                      <label>Requires (Gate/Hook/Pattern Key)</label>
+                      <input id="engineConfigInsightRequires" readonly style="background: rgba(255,255,255,0.05);" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Opening Templates Sub-tab -->
+            <div id="engineConfigInsightsSubtabOpenings" class="engineConfigInsightsSubtab" style="display: none;">
+              <div class="panel" style="background: var(--panel);">
+                <div class="panelHead">
+                  <div class="left">
+                    <span class="mini">Opening Templates (Read-Only)</span>
+                  </div>
+                  <div class="right">
+                    <button id="engineConfigLoadOpeningsBtn" class="btn" style="font-size: 11px;">Load Templates</button>
+                  </div>
+                </div>
+                <div class="body">
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                      <tr style="border-bottom: 1px solid var(--line);">
+                        <th style="padding: 8px; text-align: left;">Key</th>
+                        <th style="padding: 8px; text-align: left;">Name</th>
+                        <th style="padding: 8px; text-align: left;">Description</th>
+                        <th style="padding: 8px; text-align: left;">Template</th>
+                        <th style="padding: 8px; text-align: left;">Compatible Styles</th>
+                        <th style="padding: 8px; text-align: left;">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="engineConfigOpeningsTableBody"></tbody>
+                  </table>
+                  <div id="engineConfigOpeningDetail" style="display: none; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                    <div class="field">
+                      <label>Name</label>
+                      <input id="engineConfigOpeningName" readonly style="background: rgba(255,255,255,0.05);" />
+                    </div>
+                    <div class="field">
+                      <label>Description</label>
+                      <textarea id="engineConfigOpeningDescription" readonly style="min-height: 60px; background: rgba(255,255,255,0.05);"></textarea>
+                    </div>
+                    <div class="field">
+                      <label>Template</label>
+                      <textarea id="engineConfigOpeningTemplate" readonly style="min-height: 80px; background: rgba(255,255,255,0.05); font-family: monospace;"></textarea>
+                    </div>
+                    <div class="field">
+                      <label>Variables</label>
+                      <input id="engineConfigOpeningVariables" readonly style="background: rgba(255,255,255,0.05);" />
+                    </div>
+                    <div class="field">
+                      <label>Compatible Styles</label>
+                      <input id="engineConfigOpeningCompatibleStyles" readonly style="background: rgba(255,255,255,0.05);" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mission Attachments Tab -->
+          <div id="engineConfigTabAttachments" class="engineConfigTabContent" style="display: none;">
+            <div class="row" style="grid-template-columns: 400px 1fr;">
+              <div class="panel" style="background: var(--panel);">
+                <div class="panelHead">
+                  <div class="left">
+                    <span class="mini">Missions</span>
+                  </div>
+                  <div class="right">
+                    <button id="engineConfigLoadAttachmentsBtn" class="btn" style="font-size: 11px;">Load</button>
+                  </div>
+                </div>
+                <div class="listWrap">
+                  <div style="margin-bottom: 8px;">
+                    <select id="engineConfigAttachmentsCategoryFilter" style="width: 100%; background: var(--controlBg); border: 1px solid var(--controlBorder); border-radius: 6px; padding: 4px 8px; color: var(--text); margin-bottom: 8px;">
+                      <option value="">All Categories</option>
+                    </select>
+                    <input type="text" id="engineConfigAttachmentsSearchInput" placeholder="Search missions..." style="width: 100%; background: var(--controlBg); border: 1px solid var(--controlBorder); border-radius: 6px; padding: 4px 8px; color: var(--text);" />
+                  </div>
+                  <div id="engineConfigAttachmentsMissionsList" class="list" style="max-height: 500px;"></div>
+                </div>
+              </div>
+              <div class="panel" style="background: var(--panel);">
+                <div class="panelHead">
+                  <div class="left">
+                    <span class="mini">Profile Attachments</span>
+                  </div>
+                </div>
+                <div class="body">
+                  <div id="engineConfigAttachmentsEditor" style="display: none;">
+                    <div class="field">
+                      <label>Mission</label>
+                      <input id="engineConfigAttachmentsMissionLabel" readonly style="background: rgba(255,255,255,0.05);" />
+                    </div>
+                    <div class="field">
+                      <label>Code</label>
+                      <input id="engineConfigAttachmentsMissionCode" readonly style="background: rgba(255,255,255,0.05);" />
+                    </div>
+                    <div class="field">
+                      <label>Category</label>
+                      <input id="engineConfigAttachmentsMissionCategory" readonly style="background: rgba(255,255,255,0.05);" />
+                    </div>
+                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+                      <div class="field">
+                        <label>Scoring Profile</label>
+                        <select id="engineConfigAttachmentsScoringProfile">
+                          <option value="">(Inherit global default)</option>
+                        </select>
+                      </div>
+                      <div class="field">
+                        <label>Dynamics Profile</label>
+                        <select id="engineConfigAttachmentsDynamicsProfile">
+                          <option value="">(Inherit mission's own dynamics)</option>
+                        </select>
+                      </div>
+                      <div style="margin-top: 16px; display: flex; gap: 8px;">
+                        <button id="engineConfigAttachmentsSaveBtn" class="btn">Save</button>
+                        <button id="engineConfigAttachmentsResetBtn" class="btn">Reset</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div id="engineConfigAttachmentsEditorEmpty" style="text-align: center; padding: 40px; color: var(--muted);">
+                    Select a mission to edit attachments
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Monitoring Tab -->
+          <div id="engineConfigTabMonitoring" class="engineConfigTabContent" style="display: none;">
+            <div class="panel" style="background: var(--panel);">
+              <div class="panelHead">
+                <div class="left">
+                  <span class="mini">Monitoring & Stats</span>
+                </div>
+                <div class="right">
+                  <button id="engineConfigRefreshMonitoringBtn" class="btn" style="font-size: 11px;">Refresh</button>
+                </div>
+              </div>
+              <div class="body">
+                <div style="margin-bottom: 24px;">
+                  <label style="font-weight: 700;">Hook Trigger Stats (Last 7 Days)</label>
+                  <div id="engineConfigMonitoringHooksStats" style="margin-top: 12px;"></div>
+                </div>
+                <div style="margin-bottom: 24px; padding-top: 16px; border-top: 1px solid var(--line);">
+                  <label style="font-weight: 700;">Gate Outcome Stats</label>
+                  <div id="engineConfigMonitoringGatesStats" style="margin-top: 12px; color: var(--muted); font-size: 12px;">
+                    (Gate outcome stats coming soon)
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -970,6 +2115,17 @@
           ui.codeInput.value = "";
           ui.aiStyleSelect.value = "";
           setAiContractTextarea(null);
+          
+          // Practice Hub Designer: Clear attraction fields
+          hubUI.missionIsAttractionSensitiveCheckbox.checked = false;
+          hubUI.missionTargetRomanticGenderSelect.value = "";
+          hubUI.missionTargetGenderField.style.display = "none";
+          
+          // Step 7: Hide mission monitor
+          const monitorSection = document.getElementById("missionMonitorSection");
+          if (monitorSection) {
+            monitorSection.style.display = "none";
+          }
 
           updateSelectionUI();
           updateMissionPreview();
@@ -987,6 +2143,10 @@
           if (!name) return { ok: false, error: "Mission title is required." };
           if (!categoryId) return { ok: false, error: "Category is required (Load Meta first)." };
           if (!personaId) return { ok: false, error: "Persona is required (Load Meta first)." };
+
+          // Practice Hub Designer: Attraction fields
+          const isAttractionSensitive = document.getElementById("missionIsAttractionSensitiveCheckbox").checked;
+          const targetRomanticGender = document.getElementById("missionTargetRomanticGenderSelect").value || undefined;
 
           const isUpdate = !!state.selectedMissionId;
           const parsed = getAiContractJsonOrNull();
@@ -1048,6 +2208,8 @@
             active,
             ...(code ? { code } : {}),
             ...(aiContractValue ? { aiContract: aiContractValue } : {}),
+            ...(isAttractionSensitive !== undefined ? { isAttractionSensitive } : {}),
+            ...(targetRomanticGender ? { targetRomanticGender } : {}),
           };
 
           // AI Style (optional) — NEVER send aiStyleId, only aiStyleKey
@@ -1064,6 +2226,382 @@
 
           return { ok: true, value: payload };
         }
+
+        // ---------------------------
+        // Practice Hub Designer: Category Management
+        // ---------------------------
+        const hubState = {
+          categories: [],
+          selectedCategoryId: null,
+          viewingCategoryId: null, // Step 7.9: Track which category we're viewing missions for
+        };
+
+        const hubUI = {
+          categoriesGrid: document.getElementById("categoriesGrid"),
+          loadCategoriesBtn: document.getElementById("loadCategoriesBtn"),
+          addCategoryBtn: document.getElementById("addCategoryBtn"),
+          reorderCategoriesBtn: document.getElementById("reorderCategoriesBtn"),
+          categoryModal: document.getElementById("categoryModal"),
+          closeCategoryModalBtn: document.getElementById("closeCategoryModalBtn"),
+          saveCategoryBtn: document.getElementById("saveCategoryBtn"),
+          deleteCategoryBtn: document.getElementById("deleteCategoryBtn"),
+          categoryLabelInput: document.getElementById("categoryLabelInput"),
+          categoryDescriptionInput: document.getElementById("categoryDescriptionInput"),
+          categoryCodeInput: document.getElementById("categoryCodeInput"),
+          categoryAttractionPathSelect: document.getElementById("categoryAttractionPathSelect"),
+          categoryDynamicLabelInput: document.getElementById("categoryDynamicLabelInput"),
+          categoryDynamicLabelField: document.getElementById("categoryDynamicLabelField"),
+          categoryDisplayOrderInput: document.getElementById("categoryDisplayOrderInput"),
+          categoryIconUrlInput: document.getElementById("categoryIconUrlInput"),
+          categoryActiveCheckbox: document.getElementById("categoryActiveCheckbox"),
+          categoryErrorBox: document.getElementById("categoryErrorBox"),
+          missionsViewModal: document.getElementById("missionsViewModal"),
+          closeMissionsViewBtn: document.getElementById("closeMissionsViewBtn"),
+          missionsViewTitle: document.getElementById("missionsViewTitle"),
+          missionsViewTableBody: document.getElementById("missionsViewTableBody"),
+          missionIsAttractionSensitiveCheckbox: document.getElementById("missionIsAttractionSensitiveCheckbox"),
+          missionTargetRomanticGenderSelect: document.getElementById("missionTargetRomanticGenderSelect"),
+          missionTargetGenderField: document.getElementById("missionTargetGenderField"),
+        };
+
+        function renderCategoriesGrid() {
+          hubUI.categoriesGrid.innerHTML = "";
+          for (const cat of hubState.categories) {
+            const tile = document.createElement("div");
+            tile.className = "item";
+            tile.style.cursor = "pointer";
+            
+            const badgeClass = cat.attractionPath === "FEMALE_PATH" ? "bad" : 
+                              cat.attractionPath === "MALE_PATH" ? "ok" : "";
+            const badgeText = cat.attractionPath === "FEMALE_PATH" ? "Approach Women" :
+                             cat.attractionPath === "MALE_PATH" ? "Approach Men" : "Unisex";
+            
+            tile.innerHTML = `
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                <div>
+                  <div style="font-weight: 800; font-size: 14px; margin-bottom: 4px;">${escapeHtml(cat.label || cat.code)}</div>
+                  <span class="chip ${badgeClass}" style="padding: 4px 8px; font-size: 11px;">${badgeText}</span>
+                  ${cat.active ? '<span class="chip ok" style="padding: 4px 8px; font-size: 11px; margin-left: 4px;">Active</span>' : 
+                    '<span class="chip warn" style="padding: 4px 8px; font-size: 11px; margin-left: 4px;">Inactive</span>'}
+                </div>
+                <div style="font-size: 11px; color: var(--muted);">Order: ${cat.displayOrder || 0}</div>
+              </div>
+              <div style="font-size: 12px; color: var(--muted); margin-bottom: 8px;">
+                ${cat.description || "(no description)"}
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <button class="btn" style="flex: 1; padding: 6px;" onclick="hubEditCategory('${cat.id}')">Edit</button>
+                <button class="btn" style="flex: 1; padding: 6px;" onclick="hubViewMissions('${cat.id}')">View Missions</button>
+              </div>
+            `;
+            hubUI.categoriesGrid.appendChild(tile);
+          }
+        }
+
+        async function loadCategories() {
+          try {
+            const resp = await apiFetch("/admin/missions/meta", { method: "GET" });
+            hubState.categories = resp.categories || [];
+            renderCategoriesGrid();
+            showOk(`Loaded ${hubState.categories.length} categories.`);
+          } catch (e) {
+            showError("Failed to load categories: " + (e?.message || e));
+          }
+        }
+
+        function hubEditCategory(id) {
+          const cat = hubState.categories.find(c => c.id === id);
+          if (!cat) {
+            showError("Category not found");
+            return;
+          }
+          hubState.selectedCategoryId = id;
+          hubUI.categoryLabelInput.value = cat.label || "";
+          hubUI.categoryDescriptionInput.value = cat.description || "";
+          hubUI.categoryCodeInput.value = cat.code || "";
+          hubUI.categoryAttractionPathSelect.value = cat.attractionPath || "UNISEX";
+          hubUI.categoryDynamicLabelInput.value = cat.dynamicLabelTemplate || "";
+          hubUI.categoryDisplayOrderInput.value = cat.displayOrder || 0;
+          hubUI.categoryIconUrlInput.value = cat.iconUrl || "";
+          hubUI.categoryActiveCheckbox.checked = cat.active !== false;
+          hubUI.categoryDynamicLabelField.style.display = 
+            (cat.attractionPath === "FEMALE_PATH" || cat.attractionPath === "MALE_PATH") ? "block" : "none";
+          hubUI.categoryModal.style.display = "block";
+        }
+
+        function hubAddCategory() {
+          hubState.selectedCategoryId = null;
+          hubUI.categoryLabelInput.value = "";
+          hubUI.categoryDescriptionInput.value = "";
+          hubUI.categoryCodeInput.value = "";
+          hubUI.categoryAttractionPathSelect.value = "UNISEX";
+          hubUI.categoryDynamicLabelInput.value = "";
+          hubUI.categoryDisplayOrderInput.value = 0;
+          hubUI.categoryIconUrlInput.value = "";
+          hubUI.categoryActiveCheckbox.checked = true;
+          hubUI.categoryDynamicLabelField.style.display = "none";
+          hubUI.categoryModal.style.display = "block";
+        }
+
+        hubUI.categoryAttractionPathSelect.addEventListener("change", () => {
+          const path = hubUI.categoryAttractionPathSelect.value;
+          hubUI.categoryDynamicLabelField.style.display = 
+            (path === "FEMALE_PATH" || path === "MALE_PATH") ? "block" : "none";
+          if ((path === "FEMALE_PATH" || path === "MALE_PATH") && !hubUI.categoryDynamicLabelInput.value) {
+            hubUI.categoryDynamicLabelInput.value = "Approach {{targetPlural}}";
+          }
+        });
+
+        async function saveCategory() {
+          const label = hubUI.categoryLabelInput.value.trim();
+          if (!label) {
+            hubUI.categoryErrorBox.style.display = "block";
+            hubUI.categoryErrorBox.textContent = "Label is required";
+            return;
+          }
+
+          const payload = {
+            label,
+            description: hubUI.categoryDescriptionInput.value.trim() || undefined,
+            code: hubUI.categoryCodeInput.value.trim() || undefined,
+            attractionPath: hubUI.categoryAttractionPathSelect.value,
+            dynamicLabelTemplate: hubUI.categoryDynamicLabelInput.value.trim() || undefined,
+            displayOrder: parseInt(hubUI.categoryDisplayOrderInput.value) || 0,
+            iconUrl: hubUI.categoryIconUrlInput.value.trim() || undefined,
+            active: hubUI.categoryActiveCheckbox.checked,
+          };
+          
+          // Step 7.10: Attraction target enforcement - warn if disabling the only male/female category
+          if (!payload.active && hubState.selectedCategoryId) {
+            const existingCat = hubState.categories.find(c => c.id === hubState.selectedCategoryId);
+            if (existingCat && (existingCat.attractionPath === "FEMALE_PATH" || existingCat.attractionPath === "MALE_PATH")) {
+              const otherCategories = hubState.categories.filter(c => 
+                c.id !== hubState.selectedCategoryId && 
+                c.attractionPath === existingCat.attractionPath &&
+                c.active !== false
+              );
+              
+              if (otherCategories.length === 0) {
+                const pathName = existingCat.attractionPath === "FEMALE_PATH" ? "female-attracted" : "male-attracted";
+                const ok = confirm(
+                  `WARNING: This is the only active ${pathName} category.\n\n` +
+                  `Disabling it may break attraction-based routing.\n\n` +
+                  `Are you sure you want to disable it?`
+                );
+                if (!ok) {
+                  hubUI.categoryActiveCheckbox.checked = true;
+                  return;
+                }
+              }
+            }
+          }
+
+          try {
+            hubUI.categoryErrorBox.style.display = "none";
+            if (hubState.selectedCategoryId) {
+              await apiFetch(`/admin/missions/categories/${hubState.selectedCategoryId}`, {
+                method: "PUT",
+                body: JSON.stringify(payload),
+              });
+              showOk("Category updated.");
+            } else {
+              await apiFetch("/admin/missions/categories", {
+                method: "POST",
+                body: JSON.stringify(payload),
+              });
+              showOk("Category created.");
+            }
+            hubUI.categoryModal.style.display = "none";
+            await loadCategories();
+          } catch (e) {
+            hubUI.categoryErrorBox.style.display = "block";
+            hubUI.categoryErrorBox.textContent = e?.message || "Failed to save category";
+          }
+        }
+
+        async function deleteCategory() {
+          if (!hubState.selectedCategoryId) return;
+          
+          const cat = hubState.categories.find(c => c.id === hubState.selectedCategoryId);
+          if (!cat) return;
+          
+          // Step 7.10: Attraction target enforcement - check if this is the only male/female category
+          if (cat.attractionPath === "FEMALE_PATH" || cat.attractionPath === "MALE_PATH") {
+            const otherCategories = hubState.categories.filter(c => 
+              c.id !== hubState.selectedCategoryId && 
+              c.attractionPath === cat.attractionPath &&
+              c.active !== false
+            );
+            
+            if (otherCategories.length === 0) {
+              const pathName = cat.attractionPath === "FEMALE_PATH" ? "female-attracted" : "male-attracted";
+              const ok = confirm(
+                `WARNING: This is the only active ${pathName} category.\n\n` +
+                `Deleting it may break attraction-based routing.\n\n` +
+                `Are you sure you want to delete it?`
+              );
+              if (!ok) return;
+            }
+          }
+          
+          const ok = confirm("Delete category permanently?");
+          if (!ok) return;
+          
+          try {
+            await apiFetch(`/admin/missions/categories/${hubState.selectedCategoryId}`, {
+              method: "DELETE",
+            });
+            showOk("Category deleted.");
+            hubUI.categoryModal.style.display = "none";
+            await loadCategories();
+          } catch (e) {
+            showError("Failed to delete category: " + (e?.message || e));
+          }
+        }
+
+        async function hubViewMissions(categoryId) {
+          const cat = hubState.categories.find(c => c.id === categoryId);
+          if (!cat) return;
+          hubState.viewingCategoryId = categoryId;
+          hubUI.missionsViewTitle.textContent = `Missions in "${cat.label}"`;
+          try {
+            const missions = await apiFetch("/admin/missions", { method: "GET" });
+            const categoryMissions = (missions || []).filter(m => m.categoryId === categoryId);
+            const allMissions = (missions || []).filter(m => !m.categoryId || m.categoryId !== categoryId);
+            
+            hubUI.missionsViewTableBody.innerHTML = "";
+            for (const m of categoryMissions) {
+              const row = document.createElement("tr");
+              const isInconsistent = 
+                (cat.attractionPath === "FEMALE_PATH" && (m.isAttractionSensitive !== true || m.targetRomanticGender !== "FEMALE")) ||
+                (cat.attractionPath === "MALE_PATH" && (m.isAttractionSensitive !== true || m.targetRomanticGender !== "MALE"));
+              row.style.borderBottom = "1px solid var(--line)";
+              if (isInconsistent) {
+                row.style.borderLeft = "3px solid var(--bad)";
+                row.style.backgroundColor = "rgba(255, 92, 122, 0.1)";
+              }
+              row.innerHTML = `
+                <td style="padding: 8px;">${escapeHtml(m.title || m.name || "")}</td>
+                <td style="padding: 8px; font-size: 11px; color: var(--muted);">${escapeHtml(m.code || "")}</td>
+                <td style="padding: 8px;">${escapeHtml(m.difficulty || "")}</td>
+                <td style="padding: 8px;">${m.isAttractionSensitive ? "Yes" : "No"}</td>
+                <td style="padding: 8px;">${escapeHtml(m.targetRomanticGender || "—")}</td>
+                <td style="padding: 8px;">${m.active ? "Active" : "Inactive"}</td>
+                <td style="padding: 8px;">
+                  <button class="btn" style="padding: 4px 8px; font-size: 11px; margin-right: 4px;" onclick="selectMission('${m.id}'); hubUI.missionsViewModal.style.display='none';">Edit</button>
+                  <button class="btn" style="padding: 4px 8px; font-size: 11px; background: var(--bad);" onclick="removeMissionFromCategory('${m.id}', '${categoryId}')">Remove</button>
+                </td>
+              `;
+              hubUI.missionsViewTableBody.appendChild(row);
+            }
+            
+            // Step 7.9: Add "Add Mission" section
+            if (allMissions.length > 0) {
+              const addSection = document.createElement("tr");
+              addSection.style.borderTop = "2px solid var(--line)";
+              addSection.style.backgroundColor = "rgba(255, 255, 255, 0.03)";
+              addSection.innerHTML = `
+                <td colspan="7" style="padding: 12px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 11px; color: var(--muted);">Add Mission:</label>
+                    <select id="addMissionToCategorySelect" style="flex: 1; background: var(--controlBg); border: 1px solid var(--controlBorder); border-radius: 6px; padding: 4px 8px; color: var(--text);">
+                      <option value="">Select a mission...</option>
+                      ${allMissions.map(m => `<option value="${m.id}">${escapeHtml(m.title || m.name || m.code || "")}</option>`).join("")}
+                    </select>
+                    <button class="btn" style="padding: 4px 8px; font-size: 11px;" onclick="addMissionToCategory('${categoryId}')">Add</button>
+                  </div>
+                </td>
+              `;
+              hubUI.missionsViewTableBody.appendChild(addSection);
+            }
+            
+            hubUI.missionsViewModal.style.display = "block";
+          } catch (e) {
+            showError("Failed to load missions: " + (e?.message || e));
+          }
+        }
+        
+        // Step 7.9: Add mission to category
+        async function addMissionToCategory(categoryId) {
+          const select = document.getElementById("addMissionToCategorySelect");
+          const missionId = select.value;
+          
+          if (!missionId) {
+            showError("Please select a mission to add");
+            return;
+          }
+          
+          try {
+            const mission = (state.missions || []).find(m => m.id === missionId);
+            if (!mission) {
+              showError("Mission not found");
+              return;
+            }
+            
+            // Update mission's categoryId
+            await apiFetch(`/admin/missions/${missionId}`, {
+              method: "PUT",
+              body: JSON.stringify({
+                categoryId: categoryId,
+              }),
+            });
+            
+            showOk("Mission added to category.");
+            await loadMissions(); // Reload missions
+            hubViewMissions(categoryId); // Refresh the view
+          } catch (e) {
+            showError("Failed to add mission to category: " + (e?.message || e));
+          }
+        }
+        
+        // Step 7.9: Remove mission from category
+        async function removeMissionFromCategory(missionId, categoryId) {
+          const ok = confirm("Remove this mission from the category? (Mission will be unassigned)");
+          if (!ok) return;
+          
+          try {
+            // Set categoryId to null to remove from category
+            await apiFetch(`/admin/missions/${missionId}`, {
+              method: "PUT",
+              body: JSON.stringify({
+                categoryId: null,
+              }),
+            });
+            
+            showOk("Mission removed from category.");
+            await loadMissions(); // Reload missions
+            hubViewMissions(categoryId); // Refresh the view
+          } catch (e) {
+            showError("Failed to remove mission from category: " + (e?.message || e));
+          }
+        }
+        
+        // Make functions global for onclick handlers
+        window.addMissionToCategory = addMissionToCategory;
+        window.removeMissionFromCategory = removeMissionFromCategory;
+
+        // Make functions global for onclick handlers
+        window.hubEditCategory = hubEditCategory;
+        window.hubViewMissions = hubViewMissions;
+        window.hubUI = hubUI;
+
+        // Wire Practice Hub Designer events
+        hubUI.loadCategoriesBtn.addEventListener("click", loadCategories);
+        hubUI.addCategoryBtn.addEventListener("click", hubAddCategory);
+        hubUI.closeCategoryModalBtn.addEventListener("click", () => {
+          hubUI.categoryModal.style.display = "none";
+        });
+        hubUI.saveCategoryBtn.addEventListener("click", saveCategory);
+        hubUI.deleteCategoryBtn.addEventListener("click", deleteCategory);
+        hubUI.closeMissionsViewBtn.addEventListener("click", () => {
+          hubUI.missionsViewModal.style.display = "none";
+        });
+
+        // Mission editor: Attraction fields
+        hubUI.missionIsAttractionSensitiveCheckbox.addEventListener("change", () => {
+          hubUI.missionTargetGenderField.style.display = 
+            hubUI.missionIsAttractionSensitiveCheckbox.checked ? "block" : "none";
+        });
 
         function updateSelectionUI() {
           const sid = state.selectedMissionId;
@@ -1174,12 +2712,24 @@
           ui.missionsList.innerHTML = "";
           for (const m of missions) {
             const id = m.id || "";
-            const title = m.name || "(untitled)";
+            const title = m.name || m.title || "(untitled)";
             const diff = m.difficulty || "—";
             const active = m.active ? "active" : "inactive";
             const styleKey = getMissionStyleKey(m);
-            const catName = m.categoryId ? mapIdToName(state.categories, m.categoryId) : "—";
-            const personaName = m.personaId ? mapIdToName(state.personas, m.personaId) : "—";
+            const catName = m.categoryId ? mapIdToName(state.categories, m.categoryId) : (m.category?.label || "—");
+            const personaName = m.personaId ? mapIdToName(state.personas, m.personaId) : (m.persona?.name || "—");
+            
+            // Step 7.1: Add attractionTarget display
+            let attractionTarget = "both";
+            if (m.isAttractionSensitive) {
+              if (m.targetRomanticGender === "FEMALE") attractionTarget = "female";
+              else if (m.targetRomanticGender === "MALE") attractionTarget = "male";
+              else attractionTarget = "both";
+            }
+            
+            // Step 7.1: Format dates
+            const createdAt = m.createdAt ? new Date(m.createdAt).toLocaleDateString() : "—";
+            const updatedAt = m.updatedAt ? new Date(m.updatedAt).toLocaleDateString() : "—";
 
             const chipClass = m.active ? "ok" : "warn";
             const item = document.createElement("div");
@@ -1190,13 +2740,16 @@
                 <span>${escapeHtml(title)}</span>
                 <span class="chip ${chipClass}" style="padding:4px 10px">${escapeHtml(active)}</span>
               </div>
-              <div class="itemMeta">
+              <div class="itemMeta" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 11px;">
                 <span class="chip" style="padding:4px 10px">${escapeHtml(diff)}</span>
                 ${styleKey ? `<span class="chip" style="padding:4px 10px">${escapeHtml(styleKey)}</span>` : ""}
-                <span>${escapeHtml(catName)}</span>
-                <span>•</span>
-                <span>${escapeHtml(personaName)}</span>
-                ${m.code ? `<span>•</span><span>${escapeHtml(m.code)}</span>` : ""}
+                <span style="color: var(--muted);">Cat: ${escapeHtml(catName)}</span>
+                <span style="color: var(--muted);">•</span>
+                <span style="color: var(--muted);">Persona: ${escapeHtml(personaName)}</span>
+                <span style="color: var(--muted);">•</span>
+                <span style="color: var(--muted);">Target: ${escapeHtml(attractionTarget)}</span>
+                ${m.code ? `<span style="color: var(--muted);">•</span><span style="color: var(--muted);">${escapeHtml(m.code)}</span>` : ""}
+                <span style="color: var(--muted); margin-left: auto;">Updated: ${escapeHtml(updatedAt)}</span>
               </div>
             `;
             item.addEventListener("click", () => selectMission(id));
@@ -1353,9 +2906,332 @@
           state.aiStyleTouched = false;
 
           setAiContractTextarea(m.aiContract);
+          
+          // Practice Hub Designer: Load attraction fields
+          if (hubUI && hubUI.missionIsAttractionSensitiveCheckbox) {
+            hubUI.missionIsAttractionSensitiveCheckbox.checked = m.isAttractionSensitive === true;
+            hubUI.missionTargetRomanticGenderSelect.value = m.targetRomanticGender || "";
+            hubUI.missionTargetGenderField.style.display = 
+              hubUI.missionIsAttractionSensitiveCheckbox.checked ? "block" : "none";
+          }
+          
           updateSelectionUI();
           updateMissionPreview();
           showOk("Mission loaded into editor.");
+          
+          // Step 7: Show mission monitor and load data
+          showMissionMonitor(m);
+        }
+        
+        // Step 7: Mission Monitor functions
+        function showMissionMonitor(mission) {
+          const monitorSection = document.getElementById("missionMonitorSection");
+          const monitorEmpty = document.getElementById("missionMonitorEmpty");
+          const monitorContent = document.getElementById("missionMonitorContent");
+          
+          if (!mission || !mission.id) {
+            monitorSection.style.display = "none";
+            return;
+          }
+          
+          monitorSection.style.display = "block";
+          monitorEmpty.style.display = "none";
+          monitorContent.style.display = "block";
+          
+          // Load mission config view (7.2)
+          loadMissionConfigView(mission);
+          
+          // Load mission stats (7.3)
+          loadMissionStats(mission.id);
+          
+          // Load mood timelines (7.4)
+          loadMissionMoodTimelines(mission.id);
+          
+          // Load sessions for message log (7.5)
+          loadMissionSessions(mission.id);
+        }
+        
+        async function loadMissionConfigView(mission) {
+          const configEmpty = document.getElementById("missionConfigEmpty");
+          const configDetails = document.getElementById("missionConfigDetails");
+          
+          try {
+            const aiContract = mission.aiContract || {};
+            const config = aiContract.missionConfigV1 || {};
+            
+            if (!config.version) {
+              configEmpty.style.display = "block";
+              configDetails.style.display = "none";
+              return;
+            }
+            
+            configEmpty.style.display = "none";
+            configDetails.style.display = "block";
+            
+            // Objective
+            const objective = config.objective || {};
+            document.getElementById("configObjective").textContent = 
+              `${objective.kind || "—"} - ${objective.userTitle || "—"}`;
+            
+            // Difficulty
+            const difficulty = config.difficulty || {};
+            document.getElementById("configDifficulty").textContent = 
+              `${difficulty.level || "—"}${difficulty.strictness !== undefined ? ` (strictness: ${difficulty.strictness})` : ""}`;
+            
+            // AI Style
+            const style = config.style || {};
+            document.getElementById("configAiStyle").textContent = style.aiStyleKey || "—";
+            
+            // Runtime Profile
+            const runtimeProfile = config.aiRuntimeProfile || {};
+            document.getElementById("configRuntimeProfile").textContent = 
+              runtimeProfile.model ? `${runtimeProfile.model} (temp: ${runtimeProfile.temperature || "—"})` : "—";
+            
+            // Gate Config
+            const statePolicy = config.statePolicy || {};
+            document.getElementById("configGateConfig").textContent = 
+              `Max messages: ${statePolicy.maxMessages || "—"}, ` +
+              `Success threshold: ${statePolicy.successScoreThreshold || "—"}, ` +
+              `Fail threshold: ${statePolicy.failScoreThreshold || "—"}, ` +
+              `Gate sequence: ${statePolicy.enableGateSequence ? "enabled" : "disabled"}`;
+            
+            // Wire up raw JSON viewer
+            document.getElementById("viewRawConfigBtn").onclick = () => {
+              const jsonStr = JSON.stringify(config, null, 2);
+              alert(jsonStr);
+            };
+          } catch (e) {
+            configEmpty.style.display = "block";
+            configDetails.style.display = "none";
+            console.error("Error loading mission config:", e);
+          }
+        }
+        
+        async function loadMissionStats(missionId) {
+          const statsEmpty = document.getElementById("missionStatsEmpty");
+          const statsDetails = document.getElementById("missionStatsDetails");
+          const timeWindow = document.getElementById("statsTimeWindow").value;
+          
+          try {
+            const url = `/admin/missions/${missionId}/stats${timeWindow ? `?timeWindow=${timeWindow}` : ""}`;
+            const res = await apiFetch(url, { method: "GET" });
+            
+            if (!res || res.sessionCount === 0) {
+              statsEmpty.style.display = "block";
+              statsDetails.style.display = "none";
+              return;
+            }
+            
+            statsEmpty.style.display = "none";
+            statsDetails.style.display = "block";
+            
+            document.getElementById("statsSessionCount").textContent = res.sessionCount || 0;
+            document.getElementById("statsSuccessRate").textContent = `${res.successRate || 0}%`;
+            document.getElementById("statsAvgMessages").textContent = res.avgMessages || 0;
+            document.getElementById("statsAvgDuration").textContent = `${res.avgDurationSeconds || 0}s`;
+          } catch (e) {
+            statsEmpty.style.display = "block";
+            statsDetails.style.display = "none";
+            console.error("Error loading mission stats:", e);
+          }
+        }
+        
+        async function loadMissionMoodTimelines(missionId) {
+          const timelineEmpty = document.getElementById("moodTimelineEmpty");
+          const timelineChart = document.getElementById("moodTimelineChart");
+          
+          try {
+            const res = await apiFetch(`/admin/missions/${missionId}/mood-timelines?limit=1`, { method: "GET" });
+            
+            if (!res || !Array.isArray(res) || res.length === 0) {
+              timelineEmpty.style.display = "block";
+              timelineChart.style.display = "none";
+              return;
+            }
+            
+            const timeline = res[0];
+            const timelineData = timeline.timelineJson;
+            
+            if (!timelineData || !timelineData.snapshots || timelineData.snapshots.length === 0) {
+              timelineEmpty.style.display = "block";
+              timelineChart.style.display = "none";
+              return;
+            }
+            
+            timelineEmpty.style.display = "none";
+            timelineChart.style.display = "block";
+            
+            // Simple text-based timeline visualization (no Chart.js dependency)
+            renderSimpleMoodTimeline(timelineData);
+          } catch (e) {
+            timelineEmpty.style.display = "block";
+            timelineChart.style.display = "none";
+            console.error("Error loading mood timeline:", e);
+          }
+        }
+        
+        function renderSimpleMoodTimeline(timelineData) {
+          const canvas = document.getElementById("moodTimelineCanvas");
+          const ctx = canvas.getContext("2d");
+          const snapshots = timelineData.snapshots || [];
+          
+          if (snapshots.length === 0) return;
+          
+          // Set canvas size
+          canvas.width = 800;
+          canvas.height = 200;
+          
+          // Clear canvas
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          
+          // Draw axes
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(40, 20);
+          ctx.lineTo(40, canvas.height - 20);
+          ctx.lineTo(canvas.width - 20, canvas.height - 20);
+          ctx.stroke();
+          
+          // Draw mood line
+          ctx.strokeStyle = "rgba(77, 97, 255, 0.8)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          
+          const stepX = (canvas.width - 60) / Math.max(snapshots.length - 1, 1);
+          const maxMood = 100;
+          
+          snapshots.forEach((snap, i) => {
+            const x = 40 + i * stepX;
+            const y = canvas.height - 20 - (snap.moodPercent || 0) * (canvas.height - 40) / maxMood;
+            
+            if (i === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+            
+            // Draw point
+            ctx.fillStyle = "rgba(77, 97, 255, 1)";
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fill();
+          });
+          
+          ctx.stroke();
+          
+          // Draw labels
+          ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+          ctx.font = "11px sans-serif";
+          ctx.textAlign = "center";
+          snapshots.forEach((snap, i) => {
+            const x = 40 + i * stepX;
+            ctx.fillText(`T${snap.turnIndex || i}`, x, canvas.height - 5);
+          });
+          
+          // Y-axis labels
+          ctx.textAlign = "right";
+          for (let i = 0; i <= 100; i += 25) {
+            const y = canvas.height - 20 - i * (canvas.height - 40) / maxMood;
+            ctx.fillText(i.toString(), 35, y + 4);
+          }
+        }
+        
+        async function loadMissionSessions(missionId) {
+          const sessionSelect = document.getElementById("messageLogSessionSelect");
+          
+          try {
+            const res = await apiFetch(`/admin/missions/${missionId}/sessions?limit=10`, { method: "GET" });
+            
+            sessionSelect.innerHTML = '<option value="">Select a session...</option>';
+            
+            if (res && Array.isArray(res) && res.length > 0) {
+              res.forEach(session => {
+                const option = document.createElement("option");
+                option.value = session.id;
+                const date = new Date(session.createdAt).toLocaleString();
+                const score = session.score || 0;
+                const status = session.isSuccess ? "✓" : "✗";
+                option.textContent = `${date} - Score: ${score} ${status}`;
+                sessionSelect.appendChild(option);
+              });
+            }
+          } catch (e) {
+            console.error("Error loading sessions:", e);
+          }
+        }
+        
+        async function loadSessionMessages(sessionId) {
+          const logEmpty = document.getElementById("messageLogEmpty");
+          const logTable = document.getElementById("messageLogTable");
+          const logTableBody = document.getElementById("messageLogTableBody");
+          
+          if (!sessionId) {
+            logEmpty.style.display = "block";
+            logTable.style.display = "none";
+            return;
+          }
+          
+          try {
+            const res = await apiFetch(`/admin/missions/sessions/${sessionId}/messages`, { method: "GET" });
+            
+            if (!res || !res.messages || res.messages.length === 0) {
+              logEmpty.style.display = "block";
+              logTable.style.display = "none";
+              return;
+            }
+            
+            logEmpty.style.display = "none";
+            logTable.style.display = "block";
+            logTableBody.innerHTML = "";
+            
+            const gateOutcomes = res.gateOutcomes || [];
+            const moodTimeline = res.moodTimeline;
+            
+            res.messages.forEach((msg, idx) => {
+              const row = document.createElement("tr");
+              row.style.borderBottom = "1px solid var(--line)";
+              
+              // Find gate outcomes for this message
+              const gates = gateOutcomes.filter(g => g.messageIndex === msg.turnIndex);
+              const gatesText = gates.length > 0 
+                ? gates.map(g => `${g.gateKey} (${g.passed ? "✓" : "✗"})`).join(", ")
+                : "—";
+              
+              // Calculate mood delta (if available)
+              let moodDelta = "—";
+              if (moodTimeline && moodTimeline.snapshots && moodTimeline.snapshots.length > idx) {
+                const current = moodTimeline.snapshots[idx];
+                const previous = idx > 0 ? moodTimeline.snapshots[idx - 1] : null;
+                if (previous) {
+                  const delta = (current.moodPercent || 0) - (previous.moodPercent || 0);
+                  moodDelta = delta > 0 ? `+${delta.toFixed(0)}` : delta.toFixed(0);
+                }
+              }
+              
+              const rarityColor = 
+                msg.rarity === "S+" ? "var(--ok)" :
+                msg.rarity === "S" ? "rgba(46, 229, 157, 0.8)" :
+                msg.rarity === "A" ? "rgba(255, 209, 102, 0.8)" :
+                msg.rarity === "B" ? "rgba(255, 255, 255, 0.6)" :
+                "var(--muted)";
+              
+              row.innerHTML = `
+                <td style="padding: 8px; font-size: 11px; color: var(--muted);">${msg.turnIndex || idx}</td>
+                <td style="padding: 8px; font-size: 11px; color: var(--muted);">${escapeHtml(msg.role || "—")}</td>
+                <td style="padding: 8px; max-width: 300px; word-wrap: break-word;">${escapeHtml((msg.content || "").substring(0, 100))}${(msg.content || "").length > 100 ? "..." : ""}</td>
+                <td style="padding: 8px; font-size: 11px;">${msg.score !== null && msg.score !== undefined ? msg.score : "—"}</td>
+                <td style="padding: 8px; font-size: 11px; color: ${rarityColor};">${escapeHtml(msg.rarity || "—")}</td>
+                <td style="padding: 8px; font-size: 11px; color: var(--muted);">${moodDelta}</td>
+                <td style="padding: 8px; font-size: 11px; color: var(--muted);">${escapeHtml(gatesText)}</td>
+              `;
+              logTableBody.appendChild(row);
+            });
+          } catch (e) {
+            logEmpty.style.display = "block";
+            logTable.style.display = "none";
+            console.error("Error loading session messages:", e);
+          }
         }
 
         function duplicateMission() {
@@ -1383,6 +3259,14 @@
           state.aiStyleTouched = false;
 
           setAiContractTextarea(m.aiContract);
+          
+          // Practice Hub Designer: Copy attraction fields
+          if (hubUI && hubUI.missionIsAttractionSensitiveCheckbox) {
+            hubUI.missionIsAttractionSensitiveCheckbox.checked = m.isAttractionSensitive === true;
+            hubUI.missionTargetRomanticGenderSelect.value = m.targetRomanticGender || "";
+            hubUI.missionTargetGenderField.style.display = 
+              hubUI.missionIsAttractionSensitiveCheckbox.checked ? "block" : "none";
+          }
 
           updateSelectionUI();
           updateMissionPreview();
@@ -1486,6 +3370,57 @@
 
           ui.saveMissionBtn.addEventListener("click", saveMission);
           ui.clearFormBtn.addEventListener("click", clearMissionForm);
+          
+          // Step 7: Mission Monitor event listeners
+          const loadMissionStatsBtn = document.getElementById("loadMissionStatsBtn");
+          const loadMissionTimelineBtn = document.getElementById("loadMissionTimelineBtn");
+          const loadMissionMessagesBtn = document.getElementById("loadMissionMessagesBtn");
+          const statsTimeWindow = document.getElementById("statsTimeWindow");
+          const messageLogSessionSelect = document.getElementById("messageLogSessionSelect");
+          
+          if (loadMissionStatsBtn) {
+            loadMissionStatsBtn.addEventListener("click", () => {
+              if (state.selectedMissionId) {
+                loadMissionStats(state.selectedMissionId);
+              }
+            });
+          }
+          
+          if (statsTimeWindow) {
+            statsTimeWindow.addEventListener("change", () => {
+              if (state.selectedMissionId) {
+                loadMissionStats(state.selectedMissionId);
+              }
+            });
+          }
+          
+          if (loadMissionTimelineBtn) {
+            loadMissionTimelineBtn.addEventListener("click", () => {
+              if (state.selectedMissionId) {
+                loadMissionMoodTimelines(state.selectedMissionId);
+              }
+            });
+          }
+          
+          if (loadMissionMessagesBtn) {
+            loadMissionMessagesBtn.addEventListener("click", () => {
+              if (state.selectedMissionId) {
+                loadMissionSessions(state.selectedMissionId);
+              }
+            });
+          }
+          
+          if (messageLogSessionSelect) {
+            messageLogSessionSelect.addEventListener("change", (e) => {
+              const sessionId = e.target.value;
+              if (sessionId) {
+                loadSessionMessages(sessionId);
+              } else {
+                document.getElementById("messageLogEmpty").style.display = "block";
+                document.getElementById("messageLogTable").style.display = "none";
+              }
+            });
+          }
 
           ui.validateAiContractBtn.addEventListener("click", () => {
             const ok = validateAiContractJson();
@@ -1545,6 +3480,1344 @@
         }
 
         if (document.readyState === "loading") {
+          // Step 7.2: Engine Config state
+          const engineConfigState = {
+            config: null,
+            selectedScoringProfile: null,
+            selectedDynamicsProfile: null,
+            selectedGate: null,
+            selectedHook: null,
+            selectedInsight: null,
+            currentTab: 'scoring',
+            hooks: [],
+            insights: [],
+            triggerStats: null,
+            openings: [],
+            attachments: [],
+            selectedAttachmentMissionId: null,
+          };
+
+          // Step 7.2: Engine Config UI elements
+          const engineConfigUI = {
+            loadBtn: document.getElementById("engineConfigLoadBtn"),
+            saveBtn: document.getElementById("engineConfigSaveBtn"),
+            tabs: document.querySelectorAll(".engineConfigTab"),
+            tabContents: document.querySelectorAll(".engineConfigTabContent"),
+            
+            // Scoring
+            scoringProfilesList: document.getElementById("engineConfigScoringProfilesList"),
+            scoringProfileEditor: document.getElementById("engineConfigScoringProfileEditor"),
+            scoringProfileEditorEmpty: document.getElementById("engineConfigScoringProfileEditorEmpty"),
+            addScoringProfileBtn: document.getElementById("engineConfigAddScoringProfileBtn"),
+            normalizeWeightsBtn: document.getElementById("engineConfigScoringNormalizeWeightsBtn"),
+            weightsSum: document.getElementById("engineConfigScoringWeightsSum"),
+            
+            // Dynamics
+            dynamicsProfilesList: document.getElementById("engineConfigDynamicsProfilesList"),
+            dynamicsProfileEditor: document.getElementById("engineConfigDynamicsProfileEditor"),
+            dynamicsProfileEditorEmpty: document.getElementById("engineConfigDynamicsProfileEditorEmpty"),
+            addDynamicsProfileBtn: document.getElementById("engineConfigAddDynamicsProfileBtn"),
+            dynamicsPreview: document.getElementById("engineConfigDynamicsPreview"),
+            
+            // Gates
+            gatesTableBody: document.getElementById("engineConfigGatesTableBody"),
+            gateEditor: document.getElementById("engineConfigGateEditor"),
+            addGateBtn: document.getElementById("engineConfigAddGateBtn"),
+            
+            // Hooks
+            hooksTableBody: document.getElementById("engineConfigHooksTableBody"),
+            hookEditor: document.getElementById("engineConfigHookEditor"),
+            loadHooksBtn: document.getElementById("engineConfigLoadHooksBtn"),
+            addHookBtn: document.getElementById("engineConfigAddHookBtn"),
+            triggersTableBody: document.getElementById("engineConfigTriggersTableBody"),
+            refreshTriggersBtn: document.getElementById("engineConfigRefreshTriggersBtn"),
+            
+            // Mood
+            moodEmaAlpha: document.getElementById("engineConfigMoodEmaAlpha"),
+            moodBandsList: document.getElementById("engineConfigMoodBandsList"),
+            addMoodBandBtn: document.getElementById("engineConfigMoodAddBandBtn"),
+            
+            // Insights
+            insightsTableBody: document.getElementById("engineConfigInsightsTableBody"),
+            insightsKindFilter: document.getElementById("engineConfigInsightsKindFilter"),
+            loadInsightsBtn: document.getElementById("engineConfigLoadInsightsBtn"),
+            insightDetail: document.getElementById("engineConfigInsightDetail"),
+            
+            // Monitoring
+            monitoringHooksStats: document.getElementById("engineConfigMonitoringHooksStats"),
+            refreshMonitoringBtn: document.getElementById("engineConfigRefreshMonitoringBtn"),
+            
+            // Micro Feedback
+            loadMicroFeedbackBtn: document.getElementById("engineConfigLoadMicroFeedbackBtn"),
+            microFeedbackTableBody: document.getElementById("engineConfigMicroFeedbackTableBody"),
+            
+            // Opening Templates
+            loadOpeningsBtn: document.getElementById("engineConfigLoadOpeningsBtn"),
+            openingsTableBody: document.getElementById("engineConfigOpeningsTableBody"),
+            openingDetail: document.getElementById("engineConfigOpeningDetail"),
+            insightsSubtabs: document.querySelectorAll("[data-insights-subtab]"),
+            
+            // Mission Attachments
+            loadAttachmentsBtn: document.getElementById("engineConfigLoadAttachmentsBtn"),
+            attachmentsCategoryFilter: document.getElementById("engineConfigAttachmentsCategoryFilter"),
+            attachmentsSearchInput: document.getElementById("engineConfigAttachmentsSearchInput"),
+            attachmentsMissionsList: document.getElementById("engineConfigAttachmentsMissionsList"),
+            attachmentsEditor: document.getElementById("engineConfigAttachmentsEditor"),
+            attachmentsEditorEmpty: document.getElementById("engineConfigAttachmentsEditorEmpty"),
+            attachmentsSaveBtn: document.getElementById("engineConfigAttachmentsSaveBtn"),
+            attachmentsResetBtn: document.getElementById("engineConfigAttachmentsResetBtn"),
+            attachmentsScoringProfile: document.getElementById("engineConfigAttachmentsScoringProfile"),
+            attachmentsDynamicsProfile: document.getElementById("engineConfigAttachmentsDynamicsProfile"),
+          };
+          
+
+          // Step 7.2: Engine Config functions
+          async function loadEngineConfig() {
+            try {
+              const res = await apiFetch("/admin/engine-config", { method: "GET" });
+              if (res.ok && res.config) {
+                engineConfigState.config = res.config;
+                showOk("Engine config loaded.");
+                renderEngineConfigTabs();
+              } else {
+                showError("Failed to load engine config: " + (res.error || "Unknown error"));
+              }
+            } catch (e) {
+              showError("Error loading engine config: " + (e?.message || e));
+            }
+          }
+
+          async function saveEngineConfig() {
+            if (!engineConfigState.config) {
+              showError("No config loaded. Load config first.");
+              return;
+            }
+            try {
+              const res = await apiFetch("/admin/engine-config", {
+                method: "PUT",
+                body: JSON.stringify({ config: engineConfigState.config }),
+              });
+              if (res.ok) {
+                showOk("Engine config saved.");
+                engineConfigState.config = res.config; // Update with server response
+              } else {
+                showError("Failed to save engine config: " + (res.error || "Unknown error"));
+              }
+            } catch (e) {
+              showError("Error saving engine config: " + (e?.message || e));
+            }
+          }
+
+          function renderEngineConfigTabs() {
+            if (engineConfigState.currentTab === 'scoring') {
+              renderScoringTab();
+            } else if (engineConfigState.currentTab === 'dynamics') {
+              renderDynamicsTab();
+            } else if (engineConfigState.currentTab === 'gates') {
+              renderGatesTab();
+            } else if (engineConfigState.currentTab === 'hooks') {
+              renderHooksTab();
+            } else if (engineConfigState.currentTab === 'mood') {
+              renderMoodTab();
+            } else if (engineConfigState.currentTab === 'insights') {
+              renderInsightsTab();
+            } else if (engineConfigState.currentTab === 'monitoring') {
+              renderMonitoringTab();
+            } else if (engineConfigState.currentTab === 'attachments') {
+              // Attachments tab doesn't need special rendering, just load if needed
+              if (engineConfigState.attachments.length === 0) {
+                loadMissionAttachments();
+              } else {
+                renderMissionAttachmentsTable();
+              }
+            }
+          }
+
+          function renderScoringTab() {
+            if (!engineConfigState.config) return;
+            const profiles = engineConfigState.config.scoringProfiles || [];
+            engineConfigUI.scoringProfilesList.innerHTML = "";
+            for (const profile of profiles) {
+              const el = document.createElement("div");
+              el.className = "item";
+              if (engineConfigState.selectedScoringProfile === profile.code) {
+                el.classList.add("active");
+              }
+              el.innerHTML = `
+                <div class="itemTitle">
+                  <span>${escapeHtml(profile.name || profile.code)}</span>
+                  <span style="font-size: 11px; color: var(--muted);">${profile.active ? "✓" : "✗"}</span>
+                </div>
+                <div class="itemMeta">
+                  <span>${escapeHtml(profile.code)}</span>
+                </div>
+              `;
+              el.addEventListener("click", () => selectScoringProfile(profile.code));
+              engineConfigUI.scoringProfilesList.appendChild(el);
+            }
+          }
+
+          function selectScoringProfile(code) {
+            if (!engineConfigState.config) return;
+            const profile = engineConfigState.config.scoringProfiles.find(p => p.code === code);
+            if (!profile) return;
+            engineConfigState.selectedScoringProfile = code;
+            engineConfigUI.scoringProfileEditor.style.display = "block";
+            engineConfigUI.scoringProfileEditorEmpty.style.display = "none";
+            
+            // Populate form
+            document.getElementById("engineConfigScoringCode").value = profile.code || "";
+            document.getElementById("engineConfigScoringName").value = profile.name || "";
+            document.getElementById("engineConfigScoringDescription").value = profile.description || "";
+            document.getElementById("engineConfigScoringActive").checked = profile.active !== false;
+            
+            const w = profile.traitWeights || {};
+            document.getElementById("engineConfigScoringWeightConfidence").value = w.confidence || 0;
+            document.getElementById("engineConfigScoringWeightClarity").value = w.clarity || 0;
+            document.getElementById("engineConfigScoringWeightHumor").value = w.humor || 0;
+            document.getElementById("engineConfigScoringWeightTensionControl").value = w.tensionControl || 0;
+            document.getElementById("engineConfigScoringWeightEmotionalWarmth").value = w.emotionalWarmth || 0;
+            document.getElementById("engineConfigScoringWeightDominance").value = w.dominance || 0;
+            updateWeightsSum();
+            
+            const lt = profile.lengthThresholds || {};
+            document.getElementById("engineConfigScoringLengthEmpty").value = lt.empty || 10;
+            document.getElementById("engineConfigScoringLengthVeryShort").value = lt.veryShort || 35;
+            document.getElementById("engineConfigScoringLengthShort").value = lt.short || 55;
+            document.getElementById("engineConfigScoringLengthMedium").value = lt.medium || 75;
+            document.getElementById("engineConfigScoringLengthLong").value = lt.long || 82;
+            document.getElementById("engineConfigScoringLengthVeryLong").value = lt.veryLong || 70;
+            
+            const pb = profile.punctuationBonuses || {};
+            document.getElementById("engineConfigScoringPunctQuestionPerMark").value = pb.questionPerMark || 2;
+            document.getElementById("engineConfigScoringPunctQuestionMax").value = pb.questionMax || 10;
+            document.getElementById("engineConfigScoringPunctExclamationPerMark").value = pb.exclamationPerMark || 3;
+            document.getElementById("engineConfigScoringPunctExclamationMax").value = pb.exclamationMax || 12;
+            
+            const pos = profile.positionBonuses || [0, 2, 4, 5];
+            document.getElementById("engineConfigScoringPosition0").value = pos[0] || 0;
+            document.getElementById("engineConfigScoringPosition1").value = pos[1] || 2;
+            document.getElementById("engineConfigScoringPosition2").value = pos[2] || 4;
+            document.getElementById("engineConfigScoringPosition3").value = pos[3] || 5;
+            
+            const rt = profile.rarityThresholds || {};
+            document.getElementById("engineConfigScoringRaritySPlus").value = rt.sPlus || 92;
+            document.getElementById("engineConfigScoringRarityS").value = rt.s || 84;
+            document.getElementById("engineConfigScoringRarityA").value = rt.a || 72;
+            document.getElementById("engineConfigScoringRarityB").value = rt.b || 58;
+            
+            const xp = profile.xpMultipliers || {};
+            document.getElementById("engineConfigScoringXpSPlus").value = xp.sPlus || 1.8;
+            document.getElementById("engineConfigScoringXpS").value = xp.s || 1.5;
+            document.getElementById("engineConfigScoringXpA").value = xp.a || 1.25;
+            document.getElementById("engineConfigScoringXpB").value = xp.b || 1.0;
+            document.getElementById("engineConfigScoringXpC").value = xp.c || 0.8;
+            
+            const coins = profile.coinsMultipliers || {};
+            document.getElementById("engineConfigScoringCoinsSPlus").value = coins.sPlus || 1.7;
+            document.getElementById("engineConfigScoringCoinsS").value = coins.s || 1.4;
+            document.getElementById("engineConfigScoringCoinsA").value = coins.a || 1.2;
+            document.getElementById("engineConfigScoringCoinsB").value = coins.b || 1.0;
+            document.getElementById("engineConfigScoringCoinsC").value = coins.c || 0.7;
+            
+            document.getElementById("engineConfigScoringTraitEmaAlpha").value = profile.traitEmaAlpha || 0.3;
+            document.getElementById("engineConfigScoringStrictMode").checked = profile.strictMode === true;
+            document.getElementById("engineConfigScoringSoftCoachingMode").checked = profile.softCoachingMode === true;
+            
+            renderScoringTab(); // Re-render to highlight selected
+          }
+
+          function updateWeightsSum() {
+            const sum = 
+              parseFloat(document.getElementById("engineConfigScoringWeightConfidence").value || 0) +
+              parseFloat(document.getElementById("engineConfigScoringWeightClarity").value || 0) +
+              parseFloat(document.getElementById("engineConfigScoringWeightHumor").value || 0) +
+              parseFloat(document.getElementById("engineConfigScoringWeightTensionControl").value || 0) +
+              parseFloat(document.getElementById("engineConfigScoringWeightEmotionalWarmth").value || 0) +
+              parseFloat(document.getElementById("engineConfigScoringWeightDominance").value || 0);
+            engineConfigUI.weightsSum.textContent = `Sum: ${sum.toFixed(2)} ${Math.abs(sum - 1.0) < 0.1 ? "✓" : "⚠ (should be ~1.0)"}`;
+            engineConfigUI.weightsSum.style.color = Math.abs(sum - 1.0) < 0.1 ? "var(--ok)" : "var(--warn)";
+          }
+
+          function normalizeWeights() {
+            const sum = 
+              parseFloat(document.getElementById("engineConfigScoringWeightConfidence").value || 0) +
+              parseFloat(document.getElementById("engineConfigScoringWeightClarity").value || 0) +
+              parseFloat(document.getElementById("engineConfigScoringWeightHumor").value || 0) +
+              parseFloat(document.getElementById("engineConfigScoringWeightTensionControl").value || 0) +
+              parseFloat(document.getElementById("engineConfigScoringWeightEmotionalWarmth").value || 0) +
+              parseFloat(document.getElementById("engineConfigScoringWeightDominance").value || 0);
+            if (sum === 0) {
+              showError("Cannot normalize: all weights are zero");
+              return;
+            }
+            document.getElementById("engineConfigScoringWeightConfidence").value = (parseFloat(document.getElementById("engineConfigScoringWeightConfidence").value || 0) / sum).toFixed(3);
+            document.getElementById("engineConfigScoringWeightClarity").value = (parseFloat(document.getElementById("engineConfigScoringWeightClarity").value || 0) / sum).toFixed(3);
+            document.getElementById("engineConfigScoringWeightHumor").value = (parseFloat(document.getElementById("engineConfigScoringWeightHumor").value || 0) / sum).toFixed(3);
+            document.getElementById("engineConfigScoringWeightTensionControl").value = (parseFloat(document.getElementById("engineConfigScoringWeightTensionControl").value || 0) / sum).toFixed(3);
+            document.getElementById("engineConfigScoringWeightEmotionalWarmth").value = (parseFloat(document.getElementById("engineConfigScoringWeightEmotionalWarmth").value || 0) / sum).toFixed(3);
+            document.getElementById("engineConfigScoringWeightDominance").value = (parseFloat(document.getElementById("engineConfigScoringWeightDominance").value || 0) / sum).toFixed(3);
+            updateWeightsSum();
+            showOk("Weights normalized to sum to 1.0");
+          }
+
+          function saveScoringProfile() {
+            if (!engineConfigState.config || !engineConfigState.selectedScoringProfile) return;
+            const profile = engineConfigState.config.scoringProfiles.find(p => p.code === engineConfigState.selectedScoringProfile);
+            if (!profile) return;
+            
+            profile.name = document.getElementById("engineConfigScoringName").value.trim();
+            profile.description = document.getElementById("engineConfigScoringDescription").value.trim();
+            profile.active = document.getElementById("engineConfigScoringActive").checked;
+            
+            profile.traitWeights = {
+              confidence: parseFloat(document.getElementById("engineConfigScoringWeightConfidence").value || 0),
+              clarity: parseFloat(document.getElementById("engineConfigScoringWeightClarity").value || 0),
+              humor: parseFloat(document.getElementById("engineConfigScoringWeightHumor").value || 0),
+              tensionControl: parseFloat(document.getElementById("engineConfigScoringWeightTensionControl").value || 0),
+              emotionalWarmth: parseFloat(document.getElementById("engineConfigScoringWeightEmotionalWarmth").value || 0),
+              dominance: parseFloat(document.getElementById("engineConfigScoringWeightDominance").value || 0),
+            };
+            
+            profile.lengthThresholds = {
+              empty: parseInt(document.getElementById("engineConfigScoringLengthEmpty").value || 10),
+              veryShort: parseInt(document.getElementById("engineConfigScoringLengthVeryShort").value || 35),
+              short: parseInt(document.getElementById("engineConfigScoringLengthShort").value || 55),
+              medium: parseInt(document.getElementById("engineConfigScoringLengthMedium").value || 75),
+              long: parseInt(document.getElementById("engineConfigScoringLengthLong").value || 82),
+              veryLong: parseInt(document.getElementById("engineConfigScoringLengthVeryLong").value || 70),
+            };
+            
+            profile.punctuationBonuses = {
+              questionPerMark: parseInt(document.getElementById("engineConfigScoringPunctQuestionPerMark").value || 2),
+              questionMax: parseInt(document.getElementById("engineConfigScoringPunctQuestionMax").value || 10),
+              exclamationPerMark: parseInt(document.getElementById("engineConfigScoringPunctExclamationPerMark").value || 3),
+              exclamationMax: parseInt(document.getElementById("engineConfigScoringPunctExclamationMax").value || 12),
+            };
+            
+            profile.positionBonuses = [
+              parseInt(document.getElementById("engineConfigScoringPosition0").value || 0),
+              parseInt(document.getElementById("engineConfigScoringPosition1").value || 2),
+              parseInt(document.getElementById("engineConfigScoringPosition2").value || 4),
+              parseInt(document.getElementById("engineConfigScoringPosition3").value || 5),
+            ];
+            
+            profile.rarityThresholds = {
+              sPlus: parseInt(document.getElementById("engineConfigScoringRaritySPlus").value || 92),
+              s: parseInt(document.getElementById("engineConfigScoringRarityS").value || 84),
+              a: parseInt(document.getElementById("engineConfigScoringRarityA").value || 72),
+              b: parseInt(document.getElementById("engineConfigScoringRarityB").value || 58),
+              c: 0,
+            };
+            
+            profile.xpMultipliers = {
+              sPlus: parseFloat(document.getElementById("engineConfigScoringXpSPlus").value || 1.8),
+              s: parseFloat(document.getElementById("engineConfigScoringXpS").value || 1.5),
+              a: parseFloat(document.getElementById("engineConfigScoringXpA").value || 1.25),
+              b: parseFloat(document.getElementById("engineConfigScoringXpB").value || 1.0),
+              c: parseFloat(document.getElementById("engineConfigScoringXpC").value || 0.8),
+            };
+            
+            profile.coinsMultipliers = {
+              sPlus: parseFloat(document.getElementById("engineConfigScoringCoinsSPlus").value || 1.7),
+              s: parseFloat(document.getElementById("engineConfigScoringCoinsS").value || 1.4),
+              a: parseFloat(document.getElementById("engineConfigScoringCoinsA").value || 1.2),
+              b: parseFloat(document.getElementById("engineConfigScoringCoinsB").value || 1.0),
+              c: parseFloat(document.getElementById("engineConfigScoringCoinsC").value || 0.7),
+            };
+            
+            profile.traitEmaAlpha = parseFloat(document.getElementById("engineConfigScoringTraitEmaAlpha").value || 0.3);
+            profile.strictMode = document.getElementById("engineConfigScoringStrictMode").checked;
+            profile.softCoachingMode = document.getElementById("engineConfigScoringSoftCoachingMode").checked;
+            
+            showOk("Scoring profile updated (click 'Save Config' to persist)");
+          }
+
+          async function loadMicroFeedback() {
+            try {
+              const res = await apiFetch("/admin/prompts/micro-feedback", { method: "GET" });
+              if (res.ok && res.feedback) {
+                engineConfigUI.microFeedbackTableBody.innerHTML = "";
+                for (const item of res.feedback) {
+                  const row = document.createElement("tr");
+                  row.style.borderBottom = "1px solid var(--line)";
+                  row.innerHTML = `
+                    <td style="padding: 8px; font-size: 11px; color: var(--muted);">${escapeHtml(item.rarity || "")}</td>
+                    <td style="padding: 8px; font-size: 11px; color: var(--muted);">${escapeHtml(item.scoreRange || "")}</td>
+                    <td style="padding: 8px;">${escapeHtml(item.message || "")}</td>
+                  `;
+                  engineConfigUI.microFeedbackTableBody.appendChild(row);
+                }
+                showOk("Micro feedback loaded.");
+              } else {
+                showError("Failed to load micro feedback: " + (res.error || "Unknown error"));
+              }
+            } catch (e) {
+              showError("Error loading micro feedback: " + (e?.message || e));
+            }
+          }
+
+          function renderDynamicsTab() {
+            if (!engineConfigState.config) return;
+            const profiles = engineConfigState.config.dynamicsProfiles || [];
+            engineConfigUI.dynamicsProfilesList.innerHTML = "";
+            for (const profile of profiles) {
+              const el = document.createElement("div");
+              el.className = "item";
+              if (engineConfigState.selectedDynamicsProfile === profile.code) {
+                el.classList.add("active");
+              }
+              el.innerHTML = `
+                <div class="itemTitle">
+                  <span>${escapeHtml(profile.name || profile.code)}</span>
+                  <span style="font-size: 11px; color: var(--muted);">${profile.active ? "✓" : "✗"}</span>
+                </div>
+                <div class="itemMeta">
+                  <span>${escapeHtml(profile.code)}</span>
+                </div>
+              `;
+              el.addEventListener("click", () => selectDynamicsProfile(profile.code));
+              engineConfigUI.dynamicsProfilesList.appendChild(el);
+            }
+          }
+
+          function selectDynamicsProfile(code) {
+            if (!engineConfigState.config) return;
+            const profile = engineConfigState.config.dynamicsProfiles.find(p => p.code === code);
+            if (!profile) return;
+            engineConfigState.selectedDynamicsProfile = code;
+            engineConfigUI.dynamicsProfileEditor.style.display = "block";
+            engineConfigUI.dynamicsProfileEditorEmpty.style.display = "none";
+            
+            document.getElementById("engineConfigDynamicsCode").value = profile.code || "";
+            document.getElementById("engineConfigDynamicsName").value = profile.name || "";
+            document.getElementById("engineConfigDynamicsDescription").value = profile.description || "";
+            document.getElementById("engineConfigDynamicsActive").checked = profile.active !== false;
+            
+            document.getElementById("engineConfigDynamicsPace").value = profile.pace || 50;
+            document.getElementById("engineConfigDynamicsEmojiDensity").value = profile.emojiDensity || 30;
+            document.getElementById("engineConfigDynamicsFlirtiveness").value = profile.flirtiveness || 40;
+            document.getElementById("engineConfigDynamicsHostility").value = profile.hostility || 10;
+            document.getElementById("engineConfigDynamicsDryness").value = profile.dryness || 40;
+            document.getElementById("engineConfigDynamicsVulnerability").value = profile.vulnerability || 50;
+            document.getElementById("engineConfigDynamicsEscalationSpeed").value = profile.escalationSpeed || 50;
+            document.getElementById("engineConfigDynamicsRandomness").value = profile.randomness || 25;
+            
+            updateDynamicsValues();
+            updateDynamicsPreview();
+            renderDynamicsTab();
+          }
+
+          function updateDynamicsValues() {
+            document.getElementById("engineConfigDynamicsPaceValue").textContent = document.getElementById("engineConfigDynamicsPace").value;
+            document.getElementById("engineConfigDynamicsEmojiDensityValue").textContent = document.getElementById("engineConfigDynamicsEmojiDensity").value;
+            document.getElementById("engineConfigDynamicsFlirtivenessValue").textContent = document.getElementById("engineConfigDynamicsFlirtiveness").value;
+            document.getElementById("engineConfigDynamicsHostilityValue").textContent = document.getElementById("engineConfigDynamicsHostility").value;
+            document.getElementById("engineConfigDynamicsDrynessValue").textContent = document.getElementById("engineConfigDynamicsDryness").value;
+            document.getElementById("engineConfigDynamicsVulnerabilityValue").textContent = document.getElementById("engineConfigDynamicsVulnerability").value;
+            document.getElementById("engineConfigDynamicsEscalationSpeedValue").textContent = document.getElementById("engineConfigDynamicsEscalationSpeed").value;
+            document.getElementById("engineConfigDynamicsRandomnessValue").textContent = document.getElementById("engineConfigDynamicsRandomness").value;
+            updateDynamicsPreview();
+          }
+
+          function updateDynamicsPreview() {
+            const pace = parseInt(document.getElementById("engineConfigDynamicsPace").value || 50);
+            const flirt = parseInt(document.getElementById("engineConfigDynamicsFlirtiveness").value || 40);
+            const emoji = parseInt(document.getElementById("engineConfigDynamicsEmojiDensity").value || 30);
+            const hostility = parseInt(document.getElementById("engineConfigDynamicsHostility").value || 10);
+            const randomness = parseInt(document.getElementById("engineConfigDynamicsRandomness").value || 25);
+            
+            const parts = [];
+            if (pace >= 70) parts.push("fast");
+            else if (pace <= 30) parts.push("slow");
+            if (flirt >= 70) parts.push("highly flirty");
+            else if (flirt <= 25) parts.push("platonic");
+            if (emoji >= 60) parts.push("high emoji");
+            else if (emoji <= 20) parts.push("low emoji");
+            if (hostility >= 60) parts.push("high resistance");
+            else if (hostility <= 15) parts.push("friendly");
+            if (randomness >= 60) parts.push("unpredictable");
+            else if (randomness <= 30) parts.push("predictable");
+            
+            engineConfigUI.dynamicsPreview.textContent = "Preview: This profile is " + (parts.length > 0 ? parts.join(", ") : "balanced");
+          }
+
+          function saveDynamicsProfile() {
+            if (!engineConfigState.config || !engineConfigState.selectedDynamicsProfile) return;
+            const profile = engineConfigState.config.dynamicsProfiles.find(p => p.code === engineConfigState.selectedDynamicsProfile);
+            if (!profile) return;
+            
+            profile.name = document.getElementById("engineConfigDynamicsName").value.trim();
+            profile.description = document.getElementById("engineConfigDynamicsDescription").value.trim();
+            profile.active = document.getElementById("engineConfigDynamicsActive").checked;
+            profile.pace = parseInt(document.getElementById("engineConfigDynamicsPace").value || 50);
+            profile.emojiDensity = parseInt(document.getElementById("engineConfigDynamicsEmojiDensity").value || 30);
+            profile.flirtiveness = parseInt(document.getElementById("engineConfigDynamicsFlirtiveness").value || 40);
+            profile.hostility = parseInt(document.getElementById("engineConfigDynamicsHostility").value || 10);
+            profile.dryness = parseInt(document.getElementById("engineConfigDynamicsDryness").value || 40);
+            profile.vulnerability = parseInt(document.getElementById("engineConfigDynamicsVulnerability").value || 50);
+            profile.escalationSpeed = parseInt(document.getElementById("engineConfigDynamicsEscalationSpeed").value || 50);
+            profile.randomness = parseInt(document.getElementById("engineConfigDynamicsRandomness").value || 25);
+            
+            showOk("Dynamics profile updated (click 'Save Config' to persist)");
+          }
+
+          function renderGatesTab() {
+            if (!engineConfigState.config) return;
+            const gates = engineConfigState.config.gates || [];
+            engineConfigUI.gatesTableBody.innerHTML = "";
+            for (const gate of gates) {
+              const row = document.createElement("tr");
+              row.style.borderBottom = "1px solid var(--line)";
+              const thresholds = [];
+              if (gate.minMessages !== undefined) thresholds.push(`Min Messages: ${gate.minMessages}`);
+              if (gate.successThreshold !== undefined) thresholds.push(`Success: ${gate.successThreshold}`);
+              if (gate.failFloor !== undefined) thresholds.push(`Fail Floor: ${gate.failFloor}`);
+              row.innerHTML = `
+                <td style="padding: 8px;">${escapeHtml(gate.key)}</td>
+                <td style="padding: 8px;">${escapeHtml(gate.description || "")}</td>
+                <td style="padding: 8px; font-size: 11px; color: var(--muted);">${thresholds.join(", ") || "—"}</td>
+                <td style="padding: 8px;">${gate.active ? "✓" : "✗"}</td>
+                <td style="padding: 8px;">
+                  <button class="btn" style="padding: 4px 8px; font-size: 11px;" onclick="selectGate('${gate.key}')">Edit</button>
+                </td>
+              `;
+              engineConfigUI.gatesTableBody.appendChild(row);
+            }
+          }
+
+          window.selectGate = function(key) {
+            if (!engineConfigState.config) return;
+            const gate = engineConfigState.config.gates.find(g => g.key === key);
+            if (!gate) return;
+            engineConfigState.selectedGate = key;
+            engineConfigUI.gateEditor.style.display = "block";
+            
+            document.getElementById("engineConfigGateKey").value = gate.key || "";
+            document.getElementById("engineConfigGateDescription").value = gate.description || "";
+            document.getElementById("engineConfigGateActive").checked = gate.active !== false;
+            document.getElementById("engineConfigGateMinMessages").value = gate.minMessages || "";
+            document.getElementById("engineConfigGateSuccessThreshold").value = gate.successThreshold || "";
+            document.getElementById("engineConfigGateFailFloor").value = gate.failFloor || "";
+          };
+
+          function saveGate() {
+            if (!engineConfigState.config || !engineConfigState.selectedGate) return;
+            const gate = engineConfigState.config.gates.find(g => g.key === engineConfigState.selectedGate);
+            if (!gate) return;
+            
+            gate.description = document.getElementById("engineConfigGateDescription").value.trim();
+            gate.active = document.getElementById("engineConfigGateActive").checked;
+            const minMsg = document.getElementById("engineConfigGateMinMessages").value.trim();
+            gate.minMessages = minMsg ? parseInt(minMsg) : undefined;
+            const successThresh = document.getElementById("engineConfigGateSuccessThreshold").value.trim();
+            gate.successThreshold = successThresh ? parseInt(successThresh) : undefined;
+            const failFloor = document.getElementById("engineConfigGateFailFloor").value.trim();
+            gate.failFloor = failFloor ? parseInt(failFloor) : undefined;
+            
+            showOk("Gate updated (click 'Save Config' to persist)");
+            renderGatesTab();
+          }
+
+          async function loadHooks() {
+            try {
+              const res = await apiFetch("/admin/hooks", { method: "GET" });
+              if (res.ok && res.hooks) {
+                engineConfigState.hooks = res.hooks;
+                renderHooksTable();
+                showOk("Hooks loaded.");
+              } else {
+                showError("Failed to load hooks: " + (res.error || "Unknown error"));
+              }
+            } catch (e) {
+              showError("Error loading hooks: " + (e?.message || e));
+            }
+          }
+
+          function renderHooksTable() {
+            engineConfigUI.hooksTableBody.innerHTML = "";
+            for (const hook of engineConfigState.hooks) {
+              const row = document.createElement("tr");
+              row.style.borderBottom = "1px solid var(--line)";
+              row.innerHTML = `
+                <td style="padding: 8px;">${escapeHtml(hook.name || "")}</td>
+                <td style="padding: 8px;">${escapeHtml(hook.type || "")}</td>
+                <td style="padding: 8px;">${hook.priority || 50}</td>
+                <td style="padding: 8px;">${hook.isEnabled ? "✓" : "✗"}</td>
+                <td style="padding: 8px; font-size: 11px; color: var(--muted);">${(hook.tags || []).join(", ") || "—"}</td>
+                <td style="padding: 8px;">
+                  <button class="btn" style="padding: 4px 8px; font-size: 11px;" onclick="selectHook('${hook.id}')">Edit</button>
+                </td>
+              `;
+              engineConfigUI.hooksTableBody.appendChild(row);
+            }
+          }
+
+          window.selectHook = function(id) {
+            const hook = engineConfigState.hooks.find(h => h.id === id);
+            if (!hook) return;
+            engineConfigState.selectedHook = id;
+            engineConfigUI.hookEditor.style.display = "block";
+            
+            document.getElementById("engineConfigHookName").value = hook.name || "";
+            document.getElementById("engineConfigHookType").value = hook.type || "POSITIVE";
+            document.getElementById("engineConfigHookPriority").value = hook.priority || 50;
+            document.getElementById("engineConfigHookTextTemplate").value = hook.textTemplate || "";
+            document.getElementById("engineConfigHookConditionsJson").value = JSON.stringify(hook.conditionsJson || {}, null, 2);
+            document.getElementById("engineConfigHookCategory").value = hook.category || "";
+            document.getElementById("engineConfigHookTags").value = (hook.tags || []).join(", ");
+            document.getElementById("engineConfigHookEnabled").checked = hook.isEnabled !== false;
+          };
+
+          async function saveHook() {
+            if (!engineConfigState.selectedHook) {
+              // Create new
+              try {
+                const hookData = {
+                  name: document.getElementById("engineConfigHookName").value.trim(),
+                  type: document.getElementById("engineConfigHookType").value,
+                  priority: parseInt(document.getElementById("engineConfigHookPriority").value || 50),
+                  textTemplate: document.getElementById("engineConfigHookTextTemplate").value.trim(),
+                  conditionsJson: JSON.parse(document.getElementById("engineConfigHookConditionsJson").value || "{}"),
+                  category: document.getElementById("engineConfigHookCategory").value.trim(),
+                  tags: document.getElementById("engineConfigHookTags").value.split(",").map(s => s.trim()).filter(s => s),
+                  isEnabled: document.getElementById("engineConfigHookEnabled").checked,
+                };
+                const res = await apiFetch("/admin/hooks", {
+                  method: "POST",
+                  body: JSON.stringify(hookData),
+                });
+                if (res.ok) {
+                  showOk("Hook created.");
+                  await loadHooks();
+                } else {
+                  showError("Failed to create hook: " + (res.error || "Unknown error"));
+                }
+              } catch (e) {
+                showError("Error creating hook: " + (e?.message || e));
+              }
+            } else {
+              // Update existing
+              try {
+                const hookData = {
+                  name: document.getElementById("engineConfigHookName").value.trim(),
+                  type: document.getElementById("engineConfigHookType").value,
+                  priority: parseInt(document.getElementById("engineConfigHookPriority").value || 50),
+                  textTemplate: document.getElementById("engineConfigHookTextTemplate").value.trim(),
+                  conditionsJson: JSON.parse(document.getElementById("engineConfigHookConditionsJson").value || "{}"),
+                  category: document.getElementById("engineConfigHookCategory").value.trim(),
+                  tags: document.getElementById("engineConfigHookTags").value.split(",").map(s => s.trim()).filter(s => s),
+                  isEnabled: document.getElementById("engineConfigHookEnabled").checked,
+                };
+                const res = await apiFetch(`/admin/hooks/${engineConfigState.selectedHook}`, {
+                  method: "PUT",
+                  body: JSON.stringify(hookData),
+                });
+                if (res.ok) {
+                  showOk("Hook updated.");
+                  await loadHooks();
+                } else {
+                  showError("Failed to update hook: " + (res.error || "Unknown error"));
+                }
+              } catch (e) {
+                showError("Error updating hook: " + (e?.message || e));
+              }
+            }
+          }
+
+          async function loadTriggerStats() {
+            try {
+              const res = await apiFetch("/admin/hooks/triggers/stats?days=7", { method: "GET" });
+              if (res.ok && res.stats) {
+                engineConfigState.triggerStats = res.stats;
+                renderTriggerStats();
+                showOk("Trigger stats loaded.");
+              } else {
+                showError("Failed to load trigger stats: " + (res.error || "Unknown error"));
+              }
+            } catch (e) {
+              showError("Error loading trigger stats: " + (e?.message || e));
+            }
+          }
+
+          function renderTriggerStats() {
+            engineConfigUI.triggersTableBody.innerHTML = "";
+            const stats = engineConfigState.triggerStats || [];
+            for (const stat of stats) {
+              const row = document.createElement("tr");
+              row.style.borderBottom = "1px solid var(--line)";
+              row.innerHTML = `
+                <td style="padding: 8px;">${escapeHtml(stat.hookName || "Unknown")}</td>
+                <td style="padding: 8px;">${escapeHtml(stat.hookType || "")}</td>
+                <td style="padding: 8px;">${stat.triggerCount || 0}</td>
+              `;
+              engineConfigUI.triggersTableBody.appendChild(row);
+            }
+          }
+
+          function renderMoodTab() {
+            if (!engineConfigState.config) return;
+            const mood = engineConfigState.config.mood || {};
+            
+            document.getElementById("engineConfigMoodEmaAlpha").value = mood.emaAlpha || 0.35;
+            
+            const thresholds = mood.moodStateThresholds || {};
+            const flow = thresholds.flow || {};
+            document.getElementById("engineConfigMoodFlowMinScore").value = flow.minScore || 80;
+            document.getElementById("engineConfigMoodFlowMinFlow").value = flow.minFlow || 70;
+            document.getElementById("engineConfigMoodFlowMaxTension").value = flow.maxTension || 40;
+            
+            const tense = thresholds.tense || {};
+            document.getElementById("engineConfigMoodTenseMinTension").value = tense.minTension || 70;
+            const orLowScore = tense.orLowScore || {};
+            document.getElementById("engineConfigMoodTenseOrMaxScore").value = orLowScore.maxScore || 50;
+            document.getElementById("engineConfigMoodTenseOrMinTension").value = orLowScore.minTension || 50;
+            
+            const warm = thresholds.warm || {};
+            document.getElementById("engineConfigMoodWarmMinScore").value = warm.minScore || 60;
+            document.getElementById("engineConfigMoodWarmMaxScore").value = warm.maxScore || 80;
+            document.getElementById("engineConfigMoodWarmMinWarmth").value = warm.minWarmth || 50;
+            
+            const cold = thresholds.cold || {};
+            document.getElementById("engineConfigMoodColdMaxScore").value = cold.maxScore || 30;
+            document.getElementById("engineConfigMoodColdMaxWarmth").value = cold.maxWarmth || 40;
+            
+            // Render bands
+            const bands = mood.bands || [];
+            engineConfigUI.moodBandsList.innerHTML = "";
+            for (let i = 0; i < bands.length; i++) {
+              const band = bands[i];
+              const div = document.createElement("div");
+              div.style.display = "flex";
+              div.style.gap = "8px";
+              div.style.marginBottom = "8px";
+              div.style.alignItems = "center";
+              div.innerHTML = `
+                <input type="text" id="engineConfigMoodBandKey${i}" value="${escapeHtml(band.key || "")}" placeholder="Key" style="flex: 1;" />
+                <input type="number" id="engineConfigMoodBandMin${i}" value="${band.minPercent || 0}" min="0" max="100" placeholder="Min %" />
+                <input type="number" id="engineConfigMoodBandMax${i}" value="${band.maxPercent || 100}" min="0" max="100" placeholder="Max %" />
+                <button class="btn" style="padding: 4px 8px; font-size: 11px;" onclick="removeMoodBand(${i})">Remove</button>
+              `;
+              engineConfigUI.moodBandsList.appendChild(div);
+            }
+            
+            const statePolicy = engineConfigState.config.statePolicy || {};
+            document.getElementById("engineConfigStatePolicyMinMessages").value = statePolicy.minMessagesForVerdict || 3;
+            document.getElementById("engineConfigStatePolicyFailOnThreeCritical").checked = statePolicy.failOnThreeCriticalMessages === true;
+            document.getElementById("engineConfigStatePolicyAllowRecovery").checked = statePolicy.allowRecoveryAfterFailGate !== false;
+          }
+
+          window.removeMoodBand = function(index) {
+            if (!engineConfigState.config || !engineConfigState.config.mood) return;
+            engineConfigState.config.mood.bands = engineConfigState.config.mood.bands || [];
+            engineConfigState.config.mood.bands.splice(index, 1);
+            renderMoodTab();
+          };
+
+          function addMoodBand() {
+            if (!engineConfigState.config) return;
+            if (!engineConfigState.config.mood) {
+              engineConfigState.config.mood = { bands: [] };
+            }
+            engineConfigState.config.mood.bands = engineConfigState.config.mood.bands || [];
+            engineConfigState.config.mood.bands.push({ key: "NEW_BAND", minPercent: 0, maxPercent: 100 });
+            renderMoodTab();
+          }
+
+          function saveMoodConfig() {
+            if (!engineConfigState.config) return;
+            if (!engineConfigState.config.mood) {
+              engineConfigState.config.mood = {};
+            }
+            
+            engineConfigState.config.mood.emaAlpha = parseFloat(document.getElementById("engineConfigMoodEmaAlpha").value || 0.35);
+            
+            engineConfigState.config.mood.moodStateThresholds = {
+              flow: {
+                minScore: parseInt(document.getElementById("engineConfigMoodFlowMinScore").value || 80),
+                minFlow: parseInt(document.getElementById("engineConfigMoodFlowMinFlow").value || 70),
+                maxTension: parseInt(document.getElementById("engineConfigMoodFlowMaxTension").value || 40),
+              },
+              tense: {
+                minTension: parseInt(document.getElementById("engineConfigMoodTenseMinTension").value || 70),
+                orLowScore: {
+                  maxScore: parseInt(document.getElementById("engineConfigMoodTenseOrMaxScore").value || 50),
+                  minTension: parseInt(document.getElementById("engineConfigMoodTenseOrMinTension").value || 50),
+                },
+              },
+              warm: {
+                minScore: parseInt(document.getElementById("engineConfigMoodWarmMinScore").value || 60),
+                maxScore: parseInt(document.getElementById("engineConfigMoodWarmMaxScore").value || 80),
+                minWarmth: parseInt(document.getElementById("engineConfigMoodWarmMinWarmth").value || 50),
+              },
+              cold: {
+                maxScore: parseInt(document.getElementById("engineConfigMoodColdMaxScore").value || 30),
+                maxWarmth: parseInt(document.getElementById("engineConfigMoodColdMaxWarmth").value || 40),
+              },
+            };
+            
+            // Save bands
+            const bands = [];
+            const bandDivs = engineConfigUI.moodBandsList.querySelectorAll("div");
+            for (let i = 0; i < bandDivs.length; i++) {
+              const key = document.getElementById(`engineConfigMoodBandKey${i}`)?.value.trim();
+              const min = parseInt(document.getElementById(`engineConfigMoodBandMin${i}`)?.value || 0);
+              const max = parseInt(document.getElementById(`engineConfigMoodBandMax${i}`)?.value || 100);
+              if (key) {
+                bands.push({ key, minPercent: min, maxPercent: max });
+              }
+            }
+            engineConfigState.config.mood.bands = bands;
+            
+            if (!engineConfigState.config.statePolicy) {
+              engineConfigState.config.statePolicy = {};
+            }
+            engineConfigState.config.statePolicy.minMessagesForVerdict = parseInt(document.getElementById("engineConfigStatePolicyMinMessages").value || 3);
+            engineConfigState.config.statePolicy.failOnThreeCriticalMessages = document.getElementById("engineConfigStatePolicyFailOnThreeCritical").checked;
+            engineConfigState.config.statePolicy.allowRecoveryAfterFailGate = document.getElementById("engineConfigStatePolicyAllowRecovery").checked;
+            
+            showOk("Mood config updated (click 'Save Config' to persist)");
+          }
+
+          async function loadInsights() {
+            try {
+              const kind = engineConfigUI.insightsKindFilter.value;
+              const url = kind ? `/admin/insights/catalog?kind=${kind}` : "/admin/insights/catalog";
+              const res = await apiFetch(url, { method: "GET" });
+              if (res.ok && res.templates) {
+                engineConfigState.insights = res.templates;
+                renderInsightsTable();
+                showOk("Insights loaded.");
+              } else {
+                showError("Failed to load insights: " + (res.error || "Unknown error"));
+              }
+            } catch (e) {
+              showError("Error loading insights: " + (e?.message || e));
+            }
+          }
+
+          function renderInsightsTable() {
+            engineConfigUI.insightsTableBody.innerHTML = "";
+            for (const insight of engineConfigState.insights) {
+              const row = document.createElement("tr");
+              row.style.borderBottom = "1px solid var(--line)";
+              row.style.cursor = "pointer";
+              const requires = insight.requires || {};
+              const requiresStr = [];
+              if (requires.gateKey) requiresStr.push(`Gate: ${requires.gateKey}`);
+              if (requires.hookKey) requiresStr.push(`Hook: ${requires.hookKey}`);
+              if (requires.patternKey) requiresStr.push(`Pattern: ${requires.patternKey}`);
+              row.innerHTML = `
+                <td style="padding: 8px; font-size: 11px; color: var(--muted);">${escapeHtml(insight.id || "")}</td>
+                <td style="padding: 8px;">${escapeHtml(insight.kind || "")}</td>
+                <td style="padding: 8px;">${escapeHtml(insight.title || "")}</td>
+                <td style="padding: 8px; font-size: 11px; color: var(--muted);">${escapeHtml(insight.category || "")}</td>
+                <td style="padding: 8px; font-size: 11px; color: var(--muted);">${requiresStr.join(", ") || "—"}</td>
+                <td style="padding: 8px;">
+                  <button class="btn" style="padding: 4px 8px; font-size: 11px;" onclick="selectInsight('${insight.id}')">View</button>
+                </td>
+              `;
+              engineConfigUI.insightsTableBody.appendChild(row);
+            }
+          }
+
+          window.selectInsight = function(id) {
+            const insight = engineConfigState.insights.find(i => i.id === id);
+            if (!insight) return;
+            engineConfigState.selectedInsight = id;
+            engineConfigUI.insightDetail.style.display = "block";
+            
+            document.getElementById("engineConfigInsightTitle").value = insight.title || "";
+            document.getElementById("engineConfigInsightBody").value = insight.body || "";
+            const requires = insight.requires || {};
+            const requiresStr = [];
+            if (requires.gateKey) requiresStr.push(`Gate: ${requires.gateKey}`);
+            if (requires.hookKey) requiresStr.push(`Hook: ${requires.hookKey}`);
+            if (requires.patternKey) requiresStr.push(`Pattern: ${requires.patternKey}`);
+            document.getElementById("engineConfigInsightRequires").value = requiresStr.join(", ") || "—";
+          };
+
+          async function loadOpenings() {
+            try {
+              const res = await apiFetch("/admin/prompts/openings", { method: "GET" });
+              if (res.ok && res.templates) {
+                engineConfigState.openings = res.templates;
+                engineConfigUI.openingsTableBody.innerHTML = "";
+                for (const template of res.templates) {
+                  const row = document.createElement("tr");
+                  row.style.borderBottom = "1px solid var(--line)";
+                  row.style.cursor = "pointer";
+                  row.innerHTML = `
+                    <td style="padding: 8px; font-size: 11px; color: var(--muted);">${escapeHtml(template.key || "")}</td>
+                    <td style="padding: 8px;">${escapeHtml(template.name || "")}</td>
+                    <td style="padding: 8px; font-size: 11px; color: var(--muted);">${escapeHtml(template.description || "")}</td>
+                    <td style="padding: 8px;">
+                      <button class="btn" style="padding: 4px 8px; font-size: 11px;" onclick="selectOpeningTemplate('${template.key}')">View</button>
+                    </td>
+                  `;
+                  engineConfigUI.openingsTableBody.appendChild(row);
+                }
+                showOk("Opening templates loaded.");
+              } else {
+                showError("Failed to load opening templates: " + (res.error || "Unknown error"));
+              }
+            } catch (e) {
+              showError("Error loading opening templates: " + (e?.message || e));
+            }
+          }
+
+          window.selectOpeningTemplate = function(key) {
+            // Find template in the loaded data
+            const res = engineConfigState.openings || [];
+            const template = res.find(t => t.key === key);
+            if (!template) {
+              // Try to reload if not found
+              loadOpenings().then(() => {
+                const reloaded = engineConfigState.openings || [];
+                const found = reloaded.find(t => t.key === key);
+                if (found) {
+                  displayOpeningTemplate(found);
+                }
+              });
+              return;
+            }
+            displayOpeningTemplate(template);
+          };
+
+          function displayOpeningTemplate(template) {
+            engineConfigUI.openingDetail.style.display = "block";
+            document.getElementById("engineConfigOpeningKey").value = template.key || "";
+            document.getElementById("engineConfigOpeningName").value = template.name || "";
+            document.getElementById("engineConfigOpeningDescription").value = template.description || "";
+            document.getElementById("engineConfigOpeningTemplate").value = template.template || "";
+            const compatibleStyles = Array.isArray(template.compatibleStyles) ? template.compatibleStyles.join(", ") : "";
+            document.getElementById("engineConfigOpeningCompatibleStyles").value = compatibleStyles;
+          }
+
+          async function renderMonitoringTab() {
+            await loadTriggerStats();
+            engineConfigUI.monitoringHooksStats.innerHTML = "";
+            const stats = engineConfigState.triggerStats || [];
+            if (stats.length === 0) {
+              engineConfigUI.monitoringHooksStats.innerHTML = "<div style='color: var(--muted);'>No trigger stats available.</div>";
+              return;
+            }
+            const table = document.createElement("table");
+            table.style.width = "100%";
+            table.style.borderCollapse = "collapse";
+            table.innerHTML = `
+              <thead>
+                <tr style="border-bottom: 1px solid var(--line);">
+                  <th style="padding: 8px; text-align: left;">Hook Name</th>
+                  <th style="padding: 8px; text-align: left;">Type</th>
+                  <th style="padding: 8px; text-align: left;">Trigger Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${stats.map(s => `
+                  <tr style="border-bottom: 1px solid var(--line);">
+                    <td style="padding: 8px;">${escapeHtml(s.hookName || "Unknown")}</td>
+                    <td style="padding: 8px;">${escapeHtml(s.hookType || "")}</td>
+                    <td style="padding: 8px;">${s.triggerCount || 0}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            `;
+            engineConfigUI.monitoringHooksStats.appendChild(table);
+          }
+
+          async function loadMissionAttachments() {
+            try {
+              const res = await apiFetch("/admin/missions/attachments", { method: "GET" });
+              if (res.ok && Array.isArray(res)) {
+                engineConfigState.attachments = res;
+                renderMissionAttachmentsTable();
+                populateCategoryFilter();
+                showOk("Mission attachments loaded.");
+              } else {
+                showError("Failed to load mission attachments: " + (res.error || "Unknown error"));
+              }
+            } catch (e) {
+              showError("Error loading mission attachments: " + (e?.message || e));
+            }
+          }
+
+          function populateCategoryFilter() {
+            const categories = new Set();
+            for (const att of engineConfigState.attachments) {
+              if (att.categoryLabel) categories.add(att.categoryLabel);
+            }
+            engineConfigUI.attachmentsCategoryFilter.innerHTML = '<option value="">All Categories</option>';
+            for (const cat of Array.from(categories).sort()) {
+              const option = document.createElement("option");
+              option.value = cat;
+              option.textContent = cat;
+              engineConfigUI.attachmentsCategoryFilter.appendChild(option);
+            }
+          }
+
+          function renderMissionAttachmentsTable() {
+            const categoryFilter = engineConfigUI.attachmentsCategoryFilter.value;
+            const searchTerm = engineConfigUI.attachmentsSearchInput.value.toLowerCase();
+            
+            engineConfigUI.attachmentsMissionsList.innerHTML = "";
+            let filtered = engineConfigState.attachments || [];
+            
+            if (categoryFilter) {
+              filtered = filtered.filter(att => att.categoryLabel === categoryFilter);
+            }
+            if (searchTerm) {
+              filtered = filtered.filter(att => 
+                (att.missionLabel || "").toLowerCase().includes(searchTerm) ||
+                (att.missionCode || "").toLowerCase().includes(searchTerm)
+              );
+            }
+            
+            for (const att of filtered) {
+              const el = document.createElement("div");
+              el.className = "item";
+              if (engineConfigState.selectedAttachmentMissionId === att.missionId) {
+                el.classList.add("active");
+              }
+              el.innerHTML = `
+                <div class="itemTitle">
+                  <span>${escapeHtml(att.missionLabel || att.missionCode || "Unknown")}</span>
+                </div>
+                <div class="itemMeta">
+                  <span>${escapeHtml(att.missionCode || "")}</span>
+                  <span style="margin-left: 8px; color: var(--muted);">${escapeHtml(att.categoryLabel || "")}</span>
+                </div>
+              `;
+              el.addEventListener("click", () => selectMissionAttachment(att.missionId));
+              engineConfigUI.attachmentsMissionsList.appendChild(el);
+            }
+          }
+
+          async function selectMissionAttachment(missionId) {
+            const attachment = engineConfigState.attachments.find(a => a.missionId === missionId);
+            if (!attachment) return;
+            
+            engineConfigState.selectedAttachmentMissionId = missionId;
+            engineConfigUI.attachmentsEditor.style.display = "block";
+            engineConfigUI.attachmentsEditorEmpty.style.display = "none";
+            
+            document.getElementById("engineConfigAttachmentsMissionLabel").value = attachment.missionLabel || "";
+            document.getElementById("engineConfigAttachmentsMissionCode").value = attachment.missionCode || "";
+            document.getElementById("engineConfigAttachmentsMissionCategory").value = attachment.categoryLabel || "";
+            
+            // Populate scoring profile dropdown
+            if (engineConfigState.config) {
+              const scoringProfiles = engineConfigState.config.scoringProfiles || [];
+              engineConfigUI.attachmentsScoringProfile.innerHTML = '<option value="">(Inherit global default)</option>';
+              for (const profile of scoringProfiles.filter(p => p.active)) {
+                const option = document.createElement("option");
+                option.value = profile.code;
+                option.textContent = profile.name || profile.code;
+                if (attachment.scoringProfileCode === profile.code) {
+                  option.selected = true;
+                }
+                engineConfigUI.attachmentsScoringProfile.appendChild(option);
+              }
+              if (attachment.scoringProfileCode && !scoringProfiles.find(p => p.code === attachment.scoringProfileCode)) {
+                const option = document.createElement("option");
+                option.value = attachment.scoringProfileCode;
+                option.textContent = attachment.scoringProfileCode + " (not found)";
+                option.selected = true;
+                engineConfigUI.attachmentsScoringProfile.appendChild(option);
+              }
+              
+              // Populate dynamics profile dropdown
+              const dynamicsProfiles = engineConfigState.config.dynamicsProfiles || [];
+              engineConfigUI.attachmentsDynamicsProfile.innerHTML = '<option value="">(Inherit mission\'s own dynamics)</option>';
+              for (const profile of dynamicsProfiles.filter(p => p.active)) {
+                const option = document.createElement("option");
+                option.value = profile.code;
+                option.textContent = profile.name || profile.code;
+                if (attachment.dynamicsProfileCode === profile.code) {
+                  option.selected = true;
+                }
+                engineConfigUI.attachmentsDynamicsProfile.appendChild(option);
+              }
+              if (attachment.dynamicsProfileCode && !dynamicsProfiles.find(p => p.code === attachment.dynamicsProfileCode)) {
+                const option = document.createElement("option");
+                option.value = attachment.dynamicsProfileCode;
+                option.textContent = attachment.dynamicsProfileCode + " (not found)";
+                option.selected = true;
+                engineConfigUI.attachmentsDynamicsProfile.appendChild(option);
+              }
+            }
+            
+            renderMissionAttachmentsTable();
+          }
+
+          async function saveMissionAttachments() {
+            if (!engineConfigState.selectedAttachmentMissionId) {
+              showError("No mission selected");
+              return;
+            }
+            try {
+              const scoringProfileCode = engineConfigUI.attachmentsScoringProfile.value || null;
+              const dynamicsProfileCode = engineConfigUI.attachmentsDynamicsProfile.value || null;
+              
+              const res = await apiFetch(`/admin/missions/${engineConfigState.selectedAttachmentMissionId}/attachments`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  scoringProfileCode: scoringProfileCode || null,
+                  dynamicsProfileCode: dynamicsProfileCode || null,
+                }),
+              });
+              if (res.ok) {
+                showOk("Mission attachments saved.");
+                // Reload attachments to refresh the list
+                await loadMissionAttachments();
+              } else {
+                showError("Failed to save mission attachments: " + (res.error || "Unknown error"));
+              }
+            } catch (e) {
+              showError("Error saving mission attachments: " + (e?.message || e));
+            }
+          }
+
+          function resetMissionAttachments() {
+            if (engineConfigState.selectedAttachmentMissionId) {
+              selectMissionAttachment(engineConfigState.selectedAttachmentMissionId);
+            }
+          }
+
+          // Step 7.2: Wire Engine Config events
+          function wireEngineConfig() {
+            // Tab switching
+            engineConfigUI.tabs.forEach(tab => {
+              tab.addEventListener("click", () => {
+                const tabName = tab.getAttribute("data-tab");
+                engineConfigState.currentTab = tabName;
+                engineConfigUI.tabs.forEach(t => {
+                  t.style.background = "var(--btn)";
+                  t.style.borderColor = "var(--line)";
+                });
+                tab.style.background = "var(--btn2)";
+                tab.style.borderColor = "rgba(77, 97, 255, 0.45)";
+                engineConfigUI.tabContents.forEach(content => {
+                  content.style.display = "none";
+                });
+                document.getElementById(`engineConfigTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`).style.display = "block";
+                renderEngineConfigTabs();
+              });
+            });
+            
+            // Set first tab as active
+            if (engineConfigUI.tabs.length > 0) {
+              engineConfigUI.tabs[0].click();
+            }
+            
+            engineConfigUI.loadBtn.addEventListener("click", loadEngineConfig);
+            engineConfigUI.saveBtn.addEventListener("click", saveEngineConfig);
+            
+            // Scoring tab
+            engineConfigUI.addScoringProfileBtn.addEventListener("click", () => {
+              if (!engineConfigState.config) {
+                showError("Load config first");
+                return;
+              }
+              const code = prompt("Enter profile code:");
+              if (!code) return;
+              const name = prompt("Enter profile name:");
+              if (!name) return;
+              engineConfigState.config.scoringProfiles.push({
+                code,
+                name,
+                description: "",
+                active: true,
+                traitWeights: { confidence: 0.3, clarity: 0.25, humor: 0.15, tensionControl: 0.1, emotionalWarmth: 0.2, dominance: 0 },
+                lengthThresholds: { empty: 10, veryShort: 35, short: 55, medium: 75, long: 82, veryLong: 70 },
+                punctuationBonuses: { questionPerMark: 2, questionMax: 10, exclamationPerMark: 3, exclamationMax: 12 },
+                positionBonuses: [0, 2, 4, 5],
+                rarityThresholds: { sPlus: 92, s: 84, a: 72, b: 58, c: 0 },
+                xpMultipliers: { sPlus: 1.8, s: 1.5, a: 1.25, b: 1.0, c: 0.8 },
+                coinsMultipliers: { sPlus: 1.7, s: 1.4, a: 1.2, b: 1.0, c: 0.7 },
+                traitAdjustments: [],
+                fillerWords: [],
+                traitBuckets: {},
+                traitEmaAlpha: 0.3,
+                strictMode: false,
+                softCoachingMode: false,
+              });
+              renderScoringTab();
+              selectScoringProfile(code);
+            });
+            
+            engineConfigUI.normalizeWeightsBtn.addEventListener("click", normalizeWeights);
+            ["engineConfigScoringWeightConfidence", "engineConfigScoringWeightClarity", "engineConfigScoringWeightHumor", 
+             "engineConfigScoringWeightTensionControl", "engineConfigScoringWeightEmotionalWarmth", "engineConfigScoringWeightDominance"].forEach(id => {
+              document.getElementById(id).addEventListener("input", updateWeightsSum);
+            });
+            
+            // Auto-save scoring profile on change
+            ["engineConfigScoringName", "engineConfigScoringDescription", "engineConfigScoringActive",
+             "engineConfigScoringLengthEmpty", "engineConfigScoringLengthVeryShort", "engineConfigScoringLengthShort",
+             "engineConfigScoringLengthMedium", "engineConfigScoringLengthLong", "engineConfigScoringLengthVeryLong",
+             "engineConfigScoringPunctQuestionPerMark", "engineConfigScoringPunctQuestionMax",
+             "engineConfigScoringPunctExclamationPerMark", "engineConfigScoringPunctExclamationMax",
+             "engineConfigScoringPosition0", "engineConfigScoringPosition1", "engineConfigScoringPosition2", "engineConfigScoringPosition3",
+             "engineConfigScoringRaritySPlus", "engineConfigScoringRarityS", "engineConfigScoringRarityA", "engineConfigScoringRarityB",
+             "engineConfigScoringXpSPlus", "engineConfigScoringXpS", "engineConfigScoringXpA", "engineConfigScoringXpB", "engineConfigScoringXpC",
+             "engineConfigScoringCoinsSPlus", "engineConfigScoringCoinsS", "engineConfigScoringCoinsA", "engineConfigScoringCoinsB", "engineConfigScoringCoinsC",
+             "engineConfigScoringTraitEmaAlpha", "engineConfigScoringStrictMode", "engineConfigScoringSoftCoachingMode"].forEach(id => {
+              const el = document.getElementById(id);
+              if (el) {
+                el.addEventListener("change", saveScoringProfile);
+                if (el.type === "checkbox") {
+                  el.addEventListener("click", saveScoringProfile);
+                }
+              }
+            });
+            
+            // Micro feedback button
+            if (engineConfigUI.loadMicroFeedbackBtn) {
+              engineConfigUI.loadMicroFeedbackBtn.addEventListener("click", loadMicroFeedback);
+            }
+            
+            // Dynamics tab
+            engineConfigUI.addDynamicsProfileBtn.addEventListener("click", () => {
+              if (!engineConfigState.config) {
+                showError("Load config first");
+                return;
+              }
+              const code = prompt("Enter profile code:");
+              if (!code) return;
+              const name = prompt("Enter profile name:");
+              if (!name) return;
+              engineConfigState.config.dynamicsProfiles.push({
+                code,
+                name,
+                description: "",
+                active: true,
+                pace: 50,
+                emojiDensity: 30,
+                flirtiveness: 40,
+                hostility: 10,
+                dryness: 40,
+                vulnerability: 50,
+                escalationSpeed: 50,
+                randomness: 25,
+              });
+              renderDynamicsTab();
+              selectDynamicsProfile(code);
+            });
+            
+            ["engineConfigDynamicsPace", "engineConfigDynamicsEmojiDensity", "engineConfigDynamicsFlirtiveness",
+             "engineConfigDynamicsHostility", "engineConfigDynamicsDryness", "engineConfigDynamicsVulnerability",
+             "engineConfigDynamicsEscalationSpeed", "engineConfigDynamicsRandomness"].forEach(id => {
+              const el = document.getElementById(id);
+              if (el) {
+                el.addEventListener("input", updateDynamicsValues);
+              }
+            });
+            
+            // Auto-save dynamics profile on change
+            ["engineConfigDynamicsName", "engineConfigDynamicsDescription", "engineConfigDynamicsActive",
+             "engineConfigDynamicsPace", "engineConfigDynamicsEmojiDensity", "engineConfigDynamicsFlirtiveness",
+             "engineConfigDynamicsHostility", "engineConfigDynamicsDryness", "engineConfigDynamicsVulnerability",
+             "engineConfigDynamicsEscalationSpeed", "engineConfigDynamicsRandomness"].forEach(id => {
+              const el = document.getElementById(id);
+              if (el) {
+                el.addEventListener("change", saveDynamicsProfile);
+                if (el.type === "checkbox") {
+                  el.addEventListener("click", saveDynamicsProfile);
+                }
+              }
+            });
+            
+            // Gates tab
+            engineConfigUI.addGateBtn.addEventListener("click", () => {
+              if (!engineConfigState.config) {
+                showError("Load config first");
+                return;
+              }
+              const key = prompt("Enter gate key (e.g. GATE_CUSTOM):");
+              if (!key) return;
+              engineConfigState.config.gates.push({
+                key,
+                description: "",
+                active: true,
+              });
+              renderGatesTab();
+              selectGate(key);
+            });
+            
+            document.getElementById("engineConfigGateSaveBtn").addEventListener("click", saveGate);
+            
+            // Hooks tab
+            engineConfigUI.loadHooksBtn.addEventListener("click", loadHooks);
+            engineConfigUI.addHookBtn.addEventListener("click", () => {
+              engineConfigState.selectedHook = null;
+              engineConfigUI.hookEditor.style.display = "block";
+              document.getElementById("engineConfigHookName").value = "";
+              document.getElementById("engineConfigHookType").value = "POSITIVE";
+              document.getElementById("engineConfigHookPriority").value = "50";
+              document.getElementById("engineConfigHookTextTemplate").value = "";
+              document.getElementById("engineConfigHookConditionsJson").value = "{}";
+              document.getElementById("engineConfigHookCategory").value = "";
+              document.getElementById("engineConfigHookTags").value = "";
+              document.getElementById("engineConfigHookEnabled").checked = true;
+            });
+            document.getElementById("engineConfigHookSaveBtn").addEventListener("click", saveHook);
+            engineConfigUI.refreshTriggersBtn.addEventListener("click", loadTriggerStats);
+            
+            // Mood tab
+            engineConfigUI.addMoodBandBtn.addEventListener("click", addMoodBand);
+            // Auto-save mood config on change
+            ["engineConfigMoodEmaAlpha", "engineConfigMoodFlowMinScore", "engineConfigMoodFlowMinFlow", "engineConfigMoodFlowMaxTension",
+             "engineConfigMoodTenseMinTension", "engineConfigMoodTenseOrMaxScore", "engineConfigMoodTenseOrMinTension",
+             "engineConfigMoodWarmMinScore", "engineConfigMoodWarmMaxScore", "engineConfigMoodWarmMinWarmth",
+             "engineConfigMoodColdMaxScore", "engineConfigMoodColdMaxWarmth",
+             "engineConfigStatePolicyMinMessages", "engineConfigStatePolicyFailOnThreeCritical", "engineConfigStatePolicyAllowRecovery"].forEach(id => {
+              const el = document.getElementById(id);
+              if (el) {
+                el.addEventListener("change", saveMoodConfig);
+                if (el.type === "checkbox") {
+                  el.addEventListener("click", saveMoodConfig);
+                }
+              }
+            });
+            
+            // Insights tab
+            engineConfigUI.loadInsightsBtn.addEventListener("click", loadInsights);
+            engineConfigUI.insightsKindFilter.addEventListener("change", loadInsights);
+            
+            // Opening templates button
+            if (engineConfigUI.loadOpeningsBtn) {
+              engineConfigUI.loadOpeningsBtn.addEventListener("click", loadOpenings);
+            }
+            
+            // Mission Attachments tab
+            if (engineConfigUI.loadAttachmentsBtn) {
+              engineConfigUI.loadAttachmentsBtn.addEventListener("click", loadMissionAttachments);
+            }
+            if (engineConfigUI.attachmentsCategoryFilter) {
+              engineConfigUI.attachmentsCategoryFilter.addEventListener("change", renderMissionAttachmentsTable);
+            }
+            if (engineConfigUI.attachmentsSearchInput) {
+              engineConfigUI.attachmentsSearchInput.addEventListener("input", renderMissionAttachmentsTable);
+            }
+            if (engineConfigUI.attachmentsSaveBtn) {
+              engineConfigUI.attachmentsSaveBtn.addEventListener("click", saveMissionAttachments);
+            }
+            if (engineConfigUI.attachmentsResetBtn) {
+              engineConfigUI.attachmentsResetBtn.addEventListener("click", resetMissionAttachments);
+            }
+            
+            // Monitoring tab
+            engineConfigUI.refreshMonitoringBtn.addEventListener("click", renderMonitoringTab);
+          }
+
+          // Step 7.2: Wire Engine Config on boot
+          function boot() {
+            wireMissions();
+            wirePracticeHub();
+            wireEngineConfig(); // Step 7.2: Add Engine Config wiring
+          }
+
           document.addEventListener("DOMContentLoaded", boot);
         } else {
           boot();

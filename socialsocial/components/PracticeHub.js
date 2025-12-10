@@ -31,6 +31,9 @@ const PracticeHub = ({ onShowPracticeRoad, onShowEnhancedRoadmap, onShowStreak, 
   const progress = usePlayerProgress();
 
   // Categories now loaded from JSON registry at ../data/practiceRegistry.json
+  // TODO: Future migration - Load categories from backend endpoint (e.g. /v1/practice/hub)
+  // instead of hardcoded JSON registry. This will enable dynamic category management
+  // via the Practice Hub Designer admin dashboard.
   const practiceCategories = (registry.categories || []);
 
   const store = usePracticeStore();

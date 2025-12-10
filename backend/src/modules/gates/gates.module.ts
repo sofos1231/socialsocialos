@@ -4,9 +4,11 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../db/prisma.module';
 import { GatesService } from './gates.service';
+// Step 7.2: Import engine config module
+import { EngineConfigModule } from '../engine-config/engine-config.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, EngineConfigModule],
   providers: [GatesService],
   exports: [GatesService],
 })

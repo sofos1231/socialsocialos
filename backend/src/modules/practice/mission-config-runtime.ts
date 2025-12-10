@@ -166,6 +166,13 @@ import {
   
       endReasonPrecedenceResolved,
     };
+    
+    // Step 7.2: Preserve dynamicsProfileCode and scoringProfileCode for runtime use
+    // (These are not part of NormalizedMissionConfigV1 but are used by services)
+    if (config.dynamicsProfileCode !== undefined || config.scoringProfileCode !== undefined) {
+      (normalized as any).dynamicsProfileCode = config.dynamicsProfileCode ?? null;
+      (normalized as any).scoringProfileCode = config.scoringProfileCode ?? null;
+    }
   
     return { ok: true, value: normalized };
   }

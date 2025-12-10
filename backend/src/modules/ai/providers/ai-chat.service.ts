@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef, Optional } from '@nestjs/common';
 import { AiStyle, AiStyleKey } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { OpenAiClient, OpenAiChatMessage } from './openai.client';
@@ -15,6 +15,7 @@ import { OpeningsService } from '../../ai-engine/openings.service';
 import { RewardReleaseService } from '../../ai-engine/reward-release.service';
 import type { MissionStateV1 } from '../../ai-engine/mission-state-v1.schema';
 import { AiProviderConfig } from './ai-provider.types';
+import { EngineConfigService } from '../../engine-config/engine-config.service';
 
 type IncomingMsg = { role: 'USER' | 'AI'; content: string };
 
@@ -98,6 +99,9 @@ export class AiChatService {
     private readonly openai: OpenAiClient,
     private readonly openingsService: OpeningsService,
     private readonly rewardReleaseService: RewardReleaseService, // Step 6.4 Fix: Inject RewardReleaseService
+    @Optional()
+    @Inject(forwardRef(() => EngineConfigService))
+    private readonly engineConfigService?: EngineConfigService, // Step 7.2: Inject EngineConfigService for dynamics profiles
   ) {}
 
   async generateReply(params: {
@@ -410,8 +414,33 @@ export class AiChatService {
       : null;
 
     // Step 6.1 & 6.2: Extract dynamics and difficulty (use unified config if available)
-    const dynamics = missionConfig?.dynamics ?? (this.extractMissionConfig(aiContract)?.dynamics ?? null);
+    let dynamics = missionConfig?.dynamics ?? (this.extractMissionConfig(aiContract)?.dynamics ?? null);
     const difficulty = missionConfig?.difficulty ?? (this.extractMissionConfig(aiContract)?.difficulty ?? null);
+    
+    // Step 7.2: If dynamicsProfileCode is set, load profile and use its values as base
+    const fullMissionConfig = missionConfig ?? this.extractMissionConfig(aiContract);
+    if (fullMissionConfig?.dynamicsProfileCode && this.engineConfigService && dynamics) {
+      try {
+        const profile = await this.engineConfigService.getDynamicsProfile(fullMissionConfig.dynamicsProfileCode);
+        if (profile && profile.active) {
+          // Use profile values as base, but allow mission-level overrides
+          dynamics = {
+            ...dynamics,
+            pace: dynamics.pace !== null && dynamics.pace !== undefined ? dynamics.pace : profile.pace,
+            emojiDensity: dynamics.emojiDensity !== null && dynamics.emojiDensity !== undefined ? dynamics.emojiDensity : profile.emojiDensity,
+            flirtiveness: dynamics.flirtiveness !== null && dynamics.flirtiveness !== undefined ? dynamics.flirtiveness : profile.flirtiveness,
+            hostility: dynamics.hostility !== null && dynamics.hostility !== undefined ? dynamics.hostility : profile.hostility,
+            dryness: dynamics.dryness !== null && dynamics.dryness !== undefined ? dynamics.dryness : profile.dryness,
+            vulnerability: dynamics.vulnerability !== null && dynamics.vulnerability !== undefined ? dynamics.vulnerability : profile.vulnerability,
+            escalationSpeed: dynamics.escalationSpeed !== null && dynamics.escalationSpeed !== undefined ? dynamics.escalationSpeed : profile.escalationSpeed,
+            randomness: dynamics.randomness !== null && dynamics.randomness !== undefined ? dynamics.randomness : profile.randomness,
+          };
+        }
+      } catch (e) {
+        this.logger.warn(`Failed to load dynamics profile ${fullMissionConfig.dynamicsProfileCode}: ${e}`);
+        // Continue with existing dynamics
+      }
+    }
     // Step 6.0 Fix: Use same fallback pattern for responseArchitecture and openings
     const responseArchitecture = missionConfig?.responseArchitecture ?? (this.extractMissionConfig(aiContract)?.responseArchitecture ?? null);
     const openings = missionConfig?.openings ?? (this.extractMissionConfig(aiContract)?.openings ?? null);

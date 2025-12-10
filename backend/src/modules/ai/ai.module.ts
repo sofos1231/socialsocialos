@@ -14,9 +14,11 @@ import { RewardReleaseService } from '../ai-engine/reward-release.service';
 import { MicroDynamicsService } from '../ai-engine/micro-dynamics.service';
 // Step 6.8: Import persona drift service
 import { PersonaDriftService } from '../ai-engine/persona-drift.service';
+// Step 7.2: Import engine config module
+import { EngineConfigModule } from '../engine-config/engine-config.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, EngineConfigModule],
   providers: [
     AiScoringService,
     AiCoreScoringService,

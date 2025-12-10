@@ -12,7 +12,7 @@ import {
   ValidationArguments,
   Validate,
 } from 'class-validator';
-import { MissionDifficulty, MissionGoalType, AiStyleKey } from '@prisma/client';
+import { MissionDifficulty, MissionGoalType, AiStyleKey, Gender } from '@prisma/client';
 
 function trimKeepEmpty({ value }: { value: any }) {
   if (value === null || value === undefined) return undefined;
@@ -198,6 +198,16 @@ export class CreateMissionDto {
   @Transform(boolToUndef)
   @IsBoolean()
   active?: boolean;
+
+  // Attraction-based routing
+  @IsOptional()
+  @Transform(boolToUndef)
+  @IsBoolean()
+  isAttractionSensitive?: boolean;
+
+  @IsOptional()
+  @IsEnum(Gender)
+  targetRomanticGender?: Gender;
 }
 
 export class UpdateMissionDto extends CreateMissionDto {}

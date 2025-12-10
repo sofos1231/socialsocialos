@@ -1,9 +1,10 @@
 // backend/src/modules/gates/gates.service.ts
 // Step 5.1: Gate evaluation service for session-level gate ledger
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef, Optional } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
 import { loadSessionAnalyticsSnapshot } from '../shared/helpers/session-snapshot.helper';
+import { EngineConfigService } from '../engine-config/engine-config.service';
 
 /**
  * Gate keys - universal gates evaluated for every session
@@ -17,8 +18,9 @@ export type GateKey =
 
 /**
  * Gate evaluation thresholds (v1 minimal but stable)
+ * Step 7.2: These are now loaded from EngineConfig, but kept as fallback defaults
  */
-const GATE_THRESHOLDS = {
+const GATE_THRESHOLDS_DEFAULT = {
   MIN_MESSAGES: 3, // Minimum USER messages required
   SUCCESS_THRESHOLD: 70, // Average score >= 70 → passed
   FAIL_FLOOR: 40, // Average score <= 40 → failed
@@ -42,7 +44,52 @@ export interface GateEvaluationResult {
 
 @Injectable()
 export class GatesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private gateConfigs: Map<string, any> = new Map(); // Cached gate configs
+
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    @Inject(forwardRef(() => EngineConfigService))
+    private readonly engineConfigService?: EngineConfigService,
+  ) {
+    // Load gate configs on startup
+    this.loadGateConfigs();
+  }
+
+  /**
+   * Load gate configs from EngineConfig
+   */
+  private async loadGateConfigs() {
+    try {
+      if (this.engineConfigService) {
+        const config = await this.engineConfigService.getGlobalConfig();
+        for (const gate of config.gates) {
+          if (gate.active) {
+            this.gateConfigs.set(gate.key, gate);
+          }
+        }
+      }
+    } catch (e) {
+      // Fallback to defaults
+    }
+  }
+
+  /**
+   * Get gate threshold (from config or default)
+   */
+  private getGateThreshold(key: string, defaultValue: number): number {
+    const gate = this.gateConfigs.get(key);
+    if (gate?.minMessages !== undefined && key === 'GATE_MIN_MESSAGES') {
+      return gate.minMessages;
+    }
+    if (gate?.successThreshold !== undefined && key === 'GATE_SUCCESS_THRESHOLD') {
+      return gate.successThreshold;
+    }
+    if (gate?.failFloor !== undefined && key === 'GATE_FAIL_FLOOR') {
+      return gate.failFloor;
+    }
+    return defaultValue;
+  }
 
   /**
    * Step 6.4: Evaluate gates for an active session (during mission, not just at end)
@@ -70,21 +117,35 @@ export class GatesService {
 
       switch (gateKey) {
         case 'GATE_MIN_MESSAGES':
-          passed = context.userMessageCount >= GATE_THRESHOLDS.MIN_MESSAGES;
+          const minMessages = this.getGateThreshold(
+            'GATE_MIN_MESSAGES',
+            GATE_THRESHOLDS_DEFAULT.MIN_MESSAGES,
+          );
+          passed = context.userMessageCount >= minMessages;
           reasonCode = passed ? 'SUFFICIENT_MESSAGES' : 'INSUFFICIENT_MESSAGES';
           contextJson = {
             messageCount: context.userMessageCount,
-            required: GATE_THRESHOLDS.MIN_MESSAGES,
+            required: this.getGateThreshold(
+              'GATE_MIN_MESSAGES',
+              GATE_THRESHOLDS_DEFAULT.MIN_MESSAGES,
+            ),
           };
           break;
 
         case 'GATE_SUCCESS_THRESHOLD':
           if (context.averageScore !== null) {
-            passed = context.averageScore >= GATE_THRESHOLDS.SUCCESS_THRESHOLD;
+            const threshold = this.getGateThreshold(
+              'GATE_SUCCESS_THRESHOLD',
+              GATE_THRESHOLDS_DEFAULT.SUCCESS_THRESHOLD,
+            );
+            passed = context.averageScore >= threshold;
             reasonCode = passed ? 'ABOVE_THRESHOLD' : 'BELOW_THRESHOLD';
             contextJson = {
               avgScore: context.averageScore,
-              threshold: GATE_THRESHOLDS.SUCCESS_THRESHOLD,
+              threshold: this.getGateThreshold(
+                'GATE_SUCCESS_THRESHOLD',
+                GATE_THRESHOLDS_DEFAULT.SUCCESS_THRESHOLD,
+              ),
             };
           } else {
             passed = false;
@@ -95,11 +156,18 @@ export class GatesService {
 
         case 'GATE_FAIL_FLOOR':
           if (context.averageScore !== null) {
-            passed = context.averageScore > GATE_THRESHOLDS.FAIL_FLOOR;
+            const floor = this.getGateThreshold(
+              'GATE_FAIL_FLOOR',
+              GATE_THRESHOLDS_DEFAULT.FAIL_FLOOR,
+            );
+            passed = context.averageScore > floor;
             reasonCode = passed ? 'ABOVE_FLOOR' : 'AT_OR_BELOW_FLOOR';
             contextJson = {
               avgScore: context.averageScore,
-              floor: GATE_THRESHOLDS.FAIL_FLOOR,
+              floor: this.getGateThreshold(
+                'GATE_FAIL_FLOOR',
+                GATE_THRESHOLDS_DEFAULT.FAIL_FLOOR,
+              ),
             };
           } else {
             passed = false;
@@ -172,7 +240,11 @@ export class GatesService {
     }> = [];
 
     // GATE_MIN_MESSAGES: Check if session has minimum required messages
-    const minMessagesPassed = userMessages.length >= GATE_THRESHOLDS.MIN_MESSAGES;
+    const minMessages = this.getGateThreshold(
+      'GATE_MIN_MESSAGES',
+      GATE_THRESHOLDS_DEFAULT.MIN_MESSAGES,
+    );
+    const minMessagesPassed = userMessages.length >= minMessages;
     outcomes.push({
       gateKey: 'GATE_MIN_MESSAGES',
       passed: minMessagesPassed,
@@ -181,20 +253,24 @@ export class GatesService {
         : 'INSUFFICIENT_MESSAGES',
       contextJson: {
         messageCount: userMessages.length,
-        required: GATE_THRESHOLDS.MIN_MESSAGES,
+        required: minMessages,
       },
     });
 
     // GATE_SUCCESS_THRESHOLD: Average score >= threshold
     if (avgScore !== null) {
-      const successThresholdPassed = avgScore >= GATE_THRESHOLDS.SUCCESS_THRESHOLD;
+      const successThreshold = this.getGateThreshold(
+        'GATE_SUCCESS_THRESHOLD',
+        GATE_THRESHOLDS_DEFAULT.SUCCESS_THRESHOLD,
+      );
+      const successThresholdPassed = avgScore >= successThreshold;
       outcomes.push({
         gateKey: 'GATE_SUCCESS_THRESHOLD',
         passed: successThresholdPassed,
         reasonCode: successThresholdPassed ? 'ABOVE_THRESHOLD' : 'BELOW_THRESHOLD',
         contextJson: {
           avgScore,
-          threshold: GATE_THRESHOLDS.SUCCESS_THRESHOLD,
+          threshold: successThreshold,
         },
       });
     } else {
@@ -209,14 +285,18 @@ export class GatesService {
 
     // GATE_FAIL_FLOOR: Average score <= floor threshold
     if (avgScore !== null) {
-      const failFloorPassed = avgScore > GATE_THRESHOLDS.FAIL_FLOOR;
+      const failFloor = this.getGateThreshold(
+        'GATE_FAIL_FLOOR',
+        GATE_THRESHOLDS_DEFAULT.FAIL_FLOOR,
+      );
+      const failFloorPassed = avgScore > failFloor;
       outcomes.push({
         gateKey: 'GATE_FAIL_FLOOR',
         passed: failFloorPassed,
         reasonCode: failFloorPassed ? 'ABOVE_FLOOR' : 'AT_OR_BELOW_FLOOR',
         contextJson: {
           avgScore,
-          floor: GATE_THRESHOLDS.FAIL_FLOOR,
+          floor: failFloor,
         },
       });
     } else {

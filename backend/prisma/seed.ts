@@ -1,5 +1,5 @@
 // backend/prisma/seed.ts
-import { PrismaClient, MissionDifficulty, MissionGoalType, Gender } from '@prisma/client';
+import { PrismaClient, MissionDifficulty, MissionGoalType, Gender, AttractionPath } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -35,38 +35,78 @@ async function main() {
   });
 
   // Seed basic categories
-  const [openersCategory, flirtingCategory, recoveryCategory] =
+  const [openersCategory, openersMaleCategory, flirtingCategory, recoveryCategory] =
     await Promise.all([
       prisma.missionCategory.upsert({
         where: { code: 'OPENERS' },
         update: {
+          attractionPath: AttractionPath.FEMALE_PATH,
           isAttractionSensitive: true,
           dynamicLabelTemplate: 'Approach {{targetPlural}}',
+          displayOrder: 0,
+          active: true,
         },
         create: {
           code: 'OPENERS',
           label: 'Openers',
           description: 'First messages and icebreakers.',
+          attractionPath: AttractionPath.FEMALE_PATH,
           isAttractionSensitive: true,
           dynamicLabelTemplate: 'Approach {{targetPlural}}',
+          displayOrder: 0,
+          active: true,
+        },
+      }),
+      prisma.missionCategory.upsert({
+        where: { code: 'OPENERS_MALE' },
+        update: {
+          attractionPath: AttractionPath.MALE_PATH,
+          isAttractionSensitive: true,
+          dynamicLabelTemplate: 'Approach {{targetPlural}}',
+          displayOrder: 1,
+          active: true,
+        },
+        create: {
+          code: 'OPENERS_MALE',
+          label: 'Approach Men',
+          description: 'First messages and icebreakers for men.',
+          attractionPath: AttractionPath.MALE_PATH,
+          isAttractionSensitive: true,
+          dynamicLabelTemplate: 'Approach {{targetPlural}}',
+          displayOrder: 1,
+          active: true,
         },
       }),
       prisma.missionCategory.upsert({
         where: { code: 'FLIRTING' },
-        update: {},
+        update: {
+          attractionPath: AttractionPath.UNISEX,
+          displayOrder: 2,
+          active: true,
+        },
         create: {
           code: 'FLIRTING',
           label: 'Flirting & Tension',
           description: 'Playfulness, teasing, tension control.',
+          attractionPath: AttractionPath.UNISEX,
+          displayOrder: 2,
+          active: true,
         },
       }),
       prisma.missionCategory.upsert({
         where: { code: 'RECOVERY' },
-        update: {},
+        update: {
+          attractionPath: AttractionPath.UNISEX,
+          displayOrder: 3,
+          active: true,
+        },
         create: {
           code: 'RECOVERY',
           label: 'Recovery & Cold Replies',
           description: 'Fixing dead or cold conversations.',
+          attractionPath: AttractionPath.UNISEX,
+          displayOrder: 3,
+          active: true,
         },
       }),
     ]);
@@ -202,9 +242,11 @@ async function main() {
 
   // Openers – lane 0 (male-target attraction-sensitive missions)
   // Minimal seed to prove MEN path: at least one male-target mission
+  // NOTE: These missions are in OPENERS_MALE category (MALE_PATH), not OPENERS (FEMALE_PATH)
   await prisma.practiceMissionTemplate.upsert({
     where: { code: 'OPENERS_L1_M3_MALE' },
     update: {
+      categoryId: openersMaleCategory.id,
       isAttractionSensitive: true,
       targetRomanticGender: Gender.MALE,
     },
@@ -212,7 +254,7 @@ async function main() {
       code: 'OPENERS_L1_M3_MALE',
       title: 'First Safe Opener',
       description: 'Send a simple, casual opener to a guy in under 30 seconds.',
-      categoryId: openersCategory.id,
+      categoryId: openersMaleCategory.id,
       personaId: dan.id,
       goalType: MissionGoalType.OPENING,
       difficulty: MissionDifficulty.EASY,
@@ -220,7 +262,7 @@ async function main() {
       maxMessages: 3,
       wordLimit: 40,
       laneIndex: 0,
-      orderIndex: 2,
+      orderIndex: 0,
       isVoiceSupported: true,
       baseXpReward: 50,
       baseCoinsReward: 10,
@@ -234,6 +276,7 @@ async function main() {
   await prisma.practiceMissionTemplate.upsert({
     where: { code: 'OPENERS_L1_M4_MALE' },
     update: {
+      categoryId: openersMaleCategory.id,
       isAttractionSensitive: true,
       targetRomanticGender: Gender.MALE,
     },
@@ -241,7 +284,7 @@ async function main() {
       code: 'OPENERS_L1_M4_MALE',
       title: 'Curious Opener',
       description: 'Ask a curiosity-based opener to a guy with a bit of personality.',
-      categoryId: openersCategory.id,
+      categoryId: openersMaleCategory.id,
       personaId: omer.id,
       goalType: MissionGoalType.OPENING,
       difficulty: MissionDifficulty.MEDIUM,
@@ -249,7 +292,7 @@ async function main() {
       maxMessages: 2,
       wordLimit: 30,
       laneIndex: 0,
-      orderIndex: 3,
+      orderIndex: 1,
       isVoiceSupported: true,
       baseXpReward: 70,
       baseCoinsReward: 15,
@@ -315,6 +358,22 @@ async function main() {
     userId: user.id,
     seeded: true,
   });
+
+  // Step 7.2: Seed EngineConfig
+  const { EngineConfigService } = await import('../src/modules/engine-config/engine-config.service');
+  const engineConfigService = new EngineConfigService(prisma);
+  const defaultConfig = engineConfigService['getDefaultConfig']();
+  await prisma.engineConfig.upsert({
+    where: { key: 'GLOBAL_V1' },
+    create: {
+      key: 'GLOBAL_V1',
+      configJson: defaultConfig as any,
+    },
+    update: {
+      configJson: defaultConfig as any,
+    },
+  });
+  console.log('✅ EngineConfig seeded');
 }
 
 main()

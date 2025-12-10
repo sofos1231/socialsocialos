@@ -186,8 +186,12 @@ model MissionCategory {
   description String?
 
   // Attraction-based routing
-  isAttractionSensitive Boolean  @default(false)
-  dynamicLabelTemplate String? // e.g. "Approach {{targetPlural}}"
+  attractionPath          AttractionPath @default(UNISEX)
+  isAttractionSensitive   Boolean        @default(false)
+  dynamicLabelTemplate    String? // e.g. "Approach {{targetPlural}}"
+  displayOrder            Int            @default(0)
+  iconUrl                 String?
+  active                  Boolean        @default(true)
 
   templates PracticeMissionTemplate[]
   // Step 5.14: Category stats and progress
@@ -600,6 +604,13 @@ enum PreferencePath {
   UNKNOWN_PATH
 }
 
+/// Practice Hub Designer: Category attraction path
+enum AttractionPath {
+  UNISEX
+  FEMALE_PATH
+  MALE_PATH
+}
+
 enum MainGoal {
   DATING
   SOCIAL
@@ -983,4 +994,14 @@ model UserOnboardingState {
   skipped           Boolean    @default(false)
 
   lastUpdatedAt     DateTime   @updatedAt
+}
+
+/// --------------------------------------
+/// Step 7.2: Engine Config (Global knobs for scoring, dynamics, gates, mood)
+/// --------------------------------------
+model EngineConfig {
+  key        String @id @default("GLOBAL_V1")
+  configJson Json   // EngineConfigJson interface
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

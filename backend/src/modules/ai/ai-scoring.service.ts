@@ -19,7 +19,7 @@
 
 // backend/src/modules/ai/ai-scoring.service.ts
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { AccountTier } from '@prisma/client';
 import {
   AiMode,
@@ -32,6 +32,7 @@ import {
   PracticeMessageInput,
 } from './ai.types';
 import { MissionConfigV1Difficulty } from '../missions-admin/mission-config-v1.schema';
+import { EngineConfigService } from '../engine-config/engine-config.service';
 
 /**
  * AiScoringService
@@ -45,6 +46,27 @@ import { MissionConfigV1Difficulty } from '../missions-admin/mission-config-v1.s
  */
 @Injectable()
 export class AiScoringService {
+  private scoringProfile: any = null; // Cached scoring profile
+
+  constructor(
+    @Inject(forwardRef(() => EngineConfigService))
+    private readonly engineConfigService: EngineConfigService,
+  ) {
+    // Load default profile on startup
+    this.loadScoringProfile();
+  }
+
+  /**
+   * Load scoring profile from EngineConfig
+   */
+  private async loadScoringProfile() {
+    try {
+      this.scoringProfile = await this.engineConfigService.getScoringProfile();
+    } catch (e) {
+      // Fallback to null (will use hard-coded defaults)
+      this.scoringProfile = null;
+    }
+  }
   /**
    * Main entry point for the rest of the backend.
    *
@@ -155,14 +177,15 @@ export class AiScoringService {
    */
   private computeLengthScore(text: string): number {
     const len = text.length;
+    const thresholds = this.scoringProfile?.lengthThresholds;
 
-    if (len === 0) return 10;
-    if (len < 5) return 35;
-    if (len < 15) return 55;
-    if (len < 40) return 75;
-    if (len < 80) return 82;
+    if (len === 0) return thresholds?.empty ?? 10;
+    if (len < 5) return thresholds?.veryShort ?? 35;
+    if (len < 15) return thresholds?.short ?? 55;
+    if (len < 40) return thresholds?.medium ?? 75;
+    if (len < 80) return thresholds?.long ?? 82;
 
-    return 70; // too long → slightly penalized
+    return thresholds?.veryLong ?? 70; // too long → slightly penalized
   }
 
   /**
@@ -173,9 +196,15 @@ export class AiScoringService {
   private computePunctuationScore(text: string): number {
     const qCount = (text.match(/\?/g) || []).length;
     const exCount = (text.match(/!/g) || []).length;
+    const bonuses = this.scoringProfile?.punctuationBonuses;
 
-    const questionBonus = Math.min(2 * qCount, 10);
-    const exclamationBonus = Math.min(3 * exCount, 12);
+    const questionPerMark = bonuses?.questionPerMark ?? 2;
+    const questionMax = bonuses?.questionMax ?? 10;
+    const exclamationPerMark = bonuses?.exclamationPerMark ?? 3;
+    const exclamationMax = bonuses?.exclamationMax ?? 12;
+
+    const questionBonus = Math.min(questionPerMark * qCount, questionMax);
+    const exclamationBonus = Math.min(exclamationPerMark * exCount, exclamationMax);
 
     return questionBonus + exclamationBonus;
   }
@@ -184,17 +213,24 @@ export class AiScoringService {
    * Slight bonus for later messages to avoid all early messages dominating.
    */
   private computePositionBonus(index: number): number {
-    if (index === 0) return 0;
-    if (index === 1) return 2;
-    if (index === 2) return 4;
-    return 5;
+    const bonuses = this.scoringProfile?.positionBonuses ?? [0, 2, 4, 5];
+    if (index < bonuses.length) {
+      return bonuses[index];
+    }
+    return bonuses[bonuses.length - 1] ?? 5;
   }
 
   private mapScoreToRarity(score: number): MessageRarity {
-    if (score >= 92) return 'S+';
-    if (score >= 84) return 'S';
-    if (score >= 72) return 'A';
-    if (score >= 58) return 'B';
+    const thresholds = this.scoringProfile?.rarityThresholds;
+    const sPlus = thresholds?.sPlus ?? 92;
+    const s = thresholds?.s ?? 84;
+    const a = thresholds?.a ?? 72;
+    const b = thresholds?.b ?? 58;
+
+    if (score >= sPlus) return 'S+';
+    if (score >= s) return 'S';
+    if (score >= a) return 'A';
+    if (score >= b) return 'B';
     return 'C';
   }
 
@@ -244,35 +280,45 @@ export class AiScoringService {
   }
 
   private computeXpMultiplier(rarity: MessageRarity): number {
-    switch (rarity) {
-      case 'S+':
-        return 1.8;
-      case 'S':
-        return 1.5;
-      case 'A':
-        return 1.25;
-      case 'B':
-        return 1.0;
-      case 'C':
-      default:
-        return 0.8;
+    const multipliers = this.scoringProfile?.xpMultipliers;
+    if (!multipliers) {
+      // Fallback to hard-coded
+      switch (rarity) {
+        case 'S+':
+          return 1.8;
+        case 'S':
+          return 1.5;
+        case 'A':
+          return 1.25;
+        case 'B':
+          return 1.0;
+        case 'C':
+        default:
+          return 0.8;
+      }
     }
+    return multipliers[rarity.toLowerCase()] ?? 1.0;
   }
 
   private computeCoinsMultiplier(rarity: MessageRarity): number {
-    switch (rarity) {
-      case 'S+':
-        return 1.7;
-      case 'S':
-        return 1.4;
-      case 'A':
-        return 1.2;
-      case 'B':
-        return 1.0;
-      case 'C':
-      default:
-        return 0.7;
+    const multipliers = this.scoringProfile?.coinsMultipliers;
+    if (!multipliers) {
+      // Fallback to hard-coded
+      switch (rarity) {
+        case 'S+':
+          return 1.7;
+        case 'S':
+          return 1.4;
+        case 'A':
+          return 1.2;
+        case 'B':
+          return 1.0;
+        case 'C':
+        default:
+          return 0.7;
+      }
     }
+    return multipliers[rarity.toLowerCase()] ?? 1.0;
   }
 
   /**

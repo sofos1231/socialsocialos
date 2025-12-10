@@ -9,6 +9,8 @@ import {
   MissionDifficulty,
   MissionGoalType,
   Prisma,
+  Gender,
+  AttractionPath,
 } from '@prisma/client';
 import { CreateMissionDto, UpdateMissionDto } from './dto/admin-mission.dto';
 import {
@@ -184,7 +186,21 @@ export class MissionsAdminService {
 
   async getMeta() {
     const [categories, personas, aiStyles] = await Promise.all([
-      this.prisma.missionCategory.findMany({ orderBy: [{ label: 'asc' }] }),
+      this.prisma.missionCategory.findMany({
+        orderBy: [{ displayOrder: 'asc' }, { label: 'asc' }],
+        select: {
+          id: true,
+          code: true,
+          label: true,
+          description: true,
+          attractionPath: true,
+          isAttractionSensitive: true,
+          dynamicLabelTemplate: true,
+          displayOrder: true,
+          iconUrl: true,
+          active: true,
+        },
+      }),
       this.prisma.aiPersona.findMany({ orderBy: [{ name: 'asc' }] }),
       this.prisma.aiStyle.findMany({
         where: { isActive: true },
@@ -210,6 +226,8 @@ export class MissionsAdminService {
         goalTypes: Object.values(MissionGoalType),
         aiStyles: aiStyles.map((s) => s.key), // ✅ compat: list of keys
         aiStyleKeys: Object.values(AiStyleKey), // ✅ useful for debugging
+        attractionPaths: Object.values(AttractionPath), // ✅ Practice Hub Designer
+        genders: Object.values(Gender), // ✅ Practice Hub Designer
       },
     };
   }
@@ -529,6 +547,92 @@ export class MissionsAdminService {
       }
     }
 
+    // ✅ Practice Hub Designer: Validate attraction fields
+    if (dto.isAttractionSensitive === true) {
+      if (!dto.targetRomanticGender) {
+        throw new BadRequestException({
+          code: 'VALIDATION',
+          message: 'targetRomanticGender is required when isAttractionSensitive is true',
+        });
+      }
+      if (
+        dto.targetRomanticGender !== Gender.MALE &&
+        dto.targetRomanticGender !== Gender.FEMALE
+      ) {
+        throw new BadRequestException({
+          code: 'VALIDATION',
+          message: 'targetRomanticGender must be MALE or FEMALE when isAttractionSensitive is true',
+        });
+      }
+    }
+
+    // ✅ Practice Hub Designer: Mission-Category consistency validation
+    let category: any = null;
+    if (categoryId) {
+      category = await this.prisma.missionCategory.findUnique({
+        where: { id: categoryId },
+        select: {
+          id: true,
+          attractionPath: true,
+          isAttractionSensitive: true,
+        },
+      });
+    } else if (categoryCode) {
+      category = await this.prisma.missionCategory.findUnique({
+        where: { code: categoryCode },
+        select: {
+          id: true,
+          attractionPath: true,
+          isAttractionSensitive: true,
+        },
+      });
+    }
+
+    if (category) {
+      if (category.attractionPath === AttractionPath.FEMALE_PATH) {
+        const effectiveIsAttractionSensitive =
+          dto.isAttractionSensitive !== undefined
+            ? dto.isAttractionSensitive
+            : true; // Default to true for FEMALE_PATH
+        const effectiveTargetGender =
+          dto.targetRomanticGender !== undefined
+            ? dto.targetRomanticGender
+            : Gender.FEMALE; // Default to FEMALE for FEMALE_PATH
+
+        if (
+          effectiveIsAttractionSensitive !== true ||
+          effectiveTargetGender !== Gender.FEMALE
+        ) {
+          throw new BadRequestException({
+            code: 'MISSION_CATEGORY_INCONSISTENT',
+            message:
+              'Missions inside a FEMALE_PATH category must be attraction-sensitive and target FEMALE',
+          });
+        }
+      } else if (category.attractionPath === AttractionPath.MALE_PATH) {
+        const effectiveIsAttractionSensitive =
+          dto.isAttractionSensitive !== undefined
+            ? dto.isAttractionSensitive
+            : true; // Default to true for MALE_PATH
+        const effectiveTargetGender =
+          dto.targetRomanticGender !== undefined
+            ? dto.targetRomanticGender
+            : Gender.MALE; // Default to MALE for MALE_PATH
+
+        if (
+          effectiveIsAttractionSensitive !== true ||
+          effectiveTargetGender !== Gender.MALE
+        ) {
+          throw new BadRequestException({
+            code: 'MISSION_CATEGORY_INCONSISTENT',
+            message:
+              'Missions inside a MALE_PATH category must be attraction-sensitive and target MALE',
+          });
+        }
+      }
+      // UNISEX: no restrictions
+    }
+
     const data: Prisma.PracticeMissionTemplateCreateInput = {
       code,
       title,
@@ -552,6 +656,20 @@ export class MissionsAdminService {
 
       active: dto.active ?? true,
       aiContract: normalizedAiContract as any, // Store normalized version
+
+      // Attraction-based routing
+      ...(dto.isAttractionSensitive !== undefined
+        ? { isAttractionSensitive: dto.isAttractionSensitive }
+        : category && category.attractionPath !== AttractionPath.UNISEX
+          ? { isAttractionSensitive: true }
+          : {}),
+      ...(dto.targetRomanticGender !== undefined
+        ? { targetRomanticGender: dto.targetRomanticGender }
+        : category && category.attractionPath === AttractionPath.FEMALE_PATH
+          ? { targetRomanticGender: Gender.FEMALE }
+          : category && category.attractionPath === AttractionPath.MALE_PATH
+            ? { targetRomanticGender: Gender.MALE }
+            : {}),
 
       ...(categoryId
         ? { category: { connect: { id: categoryId } } }
@@ -685,6 +803,110 @@ export class MissionsAdminService {
       }
     }
 
+    // ✅ Practice Hub Designer: Validate attraction fields
+    if (dto.isAttractionSensitive === true) {
+      if (dto.targetRomanticGender === undefined || dto.targetRomanticGender === null) {
+        throw new BadRequestException({
+          code: 'VALIDATION',
+          message: 'targetRomanticGender is required when isAttractionSensitive is true',
+        });
+      }
+      if (
+        dto.targetRomanticGender !== Gender.MALE &&
+        dto.targetRomanticGender !== Gender.FEMALE
+      ) {
+        throw new BadRequestException({
+          code: 'VALIDATION',
+          message: 'targetRomanticGender must be MALE or FEMALE when isAttractionSensitive is true',
+        });
+      }
+    }
+
+    // ✅ Practice Hub Designer: Mission-Category consistency validation
+    let category: any = null;
+    if (dto.categoryId !== undefined || dto.categoryCode !== undefined) {
+      if (categoryId) {
+        category = await this.prisma.missionCategory.findUnique({
+          where: { id: categoryId },
+          select: {
+            id: true,
+            attractionPath: true,
+            isAttractionSensitive: true,
+          },
+        });
+      } else if (categoryCode) {
+        category = await this.prisma.missionCategory.findUnique({
+          where: { code: categoryCode },
+          select: {
+            id: true,
+            attractionPath: true,
+            isAttractionSensitive: true,
+          },
+        });
+      }
+    } else {
+      // Load existing category if not changing
+      const existingMission = await this.prisma.practiceMissionTemplate.findUnique({
+        where: { id },
+        select: { categoryId: true },
+      });
+      if (existingMission?.categoryId) {
+        category = await this.prisma.missionCategory.findUnique({
+          where: { id: existingMission.categoryId },
+          select: {
+            id: true,
+            attractionPath: true,
+            isAttractionSensitive: true,
+          },
+        });
+      }
+    }
+
+    if (category) {
+      if (category.attractionPath === AttractionPath.FEMALE_PATH) {
+        const effectiveIsAttractionSensitive =
+          dto.isAttractionSensitive !== undefined
+            ? dto.isAttractionSensitive
+            : true; // Default to true for FEMALE_PATH
+        const effectiveTargetGender =
+          dto.targetRomanticGender !== undefined
+            ? dto.targetRomanticGender
+            : Gender.FEMALE; // Default to FEMALE for FEMALE_PATH
+
+        if (
+          effectiveIsAttractionSensitive !== true ||
+          effectiveTargetGender !== Gender.FEMALE
+        ) {
+          throw new BadRequestException({
+            code: 'MISSION_CATEGORY_INCONSISTENT',
+            message:
+              'Missions inside a FEMALE_PATH category must be attraction-sensitive and target FEMALE',
+          });
+        }
+      } else if (category.attractionPath === AttractionPath.MALE_PATH) {
+        const effectiveIsAttractionSensitive =
+          dto.isAttractionSensitive !== undefined
+            ? dto.isAttractionSensitive
+            : true; // Default to true for MALE_PATH
+        const effectiveTargetGender =
+          dto.targetRomanticGender !== undefined
+            ? dto.targetRomanticGender
+            : Gender.MALE; // Default to MALE for MALE_PATH
+
+        if (
+          effectiveIsAttractionSensitive !== true ||
+          effectiveTargetGender !== Gender.MALE
+        ) {
+          throw new BadRequestException({
+            code: 'MISSION_CATEGORY_INCONSISTENT',
+            message:
+              'Missions inside a MALE_PATH category must be attraction-sensitive and target MALE',
+          });
+        }
+      }
+      // UNISEX: no restrictions
+    }
+
     const data: Prisma.PracticeMissionTemplateUpdateInput = {
       ...(title ? { title } : {}),
       ...(dto.description !== undefined
@@ -719,6 +941,20 @@ export class MissionsAdminService {
       ...(normalizedAiContract !== undefined
         ? { aiContract: normalizedAiContract as any }
         : {}),
+
+      // Attraction-based routing
+      ...(dto.isAttractionSensitive !== undefined
+        ? { isAttractionSensitive: dto.isAttractionSensitive }
+        : category && category.attractionPath !== AttractionPath.UNISEX
+          ? { isAttractionSensitive: true }
+          : {}),
+      ...(dto.targetRomanticGender !== undefined
+        ? { targetRomanticGender: dto.targetRomanticGender }
+        : category && category.attractionPath === AttractionPath.FEMALE_PATH
+          ? { targetRomanticGender: Gender.FEMALE }
+          : category && category.attractionPath === AttractionPath.MALE_PATH
+            ? { targetRomanticGender: Gender.MALE }
+            : {}),
 
       ...(dto.code ? { code: normalizeCode(dto.code) } : {}),
     };
@@ -912,7 +1148,7 @@ export class MissionsAdminService {
   // ---------- Categories ----------
   async listCategories() {
     const categories = await this.prisma.missionCategory.findMany({
-      orderBy: [{ label: 'asc' }],
+      orderBy: [{ displayOrder: 'asc' }, { label: 'asc' }],
     });
     return { ok: true, categories };
   }
@@ -931,12 +1167,55 @@ export class MissionsAdminService {
       normalizeCode(slugify(label)) ||
       normalizeCode(`CAT_${slugify(label)}`);
 
+    // ✅ Practice Hub Designer: Validate attraction path uniqueness
+    const attractionPath = dto.attractionPath ?? AttractionPath.UNISEX;
+    if (attractionPath === AttractionPath.FEMALE_PATH) {
+      const existing = await this.prisma.missionCategory.findFirst({
+        where: { attractionPath: AttractionPath.FEMALE_PATH },
+        select: { id: true, label: true },
+      });
+      if (existing) {
+        throw new BadRequestException({
+          code: 'CATEGORY_ATTRACTION_PATH_DUPLICATE',
+          message: `Another category with FEMALE_PATH already exists: "${existing.label}". Only one FEMALE_PATH category is allowed.`,
+        });
+      }
+    } else if (attractionPath === AttractionPath.MALE_PATH) {
+      const existing = await this.prisma.missionCategory.findFirst({
+        where: { attractionPath: AttractionPath.MALE_PATH },
+        select: { id: true, label: true },
+      });
+      if (existing) {
+        throw new BadRequestException({
+          code: 'CATEGORY_ATTRACTION_PATH_DUPLICATE',
+          message: `Another category with MALE_PATH already exists: "${existing.label}". Only one MALE_PATH category is allowed.`,
+        });
+      }
+    }
+
+    // ✅ Practice Hub Designer: Enforce isAttractionSensitive and dynamicLabelTemplate for gender paths
+    let isAttractionSensitive = dto.isAttractionSensitive ?? false;
+    let dynamicLabelTemplate = dto.dynamicLabelTemplate ?? null;
+
+    if (attractionPath === AttractionPath.FEMALE_PATH || attractionPath === AttractionPath.MALE_PATH) {
+      isAttractionSensitive = true;
+      if (!dynamicLabelTemplate) {
+        dynamicLabelTemplate = 'Approach {{targetPlural}}';
+      }
+    }
+
     try {
       const created = await this.prisma.missionCategory.create({
         data: {
           code,
           label,
           description: cleanStr(dto.description) ?? null,
+          attractionPath,
+          isAttractionSensitive,
+          dynamicLabelTemplate,
+          displayOrder: dto.displayOrder ?? 0,
+          iconUrl: cleanStr(dto.iconUrl) ?? null,
+          active: dto.active ?? true,
         },
       });
       return { ok: true, category: created };
@@ -946,13 +1225,80 @@ export class MissionsAdminService {
   }
 
   async updateCategory(id: string, dto: UpdateMissionCategoryDto) {
+    const existing = await this.prisma.missionCategory.findUnique({
+      where: { id },
+      select: { id: true, attractionPath: true },
+    });
+    if (!existing) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'category not found',
+      });
+    }
+
     const label = String(dto.label ?? dto.title ?? '').trim();
+
+    // ✅ Practice Hub Designer: Validate attraction path uniqueness if changing
+    const attractionPath = dto.attractionPath ?? existing.attractionPath;
+    if (attractionPath !== existing.attractionPath) {
+      if (attractionPath === AttractionPath.FEMALE_PATH) {
+        const other = await this.prisma.missionCategory.findFirst({
+          where: {
+            attractionPath: AttractionPath.FEMALE_PATH,
+            id: { not: id },
+          },
+          select: { id: true, label: true },
+        });
+        if (other) {
+          throw new BadRequestException({
+            code: 'CATEGORY_ATTRACTION_PATH_DUPLICATE',
+            message: `Another category with FEMALE_PATH already exists: "${other.label}". Only one FEMALE_PATH category is allowed.`,
+          });
+        }
+      } else if (attractionPath === AttractionPath.MALE_PATH) {
+        const other = await this.prisma.missionCategory.findFirst({
+          where: {
+            attractionPath: AttractionPath.MALE_PATH,
+            id: { not: id },
+          },
+          select: { id: true, label: true },
+        });
+        if (other) {
+          throw new BadRequestException({
+            code: 'CATEGORY_ATTRACTION_PATH_DUPLICATE',
+            message: `Another category with MALE_PATH already exists: "${other.label}". Only one MALE_PATH category is allowed.`,
+          });
+        }
+      }
+    }
+
+    // ✅ Practice Hub Designer: Enforce isAttractionSensitive and dynamicLabelTemplate for gender paths
+    let isAttractionSensitive = dto.isAttractionSensitive;
+    let dynamicLabelTemplate = dto.dynamicLabelTemplate;
+
+    if (attractionPath === AttractionPath.FEMALE_PATH || attractionPath === AttractionPath.MALE_PATH) {
+      isAttractionSensitive = true;
+      if (dynamicLabelTemplate === undefined || dynamicLabelTemplate === null) {
+        dynamicLabelTemplate = 'Approach {{targetPlural}}';
+      }
+    }
+
     const data: Prisma.MissionCategoryUpdateInput = {
       ...(dto.code ? { code: normalizeCode(dto.code) } : {}),
       ...(label ? { label } : {}),
       ...(dto.description !== undefined
         ? { description: cleanStr(dto.description) ?? null }
         : {}),
+      ...(dto.attractionPath !== undefined ? { attractionPath } : {}),
+      ...(isAttractionSensitive !== undefined ? { isAttractionSensitive } : {}),
+      ...(dynamicLabelTemplate !== undefined
+        ? { dynamicLabelTemplate: cleanStr(dynamicLabelTemplate) ?? null }
+        : {}),
+      ...(dto.displayOrder !== undefined ? { displayOrder: dto.displayOrder } : {}),
+      ...(dto.iconUrl !== undefined
+        ? { iconUrl: cleanStr(dto.iconUrl) ?? null }
+        : {}),
+      ...(dto.active !== undefined ? { active: dto.active } : {}),
     };
 
     try {
@@ -987,11 +1333,354 @@ export class MissionsAdminService {
     }
   }
 
+  async reorderCategories(items: Array<{ id: string; displayOrder: number }>) {
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new BadRequestException({
+        code: 'VALIDATION',
+        message: 'items array is required and must not be empty',
+      });
+    }
+
+    // Validate all IDs exist
+    const ids = items.map((it) => it.id);
+    const existing = await this.prisma.missionCategory.findMany({
+      where: { id: { in: ids } },
+      select: { id: true },
+    });
+
+    if (existing.length !== ids.length) {
+      const foundIds = new Set(existing.map((c) => c.id));
+      const missing = ids.filter((id) => !foundIds.has(id));
+      throw new BadRequestException({
+        code: 'VALIDATION',
+        message: `Some category IDs not found: ${missing.join(', ')}`,
+      });
+    }
+
+    try {
+      await this.prisma.$transaction(
+        items.map((it) =>
+          this.prisma.missionCategory.update({
+            where: { id: it.id },
+            data: { displayOrder: it.displayOrder },
+            select: { id: true },
+          }),
+        ),
+      );
+      return { ok: true };
+    } catch (e) {
+      throw this.mapPrismaError(e);
+    }
+  }
+
   // ---------- Personas ----------
   async listPersonas() {
     const personas = await this.prisma.aiPersona.findMany({
       orderBy: [{ name: 'asc' }],
     });
     return { ok: true, personas };
+  }
+
+  // ---------- Step 7.2: Mission Attachments ----------
+  async getMissionAttachments() {
+    const missions = await this.prisma.practiceMissionTemplate.findMany({
+      where: { active: true },
+      select: {
+        id: true,
+        code: true,
+        title: true,
+        category: {
+          select: {
+            label: true,
+          },
+        },
+        aiContract: true,
+      },
+      orderBy: [{ title: 'asc' }],
+    });
+
+    const attachments = missions.map((m) => {
+      const aiContract = m.aiContract as any;
+      const missionConfigV1 = aiContract?.missionConfigV1;
+      return {
+        missionId: m.id,
+        missionCode: m.code,
+        missionLabel: m.title,
+        categoryLabel: m.category?.label || '',
+        scoringProfileCode: missionConfigV1?.scoringProfileCode ?? null,
+        dynamicsProfileCode: missionConfigV1?.dynamicsProfileCode ?? null,
+      };
+    });
+
+    return { ok: true, attachments };
+  }
+
+  async updateMissionAttachments(
+    id: string,
+    body: { scoringProfileCode?: string | null; dynamicsProfileCode?: string | null },
+  ) {
+    const mission = await this.prisma.practiceMissionTemplate.findUnique({
+      where: { id },
+      select: { id: true, aiContract: true },
+    });
+
+    if (!mission) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'mission not found',
+      });
+    }
+
+    const aiContract = (mission.aiContract as any) || {};
+    const missionConfigV1 = aiContract.missionConfigV1 || {};
+
+    // Update profile codes
+    if (body.scoringProfileCode !== undefined) {
+      if (body.scoringProfileCode === null || body.scoringProfileCode === '') {
+        delete missionConfigV1.scoringProfileCode;
+      } else {
+        missionConfigV1.scoringProfileCode = body.scoringProfileCode;
+      }
+    }
+
+    if (body.dynamicsProfileCode !== undefined) {
+      if (body.dynamicsProfileCode === null || body.dynamicsProfileCode === '') {
+        delete missionConfigV1.dynamicsProfileCode;
+      } else {
+        missionConfigV1.dynamicsProfileCode = body.dynamicsProfileCode;
+      }
+    }
+
+    // Validate updated config
+    const validationErrors = validateMissionConfigV1Shape({ missionConfigV1 });
+    if (validationErrors.length > 0) {
+      throw new BadRequestException({
+        code: 'VALIDATION',
+        message: 'Invalid missionConfigV1 after update',
+        details: validationErrors,
+      });
+    }
+
+    // Save updated aiContract
+    await this.prisma.practiceMissionTemplate.update({
+      where: { id },
+      data: {
+        aiContract: { ...aiContract, missionConfigV1 },
+      },
+    });
+
+    return {
+      ok: true,
+      mission: {
+        id: mission.id,
+        scoringProfileCode: missionConfigV1.scoringProfileCode ?? null,
+        dynamicsProfileCode: missionConfigV1.dynamicsProfileCode ?? null,
+      },
+    };
+  }
+
+  /**
+   * Step 7.3: Get mission stats summary
+   */
+  async getMissionStats(missionId: string, timeWindowDays?: number | null) {
+    const mission = await this.prisma.practiceMissionTemplate.findUnique({
+      where: { id: missionId },
+      select: { id: true },
+    });
+
+    if (!mission) {
+      throw new NotFoundException(`Mission ${missionId} not found`);
+    }
+
+    const now = new Date();
+    const timeWindow = timeWindowDays && timeWindowDays > 0 
+      ? new Date(now.getTime() - timeWindowDays * 24 * 60 * 60 * 1000)
+      : null;
+
+    const whereClause: any = {
+      templateId: missionId,
+      endedAt: { not: null },
+    };
+
+    if (timeWindow) {
+      whereClause.createdAt = { gte: timeWindow };
+    }
+
+    const sessions = await this.prisma.practiceSession.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        isSuccess: true,
+        createdAt: true,
+        endedAt: true,
+        score: true,
+      },
+    });
+
+    const sessionCount = sessions.length;
+    const successCount = sessions.filter(s => s.isSuccess).length;
+    const successRate = sessionCount > 0 ? (successCount / sessionCount) * 100 : 0;
+
+    // Get average messages per session
+    const messageCounts = await Promise.all(
+      sessions.map(s => 
+        this.prisma.practiceMessage.count({
+          where: { sessionId: s.id },
+        })
+      )
+    );
+    const avgMessages = messageCounts.length > 0
+      ? messageCounts.reduce((sum, count) => sum + count, 0) / messageCounts.length
+      : 0;
+
+    // Get average duration
+    const durations = sessions
+      .filter(s => s.createdAt && s.endedAt)
+      .map(s => {
+        const start = new Date(s.createdAt).getTime();
+        const end = new Date(s.endedAt!).getTime();
+        return (end - start) / 1000; // seconds
+      });
+    const avgDuration = durations.length > 0
+      ? durations.reduce((sum, d) => sum + d, 0) / durations.length
+      : 0;
+
+    return {
+      sessionCount,
+      successCount,
+      successRate: Math.round(successRate * 10) / 10,
+      avgMessages: Math.round(avgMessages * 10) / 10,
+      avgDurationSeconds: Math.round(avgDuration),
+    };
+  }
+
+  /**
+   * Step 7.4: Get mood timelines for a mission
+   */
+  async getMissionMoodTimelines(missionId: string, limit: number = 10) {
+    const timelines = await this.prisma.missionMoodTimeline.findMany({
+      where: { missionId },
+      include: {
+        session: {
+          select: {
+            id: true,
+            createdAt: true,
+            endedAt: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    return timelines.map(t => ({
+      sessionId: t.sessionId,
+      createdAt: t.createdAt,
+      timelineJson: t.timelineJson,
+      currentMoodState: t.currentMoodState,
+      currentMoodPercent: t.currentMoodPercent,
+      session: t.session,
+    }));
+  }
+
+  /**
+   * Step 7.5: Get session messages with scores and gate triggers
+   */
+  async getSessionMessages(sessionId: string) {
+    const session = await this.prisma.practiceSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        templateId: true,
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException(`Session ${sessionId} not found`);
+    }
+
+    const messages = await this.prisma.practiceMessage.findMany({
+      where: { sessionId },
+      orderBy: { turnIndex: 'asc' },
+      select: {
+        id: true,
+        turnIndex: true,
+        role: true,
+        content: true,
+        score: true,
+        traitData: true,
+      },
+    });
+
+    // Get gate outcomes for this session
+    const gateOutcomes = await this.prisma.gateOutcome.findMany({
+      where: { sessionId },
+      select: {
+        gateKey: true,
+        passed: true,
+        messageIndex: true,
+        triggeredAt: true,
+      },
+    });
+
+    // Get mood timeline for mood deltas
+    const moodTimeline = await this.prisma.missionMoodTimeline.findUnique({
+      where: { sessionId },
+      select: {
+        timelineJson: true,
+      },
+    });
+
+    // Map score to rarity tier
+    const scoreToRarity = (score: number | null): string => {
+      if (score === null || score === undefined) return '—';
+      if (score >= 92) return 'S+';
+      if (score >= 84) return 'S';
+      if (score >= 72) return 'A';
+      if (score >= 58) return 'B';
+      return 'C';
+    };
+
+    return {
+      sessionId,
+      messages: messages.map(m => ({
+        turnIndex: m.turnIndex,
+        role: m.role,
+        content: m.content,
+        score: m.score,
+        rarity: scoreToRarity(m.score),
+        traitData: m.traitData,
+      })),
+      gateOutcomes: gateOutcomes.map(g => ({
+        gateKey: g.gateKey,
+        passed: g.passed,
+        messageIndex: g.messageIndex,
+        triggeredAt: g.triggeredAt,
+      })),
+      moodTimeline: moodTimeline?.timelineJson || null,
+    };
+  }
+
+  /**
+   * Step 7.5: Get recent sessions for a mission
+   */
+  async getMissionSessions(missionId: string, limit: number = 10) {
+    const sessions = await this.prisma.practiceSession.findMany({
+      where: {
+        templateId: missionId,
+        endedAt: { not: null },
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        endedAt: true,
+        score: true,
+        isSuccess: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    return sessions;
   }
 }
