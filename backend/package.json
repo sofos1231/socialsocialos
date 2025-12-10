@@ -10,7 +10,7 @@
     "db:generate": "pnpm exec prisma generate",
     "db:push": "pnpm exec prisma db push",
     "seed": "ts-node --transpile-only prisma/seed.ts",
-    "start:dev": "nest start --watch",
+    "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
     "dev:api": "npm run start:dev",
     "dev:dash": "vite",
     "postinstall": "prisma generate",

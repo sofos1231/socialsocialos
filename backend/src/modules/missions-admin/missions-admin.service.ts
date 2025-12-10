@@ -467,6 +467,7 @@ export class MissionsAdminService {
 
     // Extract normalized config (without endReasonPrecedenceResolved which is runtime-only)
     const normalizedConfig = normalizeResult.value;
+    // Step 6.0 Fix: Preserve FULL normalized MissionConfigV1, including optional fields
     const normalizedAiContract = {
       missionConfigV1: {
         version: normalizedConfig.version,
@@ -475,6 +476,9 @@ export class MissionsAdminService {
         difficulty: normalizedConfig.difficulty,
         style: normalizedConfig.style,
         statePolicy: normalizedConfig.statePolicy,
+        // Preserve optional fields when present
+        ...(normalizedConfig.openings ? { openings: normalizedConfig.openings } : {}),
+        ...(normalizedConfig.responseArchitecture ? { responseArchitecture: normalizedConfig.responseArchitecture } : {}),
       },
     };
 
@@ -641,6 +645,7 @@ export class MissionsAdminService {
         }
 
         const normalizedConfig = normalizeResult.value;
+        // Step 6.0 Fix: Preserve FULL normalized MissionConfigV1, including optional fields
         normalizedAiContract = {
           missionConfigV1: {
             version: normalizedConfig.version,
@@ -649,6 +654,9 @@ export class MissionsAdminService {
             difficulty: normalizedConfig.difficulty,
             style: normalizedConfig.style,
             statePolicy: normalizedConfig.statePolicy,
+            // Preserve optional fields when present
+            ...(normalizedConfig.openings ? { openings: normalizedConfig.openings } : {}),
+            ...(normalizedConfig.responseArchitecture ? { responseArchitecture: normalizedConfig.responseArchitecture } : {}),
           },
         };
 

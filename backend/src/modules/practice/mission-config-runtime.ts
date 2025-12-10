@@ -20,6 +20,12 @@ import {
     difficulty: MissionConfigV1['difficulty'];
     style: MissionConfigV1['style'];
     statePolicy: MissionConfigV1['statePolicy'];
+    // Step 6.3: Openings layer
+    openings: MissionConfigV1['openings'] | null;
+    // Step 6.4: Response architecture
+    responseArchitecture: MissionConfigV1['responseArchitecture'] | null;
+    // Step 6.9: AI runtime profile
+    aiRuntimeProfile: MissionConfigV1['aiRuntimeProfile'] | null;
   
     /**
      * Resolved end reason precedence: uses statePolicy.endReasonPrecedence if provided,
@@ -94,6 +100,15 @@ import {
         locationTag: config.dynamics.locationTag,
         hasPerMessageTimer: config.dynamics.hasPerMessageTimer,
         defaultEntryRoute: config.dynamics.defaultEntryRoute,
+        // Step 6.1: Normalize dynamics tuning parameters
+        pace: config.dynamics.pace ?? null,
+        emojiDensity: config.dynamics.emojiDensity ?? null,
+        flirtiveness: config.dynamics.flirtiveness ?? null,
+        hostility: config.dynamics.hostility ?? null,
+        dryness: config.dynamics.dryness ?? null,
+        vulnerability: config.dynamics.vulnerability ?? null,
+        escalationSpeed: config.dynamics.escalationSpeed ?? null,
+        randomness: config.dynamics.randomness ?? null,
       },
   
       objective: {
@@ -107,6 +122,13 @@ import {
         recommendedMaxMessages: config.difficulty.recommendedMaxMessages ?? null,
         recommendedSuccessScore: config.difficulty.recommendedSuccessScore ?? null,
         recommendedFailScore: config.difficulty.recommendedFailScore ?? null,
+        // Step 6.2: Normalize difficulty tuning parameters
+        strictness: config.difficulty.strictness ?? null,
+        ambiguityTolerance: config.difficulty.ambiguityTolerance ?? null,
+        emotionalPenalty: config.difficulty.emotionalPenalty ?? null,
+        bonusForCleverness: config.difficulty.bonusForCleverness ?? null,
+        failThreshold: config.difficulty.failThreshold ?? null,
+        recoveryDifficulty: config.difficulty.recoveryDifficulty ?? null,
       },
   
       style,
@@ -126,7 +148,21 @@ import {
         endReasonPrecedence: Array.isArray(config.statePolicy.endReasonPrecedence)
           ? [...config.statePolicy.endReasonPrecedence]
           : (config.statePolicy.endReasonPrecedence ?? null),
+        // Step 6.10: Normalize feature toggles (all default to true for backward compatibility)
+        enableMicroDynamics: config.statePolicy.enableMicroDynamics ?? true,
+        enableModifiers: config.statePolicy.enableModifiers ?? true,
+        enableArcDetection: config.statePolicy.enableArcDetection ?? true,
+        enablePersonaDriftDetection: config.statePolicy.enablePersonaDriftDetection ?? true,
       },
+
+      // Step 6.3: Normalize openings (optional)
+      openings: config.openings ?? null,
+
+      // Step 6.4: Normalize response architecture (optional)
+      responseArchitecture: config.responseArchitecture ?? null,
+
+      // Step 6.9: Normalize AI runtime profile (optional)
+      aiRuntimeProfile: config.aiRuntimeProfile ?? null,
   
       endReasonPrecedenceResolved,
     };

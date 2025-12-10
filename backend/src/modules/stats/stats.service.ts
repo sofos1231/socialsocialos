@@ -387,7 +387,13 @@ export class StatsService {
     });
 
     // Step 5.14: Category stats (read-only, non-breaking addition)
-    const categoryStats = await this.getCategoryStatsForUser(userId);
+    let categoryStats: any[] = [];
+    try {
+      categoryStats = await this.getCategoryStatsForUser(userId);
+    } catch (err: any) {
+      // Non-breaking: if category stats fail, return empty array
+      console.error(`[StatsService] Category stats fetch failed for ${userId}:`, err);
+    }
 
     return {
       ok: true,

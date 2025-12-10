@@ -48,8 +48,19 @@ export interface MoodInsight {
 }
 
 /**
+ * Step 6.7: Named arc in emotional curve
+ */
+export interface NamedArc {
+  type: 'RISING_WARMTH' | 'COOL_DOWN' | 'TESTING_SPIKE' | 'RECOVERY_ARC' | 'STABLE_ARC' | 'TENSION_BUILD';
+  startTurnIndex: number;
+  endTurnIndex: number;
+  summary: string; // Human-readable description of the arc
+}
+
+/**
  * Step 5.10: Runtime mood timeline for a session
  * This is what will be stored in MissionMoodTimeline.timelineJson
+ * Step 6.7: Extended with named arcs
  */
 export interface MoodTimelinePayload {
   version: 1;
@@ -62,6 +73,8 @@ export interface MoodTimelinePayload {
     pickedIds: string[];
     insights: MoodInsight[];
   };
+  // Step 6.7: Named arcs for emotional curve visualization
+  arcs?: NamedArc[];
 }
 
 /**

@@ -11,6 +11,18 @@ import { AiScoringService } from '../ai/ai-scoring.service';
 import { AiCoreScoringService } from '../ai/ai-core-scoring.service';
 import { AiChatService } from '../ai/providers/ai-chat.service';
 import { SessionsService } from '../sessions/sessions.service';
+// Step 6.3-6.5: Import new services
+import { OpeningsService } from '../ai-engine/openings.service';
+import { MissionStateService } from '../ai-engine/mission-state.service';
+import type { MissionStateV1, GateState } from '../ai-engine/mission-state-v1.schema';
+// Step 6.4: Import gate and reward services
+import { GatesService, type GateKey } from '../gates/gates.service';
+import { RewardReleaseService } from '../ai-engine/reward-release.service';
+import { getGateRequirementsForObjective } from '../ai-engine/registries/objective-gate-mappings.registry';
+// Step 6.6: Import micro-dynamics service
+import { MicroDynamicsService } from '../ai-engine/micro-dynamics.service';
+// Step 6.8: Import persona drift service
+import { PersonaDriftService } from '../ai-engine/persona-drift.service';
 import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
 import {
   normalizeMissionConfigV1,
@@ -329,6 +341,8 @@ function computeEndReason(params: {
   averageScore: number;
   policy: Required<MissionStatePayload>['policy'];
   normalizedConfig: NormalizedMissionConfigV1 | null;
+  // Step 6.4: Gate state for objective-based missions
+  gateState?: { allRequiredGatesMet: boolean; unmetGates: string[] } | null;
 }): { code: MissionEndReasonCode | null; meta: Record<string, any> | null } {
   if (params.aiMode === 'FREEPLAY') {
     return { code: null, meta: null };
@@ -352,6 +366,50 @@ function computeEndReason(params: {
   const naturalReason: MissionEndReasonCode =
     params.status === 'SUCCESS' ? 'SUCCESS_OBJECTIVE' : 'FAIL_OBJECTIVE';
 
+  // Step 6.4 Fix: Check if gates are authoritative (gate sequence end reasons allowed)
+  const allowedEndReasons = params.normalizedConfig?.statePolicy.allowedEndReasons ?? [];
+  const hasGateSequenceEndReasons = allowedEndReasons.includes('SUCCESS_GATE_SEQUENCE') || 
+                                     allowedEndReasons.includes('FAIL_GATE_SEQUENCE');
+  
+  // If gate sequence end reasons are allowed and gate state exists, use gates as authoritative
+  if (hasGateSequenceEndReasons && params.gateState) {
+    const allGatesMet = params.gateState.allRequiredGatesMet;
+    const unmetGates = params.gateState.unmetGates ?? [];
+    
+    if (allGatesMet && allowedEndReasons.includes('SUCCESS_GATE_SEQUENCE')) {
+      return {
+        code: 'SUCCESS_GATE_SEQUENCE',
+        meta: {
+          averageScore: params.averageScore,
+          successScoreThreshold: params.policy.successScore,
+          failScoreThreshold: params.policy.failScore,
+          naturalReason,
+          finalStatus: params.status,
+          gateState: {
+            allRequiredGatesMet: true,
+            unmetGates: [],
+          },
+        },
+      };
+    } else if (!allGatesMet && allowedEndReasons.includes('FAIL_GATE_SEQUENCE')) {
+      return {
+        code: 'FAIL_GATE_SEQUENCE',
+        meta: {
+          averageScore: params.averageScore,
+          successScoreThreshold: params.policy.successScore,
+          failScoreThreshold: params.policy.failScore,
+          naturalReason,
+          finalStatus: params.status,
+          gateState: {
+            allRequiredGatesMet: false,
+            unmetGates,
+          },
+        },
+      };
+    }
+    // If gate state exists but gates aren't met and FAIL_GATE_SEQUENCE not allowed, fall through to normal logic
+  }
+
   if (!params.normalizedConfig || !params.normalizedConfig.statePolicy.allowedEndReasons) {
     return {
       code: naturalReason,
@@ -361,11 +419,15 @@ function computeEndReason(params: {
         failScoreThreshold: params.policy.failScore,
         naturalReason,
         finalStatus: params.status,
+        ...(params.gateState ? {
+          gateState: {
+            allRequiredGatesMet: params.gateState.allRequiredGatesMet,
+            unmetGates: params.gateState.unmetGates ?? [],
+          },
+        } : {}),
       },
     };
   }
-
-  const allowedEndReasons = params.normalizedConfig.statePolicy.allowedEndReasons;
 
   if (allowedEndReasons.length === 0) {
     return {
@@ -376,6 +438,12 @@ function computeEndReason(params: {
         failScoreThreshold: params.policy.failScore,
         naturalReason,
         finalStatus: params.status,
+        ...(params.gateState ? {
+          gateState: {
+            allRequiredGatesMet: params.gateState.allRequiredGatesMet,
+            unmetGates: params.gateState.unmetGates ?? [],
+          },
+        } : {}),
       },
     };
   }
@@ -389,6 +457,12 @@ function computeEndReason(params: {
         failScoreThreshold: params.policy.failScore,
         naturalReason,
         finalStatus: params.status,
+        ...(params.gateState ? {
+          gateState: {
+            allRequiredGatesMet: params.gateState.allRequiredGatesMet,
+            unmetGates: params.gateState.unmetGates ?? [],
+          },
+        } : {}),
       },
     };
   }
@@ -464,6 +538,16 @@ export class PracticeService {
     private readonly aiCore: AiCoreScoringService,
     private readonly aiChat: AiChatService,
     private readonly sessions: SessionsService,
+    // Step 6.3-6.5: Inject new services
+    private readonly openingsService: OpeningsService,
+    private readonly missionStateService: MissionStateService,
+    // Step 6.4: Inject gate and reward services
+    private readonly gatesService: GatesService,
+    private readonly rewardReleaseService: RewardReleaseService,
+    // Step 6.6: Inject micro-dynamics service
+    private readonly microDynamicsService: MicroDynamicsService,
+    // Step 6.8: Inject persona drift service
+    private readonly personaDriftService: PersonaDriftService,
   ) {}
 
   private async resolveFreePlayAiStyle(params: {
@@ -753,6 +837,143 @@ export class PracticeService {
       aiMode = 'FREEPLAY';
     }
 
+    // Step 6.3-6.5: Initialize mission state from openings config
+    let missionStateV1: MissionStateV1 | null = null;
+    const isFirstMessage = existingTranscript.length === 0 && deltaUser.length > 0;
+
+    if (normalizedMissionConfigV1) {
+      const openings = normalizedMissionConfigV1.openings;
+      const personaInitMood = openings?.personaInitMood ?? null;
+
+      // Step 6.4: Get gate requirements for objective
+      const objective = normalizedMissionConfigV1.objective;
+      const difficultyLevel = normalizedMissionConfigV1.difficulty?.level ?? MissionDifficulty.EASY;
+      const gateRequirement = getGateRequirementsForObjective(objective.kind, difficultyLevel);
+      const requiredGates: GateKey[] = gateRequirement?.requiredGates ?? [];
+
+      if (isFirstMessage) {
+        // Step 6.3: Initialize mission state from openings
+        // Step 6.4: Pass required gates for gate state initialization
+        missionStateV1 = this.missionStateService.createInitialMissionState(personaInitMood, requiredGates);
+      } else if (existingSession?.payload && typeof existingSession.payload === 'object') {
+        // Step 6.5: Load existing mission state from payload
+        const p: any = existingSession.payload as any;
+        if (p?.missionStateV1 && typeof p.missionStateV1 === 'object') {
+          missionStateV1 = p.missionStateV1 as MissionStateV1;
+          // Step 6.4: Ensure gate state exists if gates are required
+          if (requiredGates.length > 0 && !missionStateV1.gateState) {
+            missionStateV1.gateState = {
+              gates: {},
+              allRequiredGatesMet: false,
+              requiredGates: [...requiredGates],
+              metGates: [],
+              unmetGates: [...requiredGates],
+            };
+          }
+        }
+      }
+
+      // If still no mission state, create default
+      if (!missionStateV1) {
+        missionStateV1 = this.missionStateService.createInitialMissionState(personaInitMood, requiredGates);
+      }
+    }
+
+    // Step 6.9 Prep: Extract trace data for telemetry
+    const dynamics = normalizedMissionConfigV1?.dynamics ?? null;
+    const difficulty = normalizedMissionConfigV1?.difficulty ?? null;
+    const style = normalizedMissionConfigV1?.style ?? null;
+
+    // Step 6.5: Initialize variables for mission state tracking (will be updated after scoring)
+    let lastTraits: Record<string, number> | null = null;
+
+    const trace: {
+      dynamicsUsage: {
+        pace: number | null;
+        emojiDensity: number | null;
+        flirtiveness: number | null;
+        hostility: number | null;
+        dryness: number | null;
+        vulnerability: number | null;
+        escalationSpeed: number | null;
+        randomness: number | null;
+      } | null;
+      difficultyInfluence: {
+        strictness: number | null;
+        ambiguityTolerance: number | null;
+        emotionalPenalty: number | null;
+        bonusForCleverness: number | null;
+        failThreshold: number | null;
+        recoveryDifficulty: number | null;
+      } | null;
+      styleInfluence: {
+        aiStyleKey: string | null;
+        styleIntensity: string | null;
+      } | null;
+      rewardLeakBlocked?: boolean;
+      originalAiReply?: string;
+      // Step 6.6: Micro-dynamics telemetry
+      microDynamics?: {
+        riskIndex: number | null;
+        momentumIndex: number | null;
+        flowIndex: number | null;
+      } | null;
+      // Step 6.8: Persona stability telemetry
+      personaStability?: number | null;
+      activeModifiers?: string[] | null; // List of active modifier keys
+      // Step 6.10: AI call trace snapshots
+      aiCallSnapshots: import('../ai/ai-trace.types').AiCallTraceSnapshot[];
+    } = {
+      // Step 6.9 Prep: Trace how dynamics influenced the session
+      dynamicsUsage: dynamics
+        ? {
+            pace: dynamics.pace ?? null,
+            emojiDensity: dynamics.emojiDensity ?? null,
+            flirtiveness: dynamics.flirtiveness ?? null,
+            hostility: dynamics.hostility ?? null,
+            dryness: dynamics.dryness ?? null,
+            vulnerability: dynamics.vulnerability ?? null,
+            escalationSpeed: dynamics.escalationSpeed ?? null,
+            randomness: dynamics.randomness ?? null,
+          }
+        : null,
+
+      // Step 6.9 Prep: Trace how difficulty influenced scoring
+      difficultyInfluence: difficulty
+        ? {
+            strictness: difficulty.strictness ?? null,
+            ambiguityTolerance: difficulty.ambiguityTolerance ?? null,
+            emotionalPenalty: difficulty.emotionalPenalty ?? null,
+            bonusForCleverness: difficulty.bonusForCleverness ?? null,
+            failThreshold: difficulty.failThreshold ?? null,
+            recoveryDifficulty: difficulty.recoveryDifficulty ?? null,
+          }
+        : null,
+
+      // Step 6.9 Prep: Trace how style influenced behavior
+      styleInfluence: style
+        ? {
+            aiStyleKey: style.aiStyleKey ?? null,
+            styleIntensity: style.styleIntensity ?? null,
+          }
+        : null,
+      // Step 6.6: Trace micro-dynamics
+      microDynamics: missionStateV1?.microDynamics
+        ? {
+            riskIndex: missionStateV1.microDynamics.riskIndex,
+            momentumIndex: missionStateV1.microDynamics.momentumIndex,
+            flowIndex: missionStateV1.microDynamics.flowIndex,
+          }
+        : null,
+      // Step 6.8: Trace persona stability
+      personaStability: missionStateV1?.personaStability ?? null,
+      activeModifiers: missionStateV1?.activeModifiers
+        ? missionStateV1.activeModifiers.map((m) => m.key)
+        : null,
+      // Step 6.10: AI call trace snapshots (will be populated after AI call)
+      aiCallSnapshots: [],
+    };
+
     const payloadExtras = {
       mode: aiMode,
       freeplay: {
@@ -760,6 +981,11 @@ export class PracticeService {
       },
       aiStyleKey: freePlayStyle.aiStyleKey ?? null,
       normalizedMissionConfigV1: normalizedMissionConfigV1 ?? null,
+      // Step 6.9 Prep: Add trace data for future telemetry integration
+      trace,
+      // Step 6.5: Store mission state for next message cycle
+      missionStateV1: missionStateV1 ?? null,
+      lastTraits: lastTraits,
     };
 
     if (disqualify) {
@@ -861,6 +1087,9 @@ export class PracticeService {
     }
 
     let messageScores: number[] = [];
+    let lastScoringResult: any = null;
+    let lastFlags: string[] = [];
+    // lastTraits is already declared above
 
     if (isContinuation && existingScores.length === existingUserCount && existingScores.length > 0) {
       const deltaNormalized: AiPracticeMessageInput[] = deltaUser.map((m, idx) => ({
@@ -869,14 +1098,21 @@ export class PracticeService {
         content: m.content,
       }));
 
-      const aiDelta = await this.aiScoring.scoreConversation({
+      // Step 6.2: Extract difficulty config from normalized mission config
+      const difficultyConfig = normalizedMissionConfigV1?.difficulty ?? null;
+      // Step 6.1 Fix: Seed previousScore for continuation recoveryDifficulty calculation
+      const lastExistingScore = existingScores.length > 0 ? existingScores[existingScores.length - 1] : null;
+
+      lastScoringResult = await this.aiScoring.scoreConversation({
         userId,
         personaId,
         templateId,
         messages: deltaNormalized,
+        difficultyConfig,
+        previousScoreSeed: lastExistingScore,
       });
 
-      const deltaScores = (aiDelta?.perMessage ?? []).map((m) => m.score);
+      const deltaScores = (lastScoringResult?.perMessage ?? []).map((m) => m.score);
       if (deltaScores.length === 0)
         throw new BadRequestException('AI scoring produced no message scores.');
 
@@ -889,20 +1125,218 @@ export class PracticeService {
         content: m.content,
       }));
 
-      const aiAll = await this.aiScoring.scoreConversation({
+      // Step 6.2: Extract difficulty config from normalized mission config
+      const difficultyConfig = normalizedMissionConfigV1?.difficulty ?? null;
+
+      lastScoringResult = await this.aiScoring.scoreConversation({
         userId,
         personaId,
         templateId,
         messages: normalizedAll,
+        difficultyConfig,
       });
 
-      messageScores = (aiAll?.perMessage ?? []).map((m) => m.score);
+      messageScores = (lastScoringResult?.perMessage ?? []).map((m) => m.score);
       if (messageScores.length === 0)
         throw new BadRequestException('AI scoring produced no message scores.');
     }
 
+    // Step 6.5: Extract last message scoring details for mood update
+    const lastScore = messageScores[messageScores.length - 1] ?? 0;
+    const lastMessageScore = lastScoringResult?.perMessage?.[lastScoringResult.perMessage.length - 1];
+    if (lastMessageScore) {
+      lastFlags = lastMessageScore.tags ?? [];
+      // Extract traits if available in scoring result
+      // Note: Actual trait extraction depends on scoring service structure
+      lastTraits = null; // Placeholder - will be populated when trait data is available
+    }
+
+    // Get previous traits from existing payload
+    const previousTraits = existingSession?.payload && typeof existingSession.payload === 'object'
+      ? (existingSession.payload as any)?.lastTraits ?? null
+      : null;
+
+    // Update mission state with scoring results
+    if (missionStateV1 && normalizedMissionConfigV1) {
+      missionStateV1 = this.missionStateService.updateMissionState(
+        missionStateV1,
+        messageScores,
+        lastScore,
+        lastFlags,
+        lastTraits,
+        previousTraits,
+        normalizedMissionConfigV1.difficulty ?? null,
+        effectivePolicy.failScore,
+        effectivePolicy.successScore,
+        effectivePolicy.maxMessages,
+      );
+
+      // Step 6.4: Evaluate gates and update gate state
+      if (normalizedMissionConfigV1.objective && missionStateV1.gateState) {
+        const gateEvaluationContext = {
+          userMessageCount: messageScores.length,
+          averageScore: missionStateV1.averageScore,
+          messageScores: messageScores,
+          progressPct: missionStateV1.progressPct,
+          isDisqualified: false,
+          endReasonCode: null,
+        };
+
+        const requiredGates = missionStateV1.gateState.requiredGates as GateKey[];
+        const gateResults = this.gatesService.evaluateGatesForActiveSession(
+          gateEvaluationContext,
+          requiredGates,
+        );
+
+        // Update gate state
+        const updatedGates: Record<string, { passed: boolean; reasonCode?: string | null; evaluatedAt?: string | null }> = {};
+        const metGates: string[] = [];
+        const unmetGates: string[] = [];
+
+        for (const result of gateResults) {
+          updatedGates[result.gateKey] = {
+            passed: result.passed,
+            reasonCode: result.reasonCode ?? null,
+            evaluatedAt: new Date().toISOString(),
+          };
+
+          if (result.passed) {
+            metGates.push(result.gateKey);
+          } else {
+            unmetGates.push(result.gateKey);
+          }
+        }
+
+        // Check additional conditions (mood, tension, etc.)
+        const objective = normalizedMissionConfigV1.objective;
+        const difficultyLevel = normalizedMissionConfigV1.difficulty?.level ?? MissionDifficulty.EASY;
+        const gateRequirement = getGateRequirementsForObjective(objective.kind, difficultyLevel);
+        const additionalConditions = gateRequirement?.additionalConditions ?? [];
+
+        let allConditionsMet = unmetGates.length === 0;
+
+        // Evaluate additional conditions
+        for (const condition of additionalConditions) {
+          if (condition.startsWith('mood >=')) {
+            const requiredMood = condition.split('>=')[1]?.trim();
+            const moodOrder = ['cold', 'neutral', 'warm', 'excited', 'interested'];
+            const currentMoodIndex = moodOrder.indexOf(missionStateV1.mood.currentMood);
+            const requiredMoodIndex = moodOrder.indexOf(requiredMood);
+            if (currentMoodIndex < requiredMoodIndex) {
+              allConditionsMet = false;
+            }
+          } else if (condition.startsWith('tension <')) {
+            const maxTension = parseFloat(condition.split('<')[1]?.trim() ?? '1');
+            if (missionStateV1.mood.tensionLevel >= maxTension) {
+              allConditionsMet = false;
+            }
+          }
+        }
+
+        missionStateV1.gateState = {
+          gates: updatedGates,
+          allRequiredGatesMet: allConditionsMet,
+          requiredGates: requiredGates,
+          metGates,
+          unmetGates,
+        };
+      }
+
+      // Step 6.6: Compute micro-dynamics state (Step 6.10: Feature toggle check)
+      const enableMicroDynamics = normalizedMissionConfigV1?.statePolicy?.enableMicroDynamics !== false;
+      if (missionStateV1 && enableMicroDynamics) {
+        const recentScores = messageScores.slice(-3); // Last 3 scores
+        const microDynamicsContext = {
+          currentScore: lastScore,
+          recentScores,
+          tensionLevel: missionStateV1.mood.tensionLevel,
+          moodState: missionStateV1.mood.currentMood,
+          difficultyLevel: normalizedMissionConfigV1.difficulty?.level ?? null,
+          progressPct: missionStateV1.progressPct,
+          gateProgress: missionStateV1.gateState
+            ? {
+                metGates: missionStateV1.gateState.metGates,
+                unmetGates: missionStateV1.gateState.unmetGates,
+              }
+            : null,
+        };
+
+        const microDynamics = this.microDynamicsService.computeMicroDynamics(microDynamicsContext);
+        missionStateV1.microDynamics = microDynamics;
+
+        // Step 6.6: Future micro-gates hook (stub for now)
+        // TODO Step 6.6+: Implement micro-gates evaluation
+        // const microGatesResult = this.microDynamicsService.evaluateMicroGates(microDynamics, microDynamicsContext);
+        // if (!microGatesResult.passed) {
+        //   // Apply micro-gate consequences
+        // }
+      } else if (missionStateV1 && !enableMicroDynamics) {
+        // Step 6.10: If micro-dynamics disabled, leave it undefined
+        missionStateV1.microDynamics = undefined;
+      }
+
+      // Step 6.8: Compute persona stability and update modifiers (Step 6.10: Feature toggle checks)
+      const enablePersonaDriftDetection = normalizedMissionConfigV1?.statePolicy?.enablePersonaDriftDetection !== false;
+      const enableModifiers = normalizedMissionConfigV1?.statePolicy?.enableModifiers !== false;
+      if (missionStateV1 && normalizedMissionConfigV1 && enablePersonaDriftDetection) {
+        const recentFlagsArray: string[][] = [];
+        if (lastFlags && lastFlags.length > 0) {
+          recentFlagsArray.push(lastFlags);
+        }
+        // Add previous flags if available (simplified - in production would track last 2-3)
+        const recentTraitsArray: Array<Record<string, number> | null> = [];
+        if (lastTraits) {
+          recentTraitsArray.push(lastTraits);
+        }
+        if (previousTraits) {
+          recentTraitsArray.push(previousTraits);
+        }
+
+        const personaStabilityContext = {
+          style: normalizedMissionConfigV1.style ?? null,
+          dynamics: normalizedMissionConfigV1.dynamics ?? null,
+          difficulty: normalizedMissionConfigV1.difficulty ?? null,
+          moodState: missionStateV1.mood,
+          recentScores: messageScores.slice(-3),
+          recentFlags: recentFlagsArray,
+          recentTraits: recentTraitsArray,
+        };
+
+        const personaStabilityResult = this.personaDriftService.computePersonaStability(
+          personaStabilityContext,
+        );
+        missionStateV1.personaStability = personaStabilityResult.personaStability;
+        missionStateV1.lastDriftReason = personaStabilityResult.lastDriftReason;
+
+        // Step 6.8: Detect modifier events and update modifiers (Step 6.10: Feature toggle check)
+        if (enableModifiers) {
+          const modifierEvents = this.personaDriftService.detectModifierEvents(personaStabilityContext);
+          const existingModifiers = missionStateV1.activeModifiers ?? [];
+          const updatedModifiers = this.personaDriftService.updateModifiersFromEvents(
+            modifierEvents,
+            existingModifiers,
+          );
+          missionStateV1.activeModifiers = updatedModifiers.length > 0 ? updatedModifiers : null;
+        } else {
+          // Step 6.10: If modifiers disabled, clear them
+          missionStateV1.activeModifiers = null;
+        }
+      } else if (missionStateV1 && (!enablePersonaDriftDetection || !enableModifiers)) {
+        // Step 6.10: If persona drift detection disabled, leave stability undefined
+        if (!enablePersonaDriftDetection) {
+          missionStateV1.personaStability = undefined;
+          missionStateV1.lastDriftReason = undefined;
+        }
+        // If modifiers disabled, clear them
+        if (!enableModifiers) {
+          missionStateV1.activeModifiers = null;
+        }
+      }
+    }
+
     const missionState = computeMissionState(messageScores, effectivePolicy, minMessagesBeforeEndResolved);
 
+    // Step 6.4: Pass gate state to computeEndReason
     const endReason = computeEndReason({
       aiMode,
       status: missionState.status,
@@ -911,6 +1345,7 @@ export class PracticeService {
       averageScore: missionState.averageScore,
       policy: effectivePolicy,
       normalizedConfig: normalizedMissionConfigV1,
+      gateState: missionStateV1?.gateState ?? null,
     });
     missionState.endReasonCode = endReason.code;
     missionState.endReasonMeta = endReason.meta;
@@ -923,7 +1358,20 @@ export class PracticeService {
     missionState.endReasonCode = normalizedEndReason.endReasonCode;
     missionState.endReasonMeta = normalizedEndReason.endReasonMeta;
 
-    const { aiReply, aiDebug, aiStructured } = await this.aiChat.generateReply({
+    // Step 6.3-6.5: Build unified mission config for prompt builder
+    // Step 6.4: Now includes objective
+    const unifiedMissionConfig = normalizedMissionConfigV1
+      ? {
+          aiStyle: freePlayStyle.aiStyle ?? null,
+          dynamics: normalizedMissionConfigV1.dynamics ?? null,
+          difficulty: normalizedMissionConfigV1.difficulty ?? null,
+          openings: normalizedMissionConfigV1.openings ?? null,
+          responseArchitecture: normalizedMissionConfigV1.responseArchitecture ?? null,
+          objective: normalizedMissionConfigV1.objective ?? null,
+        }
+      : null;
+
+    const { aiReply, aiDebug, aiStructured, errorCode, syntheticReply } = await this.aiChat.generateReply({
       userId,
       topic,
       messages: fullTranscript,
@@ -931,9 +1379,92 @@ export class PracticeService {
       personaId,
       aiStyleKey: freePlayStyle.aiStyleKey ?? undefined,
       aiStyle: freePlayStyle.aiStyle ?? undefined,
+      // Step 6.3-6.5: Pass unified mission config and state
+      missionConfig: unifiedMissionConfig
+        ? {
+            ...unifiedMissionConfig,
+            // Step 6.9: Include AI runtime profile
+            aiRuntimeProfile: normalizedMissionConfigV1?.aiRuntimeProfile ?? null,
+          }
+        : null,
+      missionState: missionStateV1,
+      isFirstMessage,
     });
 
-    const transcriptToPersist: TranscriptMsg[] = [...fullTranscript, { role: 'AI', content: aiReply }];
+    // Step 6.10: Build AI call trace snapshot
+    const aiCallSnapshot: import('../ai/ai-trace.types').AiCallTraceSnapshot = {
+      missionId: templateId ?? 'freeplay',
+      sessionId: existingSession?.id ?? dto.sessionId ?? undefined,
+      userId,
+      aiProfile: normalizedMissionConfigV1?.aiRuntimeProfile
+        ? {
+            model: normalizedMissionConfigV1.aiRuntimeProfile.model,
+            temperature: normalizedMissionConfigV1.aiRuntimeProfile.temperature,
+            maxTokens: normalizedMissionConfigV1.aiRuntimeProfile.maxTokens,
+          }
+        : undefined,
+      dynamics: normalizedMissionConfigV1?.dynamics ?? null,
+      difficulty: normalizedMissionConfigV1?.difficulty ?? null,
+      moodState: missionStateV1?.mood ?? null,
+      microDynamics: missionStateV1?.microDynamics ?? null,
+      personaStability: missionStateV1?.personaStability ?? null,
+      activeModifiers: missionStateV1?.activeModifiers ?? null,
+      provider: aiDebug?.provider ?? 'openai',
+      model: aiDebug?.model ?? 'unknown',
+      latencyMs: aiDebug?.latencyMs ?? 0,
+      tokenUsage: aiDebug?.tokens
+        ? {
+            promptTokens: aiDebug.tokens.promptTokens,
+            completionTokens: aiDebug.tokens.completionTokens,
+            totalTokens: aiDebug.tokens.totalTokens,
+          }
+        : undefined,
+      errorCode: errorCode as any,
+      syntheticReply: syntheticReply ?? false,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Step 6.10: Add snapshot to trace array
+    trace.aiCallSnapshots.push(aiCallSnapshot);
+
+    // Step 6.4 Fix: Server-side reward leakage guard
+    let finalAiReply = aiReply;
+    if (normalizedMissionConfigV1?.objective && missionStateV1?.gateState) {
+      const rewardPermissions = this.rewardReleaseService.getRewardPermissionsForState(
+        missionStateV1,
+        normalizedMissionConfigV1.objective,
+      );
+
+      const objectiveKind = normalizedMissionConfigV1.objective.kind;
+      let rewardLeakBlocked = false;
+
+      if (rewardPermissions.phoneNumber === 'FORBIDDEN' && objectiveKind === 'GET_NUMBER') {
+        const phoneRegex = /(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+        if (phoneRegex.test(finalAiReply)) {
+          finalAiReply = 'I\'m not quite ready to share my number yet, but I\'m enjoying our chat!';
+          rewardLeakBlocked = true;
+        }
+      } else if (rewardPermissions.instagram === 'FORBIDDEN' && objectiveKind === 'GET_INSTAGRAM') {
+        const instagramRegex = /@[\w.]+/;
+        if (instagramRegex.test(finalAiReply)) {
+          finalAiReply = 'I prefer to keep my social media private for now, but thanks for asking!';
+          rewardLeakBlocked = true;
+        }
+      } else if (rewardPermissions.dateAgreement === 'FORBIDDEN' && objectiveKind === 'GET_DATE_AGREEMENT') {
+        const dateAgreementRegex = /(?:let's|we should|how about)\s(?:meet|go out|grab a drink|get coffee|hang out)\s(?:on|this|next)?\s(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend|tonight|tomorrow)/i;
+        if (dateAgreementRegex.test(finalAiReply)) {
+          finalAiReply = 'I\'m having a great time chatting, but I\'m not ready to make plans just yet.';
+          rewardLeakBlocked = true;
+        }
+      }
+
+      if (rewardLeakBlocked) {
+        payloadExtras.trace.rewardLeakBlocked = true;
+        payloadExtras.trace.originalAiReply = aiReply;
+      }
+    }
+
+    const transcriptToPersist: TranscriptMsg[] = [...fullTranscript, { role: 'AI', content: finalAiReply }];
 
     const transcriptForCore: TranscriptMessage[] = transcriptToPersist.map((m) => ({
       text: m.content,
@@ -950,7 +1481,7 @@ export class PracticeService {
       templateId,
       personaId,
       transcript: transcriptToPersist,
-      assistantReply: aiReply,
+      assistantReply: finalAiReply,
       missionStatus: missionState.status,
       aiMode,
       extraPayload: payloadExtras,
@@ -959,11 +1490,11 @@ export class PracticeService {
     });
 
     // ✅ Step 5.6: Apply allowlist-only serializer (no spreading raw objects)
-    return toPracticeSessionResponsePublic(
-      sanitizePracticeResponse({
-        ...saved,
-        aiReply,
-        aiStructured,
+      return toPracticeSessionResponsePublic(
+        sanitizePracticeResponse({
+          ...saved,
+          aiReply: finalAiReply,
+          aiStructured,
         aiDebug: process.env.NODE_ENV !== 'production' ? aiDebug : undefined,
         mission: templateId
           ? {

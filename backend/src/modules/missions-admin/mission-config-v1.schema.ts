@@ -149,8 +149,16 @@ export interface MissionConfigV1Dynamics {
   locationTag: MissionLocationTag;
   hasPerMessageTimer: boolean; // whether a timer is active at all
   defaultEntryRoute: 'TEXT_CHAT' | 'VOICE_SIM';
-  // reserved for future tuning:
-  // responsiveness, cooperation, questionFrequency, etc.
+  
+  // Step 6.1: Dynamics tuning parameters (0-100)
+  pace?: number | null; // Controls response speed and urgency (0=slow, 100=fast)
+  emojiDensity?: number | null; // Controls emoji usage frequency (0=none, 100=heavy)
+  flirtiveness?: number | null; // Controls flirtatious behavior level (0=platonic, 100=very flirty)
+  hostility?: number | null; // Controls pushback/resistance level (0=friendly, 100=hostile)
+  dryness?: number | null; // Controls humor style (0=warm, 100=dry/sarcastic)
+  vulnerability?: number | null; // Controls openness and emotional depth (0=guarded, 100=open)
+  escalationSpeed?: number | null; // Controls how quickly conversation escalates (0=slow, 100=fast)
+  randomness?: number | null; // Controls unpredictability in responses (0=predictable, 100=chaotic)
 }
 
 export type MissionObjectiveKind =
@@ -175,6 +183,14 @@ export interface MissionConfigV1Difficulty {
   recommendedMaxMessages?: number | null;
   recommendedSuccessScore?: number | null; // 0–100
   recommendedFailScore?: number | null; // 0–100
+  
+  // Step 6.2: Difficulty tuning parameters (0-100)
+  strictness?: number | null; // How strictly to grade responses (0=lenient, 100=strict)
+  ambiguityTolerance?: number | null; // How much ambiguity is acceptable (0=no tolerance, 100=high tolerance)
+  emotionalPenalty?: number | null; // Penalty for emotional missteps (0=none, 100=severe)
+  bonusForCleverness?: number | null; // Bonus for clever/witty responses (0=none, 100=high bonus)
+  failThreshold?: number | null; // Score below which mission fails (0-100, overrides statePolicy if set)
+  recoveryDifficulty?: number | null; // How hard it is to recover from mistakes (0=easy, 100=hard)
 }
 
 export interface MissionConfigV1Style {
@@ -195,6 +211,44 @@ export interface MissionConfigV1StatePolicy {
   enableObjectiveAutoSuccess: boolean;
   allowedEndReasons: MissionEndReasonCode[]; // subset of the full enum
   endReasonPrecedence?: MissionEndReasonCode[] | null; // optional override; if missing, use global PRECEDENCE
+  // Step 6.10: Feature toggles for AI layers (all default to true for backward compatibility)
+  enableMicroDynamics?: boolean; // Default: true
+  enableModifiers?: boolean; // Default: true
+  enableArcDetection?: boolean; // Default: true
+  enablePersonaDriftDetection?: boolean; // Default: true
+}
+
+// Step 6.3: Openings Layer Configuration
+export interface MissionConfigV1Openings {
+  style?: 'soft' | 'neutral' | 'direct' | 'intense' | null;
+  energy?: number | null; // 0–1
+  curiosity?: number | null; // 0–1
+  personaInitMood?: 'warm' | 'neutral' | 'cold' | 'mysterious' | null;
+  openerTemplateKey?: string | null;
+}
+
+// Step 6.4: Response Architecture Configuration
+export interface MissionConfigV1ResponseArchitecture {
+  reflection?: number | null; // 0–1
+  validation?: number | null; // 0–1
+  emotionalMirroring?: number | null; // 0–1
+  pushPullFactor?: number | null; // 0–1
+  riskTaking?: number | null; // 0–1
+  clarity?: number | null; // 0–1
+  reasoningDepth?: number | null; // 0–1
+  personaConsistency?: number | null; // 0–1
+}
+
+// Step 6.9: AI Runtime Profile Configuration
+export interface MissionConfigV1AiRuntimeProfile {
+  model?: string; // e.g., "gpt-4o-mini", "gpt-4"
+  temperature?: number; // 0–2
+  maxTokens?: number; // e.g., 260, 500
+  topP?: number; // 0–1
+  presencePenalty?: number; // -2 to 2
+  frequencyPenalty?: number; // -2 to 2
+  timeoutMs?: number; // milliseconds
+  retryAttempts?: number; // 1–5, default: 3
 }
 
 export interface MissionConfigV1 {
@@ -204,6 +258,12 @@ export interface MissionConfigV1 {
   difficulty: MissionConfigV1Difficulty;
   style: MissionConfigV1Style;
   statePolicy: MissionConfigV1StatePolicy;
+  // Step 6.3: Openings layer (optional for backward compatibility)
+  openings?: MissionConfigV1Openings | null;
+  // Step 6.4: Response architecture (optional for backward compatibility)
+  responseArchitecture?: MissionConfigV1ResponseArchitecture | null;
+  // Step 6.9: AI runtime profile (optional for backward compatibility)
+  aiRuntimeProfile?: MissionConfigV1AiRuntimeProfile | null;
 }
 
 // ============================================================================
@@ -359,6 +419,8 @@ export function validateMissionConfigV1Shape(
     'difficulty',
     'style',
     'statePolicy',
+    'openings',
+    'responseArchitecture',
   ];
   for (const key in config) {
     if (!allowedTopLevelKeys.includes(key)) {
@@ -408,12 +470,47 @@ export function validateMissionConfigV1Shape(
       );
     }
 
+    // Step 6.1: Validate dynamics tuning parameters
+    const dynamicsTuningKeys: Array<{ key: string; min?: number; max?: number }> = [
+      { key: 'pace', min: 0, max: 100 },
+      { key: 'emojiDensity', min: 0, max: 100 },
+      { key: 'flirtiveness', min: 0, max: 100 },
+      { key: 'hostility', min: 0, max: 100 },
+      { key: 'dryness', min: 0, max: 100 },
+      { key: 'vulnerability', min: 0, max: 100 },
+      { key: 'escalationSpeed', min: 0, max: 100 },
+      { key: 'randomness', min: 0, max: 100 },
+    ];
+
+    for (const { key, min, max } of dynamicsTuningKeys) {
+      if (key in dynamics) {
+        const value = dynamics[key as keyof typeof dynamics];
+        if (value !== null && value !== undefined) {
+          if (!isValidNumber(value, min, max)) {
+            addError(
+              errors,
+              `aiContract.missionConfigV1.dynamics.${key}`,
+              `${key} must be a number between ${min ?? 0} and ${max ?? 100}, or null`,
+            );
+          }
+        }
+      }
+    }
+
     // Check for unknown keys in dynamics
     const allowedDynamicsKeys = [
       'mode',
       'locationTag',
       'hasPerMessageTimer',
       'defaultEntryRoute',
+      'pace',
+      'emojiDensity',
+      'flirtiveness',
+      'hostility',
+      'dryness',
+      'vulnerability',
+      'escalationSpeed',
+      'randomness',
     ];
     for (const key in dynamics) {
       if (!allowedDynamicsKeys.includes(key)) {
@@ -523,12 +620,43 @@ export function validateMissionConfigV1Shape(
       );
     }
 
+    // Step 6.2: Validate difficulty tuning parameters
+    const difficultyTuningKeys: Array<{ key: string; min?: number; max?: number }> = [
+      { key: 'strictness', min: 0, max: 100 },
+      { key: 'ambiguityTolerance', min: 0, max: 100 },
+      { key: 'emotionalPenalty', min: 0, max: 100 },
+      { key: 'bonusForCleverness', min: 0, max: 100 },
+      { key: 'failThreshold', min: 0, max: 100 },
+      { key: 'recoveryDifficulty', min: 0, max: 100 },
+    ];
+
+    for (const { key, min, max } of difficultyTuningKeys) {
+      if (key in difficulty) {
+        const value = difficulty[key as keyof typeof difficulty];
+        if (value !== null && value !== undefined) {
+          if (!isValidNumber(value, min, max)) {
+            addError(
+              errors,
+              `aiContract.missionConfigV1.difficulty.${key}`,
+              `${key} must be a number between ${min ?? 0} and ${max ?? 100}, or null`,
+            );
+          }
+        }
+      }
+    }
+
     // Check for unknown keys in difficulty
     const allowedDifficultyKeys = [
       'level',
       'recommendedMaxMessages',
       'recommendedSuccessScore',
       'recommendedFailScore',
+      'strictness',
+      'ambiguityTolerance',
+      'emotionalPenalty',
+      'bonusForCleverness',
+      'failThreshold',
+      'recoveryDifficulty',
     ];
     for (const key in difficulty) {
       if (!allowedDifficultyKeys.includes(key)) {
@@ -742,6 +870,108 @@ export function validateMissionConfigV1Shape(
           `aiContract.missionConfigV1.statePolicy.${key}`,
           'Unknown key',
         );
+      }
+    }
+  }
+
+  // Step 6.3: Validate openings (optional)
+  if (config.openings !== undefined && config.openings !== null) {
+    if (typeof config.openings !== 'object' || Array.isArray(config.openings)) {
+      addError(
+        errors,
+        'aiContract.missionConfigV1.openings',
+        'openings must be an object or null',
+      );
+    } else {
+      const openings = config.openings;
+      const validStyles = ['soft', 'neutral', 'direct', 'intense'];
+      if (
+        openings.style !== undefined &&
+        openings.style !== null &&
+        !validStyles.includes(openings.style)
+      ) {
+        addError(
+          errors,
+          'aiContract.missionConfigV1.openings.style',
+          `style must be one of: ${validStyles.join(', ')} or null`,
+        );
+      }
+      if (
+        openings.energy !== undefined &&
+        openings.energy !== null &&
+        !isValidNumber(openings.energy, 0, 1)
+      ) {
+        addError(
+          errors,
+          'aiContract.missionConfigV1.openings.energy',
+          'energy must be a number between 0 and 1, or null',
+        );
+      }
+      if (
+        openings.curiosity !== undefined &&
+        openings.curiosity !== null &&
+        !isValidNumber(openings.curiosity, 0, 1)
+      ) {
+        addError(
+          errors,
+          'aiContract.missionConfigV1.openings.curiosity',
+          'curiosity must be a number between 0 and 1, or null',
+        );
+      }
+      const validMoods = ['warm', 'neutral', 'cold', 'mysterious'];
+      if (
+        openings.personaInitMood !== undefined &&
+        openings.personaInitMood !== null &&
+        !validMoods.includes(openings.personaInitMood)
+      ) {
+        addError(
+          errors,
+          'aiContract.missionConfigV1.openings.personaInitMood',
+          `personaInitMood must be one of: ${validMoods.join(', ')} or null`,
+        );
+      }
+    }
+  }
+
+  // Step 6.4: Validate responseArchitecture (optional)
+  if (
+    config.responseArchitecture !== undefined &&
+    config.responseArchitecture !== null
+  ) {
+    if (
+      typeof config.responseArchitecture !== 'object' ||
+      Array.isArray(config.responseArchitecture)
+    ) {
+      addError(
+        errors,
+        'aiContract.missionConfigV1.responseArchitecture',
+        'responseArchitecture must be an object or null',
+      );
+    } else {
+      const ra = config.responseArchitecture;
+      const raFields: Array<{ key: string }> = [
+        { key: 'reflection' },
+        { key: 'validation' },
+        { key: 'emotionalMirroring' },
+        { key: 'pushPullFactor' },
+        { key: 'riskTaking' },
+        { key: 'clarity' },
+        { key: 'reasoningDepth' },
+        { key: 'personaConsistency' },
+      ];
+      for (const { key } of raFields) {
+        if (key in ra) {
+          const value = ra[key as keyof typeof ra];
+          if (value !== null && value !== undefined) {
+            if (!isValidNumber(value, 0, 1)) {
+              addError(
+                errors,
+                `aiContract.missionConfigV1.responseArchitecture.${key}`,
+                `${key} must be a number between 0 and 1, or null`,
+              );
+            }
+          }
+        }
       }
     }
   }

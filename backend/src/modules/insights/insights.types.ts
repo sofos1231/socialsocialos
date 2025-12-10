@@ -175,6 +175,13 @@ export interface DeepInsightsResponse {
  */
 
 /**
+ * Insight history loaded from prior missions
+ */
+export interface InsightHistory {
+  pickedIds: string[]; // All insight IDs from last 5 missions
+}
+
+/**
  * Insight template (registry entry)
  */
 export interface InsightTemplate {

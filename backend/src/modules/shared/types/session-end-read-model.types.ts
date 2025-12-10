@@ -79,6 +79,11 @@ export interface SessionEndReadModel {
       memoryValue: any;
       writtenAt: string;
     }>;
+    // Step 6.7 Prep: Context for memory weighting
+    memoryContext?: {
+      aiStyleKey: string | null;
+      escalationSpeed: number | null;
+    };
   };
 
   // Step 5.14: Mission metadata

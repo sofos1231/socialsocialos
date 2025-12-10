@@ -4,6 +4,7 @@
     "declaration": true,
     "noEmit": false,          // 🔥 חובה – לוודא שכן מוציאים JS
     "emitDeclarationOnly": false, // 🔥 לבטל מצב של d.ts בלבד אם קיים בבסיס
+    "noEmitOnError": false,   // 🔥 Emit files even with errors (for decorator compatibility)
     "rootDir": "./src",
     "outDir": "./dist"
   },

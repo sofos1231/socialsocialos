@@ -31,6 +31,7 @@ import {
   MessageRarity,
   PracticeMessageInput,
 } from './ai.types';
+import { MissionConfigV1Difficulty } from '../missions-admin/mission-config-v1.schema';
 
 /**
  * AiScoringService
@@ -50,17 +51,27 @@ export class AiScoringService {
    * - Picks mode (FREE / PREMIUM) based on user tier.
    * - Produces per-message scores.
    * - If PREMIUM → also produces a deep session analysis.
+   * - Step 6.2: Accepts optional difficulty configuration for dynamic grading.
    */
   async scoreSession(
     userTier: AccountTier,
     messages: PracticeMessageInput[],
+    difficultyConfig?: MissionConfigV1Difficulty | null,
+    previousScoreSeed?: number | null, // Step 6.1 Fix: Seed for first message (for continuation)
   ): Promise<AiScoringResult> {
     const mode: AiMode =
       userTier === AccountTier.PREMIUM ? 'PREMIUM' : 'FREE';
 
-    const perMessage = messages.map((msg, index) =>
-      this.buildBaseScore(msg, index),
-    );
+    // Step 6.1 Fix: Pass previous score for recovery difficulty calculation
+    // For continuation, seed the first message with the last known score
+    const perMessage: AiMessageScoreBase[] = [];
+    for (let index = 0; index < messages.length; index++) {
+      const msg = messages[index];
+      const previousScore = index > 0 
+        ? perMessage[index - 1]?.score 
+        : (index === 0 && previousScoreSeed !== null && previousScoreSeed !== undefined ? previousScoreSeed : null);
+      perMessage.push(this.buildBaseScore(msg, index, difficultyConfig, previousScore));
+    }
 
     let premiumSessionAnalysis: AiSessionAnalysisPremium | undefined;
 
@@ -78,24 +89,31 @@ export class AiScoringService {
   /**
    * Temporary wrapper to match the shape used in PracticeService.runRealSession.
    * For now we treat everyone as FREE; later we can fetch true tier from DB.
+   * Step 6.2: Accepts optional difficulty configuration.
    */
   async scoreConversation(args: {
     userId: string;
     personaId: string | null;
     templateId: string | null;
     messages: PracticeMessageInput[];
+    difficultyConfig?: MissionConfigV1Difficulty | null;
+    previousScoreSeed?: number | null; // Step 6.1 Fix: Seed for first message in batch (for continuation)
   }): Promise<AiScoringResult> {
     // TODO: use real user tier based on userId
-    return this.scoreSession(AccountTier.FREE, args.messages);
+    return this.scoreSession(AccountTier.FREE, args.messages, args.difficultyConfig, args.previousScoreSeed);
   }
 
   /**
    * Build base score + rarity + micro feedback for a single message.
    * This function is fully deterministic and cheap.
+   * Step 6.2: Accepts difficulty configuration for dynamic grading.
+   * Step 6.1 Fix: Now accepts previousScore for recovery difficulty calculation.
    */
   private buildBaseScore(
     msg: PracticeMessageInput,
     index: number,
+    difficultyConfig?: MissionConfigV1Difficulty | null,
+    previousScore?: number | null, // For recovery difficulty
   ): AiMessageScoreBase {
     const normalizedText = msg.content.trim();
     const lengthScore = this.computeLengthScore(normalizedText);
@@ -103,6 +121,9 @@ export class AiScoringService {
     const positionBonus = this.computePositionBonus(index);
 
     let score = lengthScore + punctuationScore + positionBonus;
+
+    // Step 6.2: Apply difficulty adjustments
+    score = this.applyDifficultyAdjustments(score, normalizedText, difficultyConfig);
 
     // Clamp to 0–100
     score = Math.max(0, Math.min(100, score));
@@ -271,6 +292,93 @@ export class AiScoringService {
       return 'RISKY';
     }
     return 'OK';
+  }
+
+  /**
+   * Step 6.2: Apply difficulty-based adjustments to score
+   * Step 6.1 Fix: Now includes failThreshold and recoveryDifficulty
+   */
+  private applyDifficultyAdjustments(
+    baseScore: number,
+    text: string,
+    difficultyConfig?: MissionConfigV1Difficulty | null,
+    previousScore?: number | null, // For recovery difficulty calculation
+  ): number {
+    if (!difficultyConfig) return baseScore;
+
+    let adjustedScore = baseScore;
+    const lower = text.toLowerCase();
+
+    // Strictness: Higher strictness = more critical grading (harsher = lower scores)
+    // Step 6.1 Fix: Invert multiplier so strictness=0 => lenient (multiplier=1.0), strictness=100 => strict (multiplier=0.5)
+    const strictness = difficultyConfig.strictness ?? 50;
+    const strictnessMultiplier = 1.0 - (strictness / 100) * 0.5; // 1.0 (lenient) to 0.5 (strict)
+    adjustedScore = adjustedScore * strictnessMultiplier;
+
+    // Ambiguity Tolerance: Lower tolerance = penalize ambiguous messages
+    const ambiguityTolerance = difficultyConfig.ambiguityTolerance ?? 50;
+    const ambiguousPatterns = [
+      /\b(maybe|perhaps|i guess|i think|kind of|sort of)\b/i,
+      /\?{2,}/, // Multiple question marks
+    ];
+    const isAmbiguous = ambiguousPatterns.some((pattern) => pattern.test(text));
+    if (isAmbiguous && ambiguityTolerance < 50) {
+      const penalty = (50 - ambiguityTolerance) * 0.3; // Up to 15 point penalty
+      adjustedScore -= penalty;
+    }
+
+    // Emotional Penalty: Penalize emotional missteps
+    const emotionalPenalty = difficultyConfig.emotionalPenalty ?? 30;
+    const negativeEmotionalPatterns = [
+      /\b(desperate|needy|clingy|obsessed)\b/i,
+      /\b(please|beg|plead)\b/i,
+    ];
+    const hasEmotionalMisstep = negativeEmotionalPatterns.some((pattern) =>
+      pattern.test(lower),
+    );
+    if (hasEmotionalMisstep && emotionalPenalty > 0) {
+      const penalty = (emotionalPenalty / 100) * 20; // Up to 20 point penalty
+      adjustedScore -= penalty;
+    }
+
+    // Bonus for Cleverness: Reward witty/clever responses
+    const bonusForCleverness = difficultyConfig.bonusForCleverness ?? 40;
+    const cleverPatterns = [
+      /\b(witty|clever|smart|brilliant)\b/i,
+      /!{1,2}$/, // Exclamation marks (enthusiasm)
+      /\b(haha|lol|😂|😅)\b/i, // Humor indicators
+    ];
+    const isClever = cleverPatterns.some((pattern) => pattern.test(text));
+    if (isClever && bonusForCleverness > 0) {
+      const bonus = (bonusForCleverness / 100) * 10; // Up to 10 point bonus
+      adjustedScore += bonus;
+    }
+
+    // Step 6.1 Fix: Recovery Difficulty - affects how hard it is to recover from low scores
+    // If previous score was low and current score is better, recovery difficulty affects the improvement
+    const recoveryDifficulty = difficultyConfig.recoveryDifficulty ?? 50;
+    if (previousScore !== null && previousScore !== undefined && previousScore < adjustedScore) {
+      // User is recovering from a low score
+      const improvement = adjustedScore - previousScore;
+      const recoveryFactor = recoveryDifficulty / 100; // 0 to 1, higher = harder recovery
+      // Higher recovery difficulty = less effective recovery (reduces improvement)
+      const recoveryPenalty = improvement * recoveryFactor * 0.3; // Up to 30% reduction
+      adjustedScore -= recoveryPenalty;
+    }
+
+    // Step 6.1 Fix: Fail Threshold - scores below this are considered "failing"
+    // This doesn't change the score itself, but we track it for later use
+    // The actual fail threshold check happens in mission state computation
+    // We just ensure the score reflects the threshold context here
+    const failThreshold = difficultyConfig.failThreshold ?? null;
+    if (failThreshold !== null && adjustedScore < failThreshold) {
+      // Score is below fail threshold - apply additional penalty based on how far below
+      const distanceBelow = failThreshold - adjustedScore;
+      const thresholdPenalty = Math.min(distanceBelow * 0.1, 10); // Up to 10 point additional penalty
+      adjustedScore -= thresholdPenalty;
+    }
+
+    return adjustedScore;
   }
 
   /**

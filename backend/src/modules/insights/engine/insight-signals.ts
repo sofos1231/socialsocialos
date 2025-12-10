@@ -40,11 +40,16 @@ export async function extractInsightSignals(
   });
 
   // Build positive hooks from triggers (with hook.category or hook.type)
-  const positiveHooks = hookTriggers
+  const positiveHooks: Array<{
+    hookKey: string;
+    strength: number;
+    turnIndex?: number;
+  }> = hookTriggers
     .filter((t) => t.hook.type === 'POSITIVE' || t.hook.type === 'NEUTRAL')
     .map((t) => ({
       hookKey: t.hook.id, // Use hook ID as key
       strength: 1.0, // Default strength (could be enhanced with context analysis)
+      turnIndex: undefined, // Will be set from fallback if needed
     }));
 
   // If no hook triggers found, fallback to ChatMessage.traitData.hooks

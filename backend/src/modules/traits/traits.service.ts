@@ -3,6 +3,7 @@
 
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
+import { Prisma } from '@prisma/client';
 import { loadSessionAnalyticsSnapshot } from '../shared/helpers/session-snapshot.helper';
 
 /**
@@ -207,16 +208,16 @@ export class TraitsService {
       create: {
         sessionId,
         userId,
-        traitsJson: currentSnapshot,
-        deltasJson: deltas,
+        traitsJson: currentSnapshot as unknown as Prisma.InputJsonValue,
+        deltasJson: deltas as unknown as Prisma.InputJsonValue,
         sessionScore,
         avgMessageScore,
         missionId: snapshot.templateId ?? null,
         recordedAt: new Date(),
       },
       update: {
-        traitsJson: currentSnapshot,
-        deltasJson: deltas,
+        traitsJson: currentSnapshot as unknown as Prisma.InputJsonValue,
+        deltasJson: deltas as unknown as Prisma.InputJsonValue,
         sessionScore,
         avgMessageScore,
         missionId: snapshot.templateId ?? null,
@@ -231,11 +232,11 @@ export class TraitsService {
       where: { userId },
       create: {
         userId,
-        traitsJson: updatedScores,
+        traitsJson: updatedScores as unknown as Prisma.InputJsonValue,
         updatedAt: new Date(),
       },
       update: {
-        traitsJson: updatedScores,
+        traitsJson: updatedScores as unknown as Prisma.InputJsonValue,
         updatedAt: new Date(),
       },
     });

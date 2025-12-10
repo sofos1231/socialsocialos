@@ -34,7 +34,7 @@ export function selectInsightsV2(
 ): InsightsV2Payload {
   const catalog = getInsightCatalog();
   const rng = createSeededPRNG(seed);
-  const excludedIds = new Set(history.pickedIds);
+  const excludedIds = new Set<string>(history.pickedIds as string[]);
 
   // Build candidate buckets by priority
   const candidates: CandidateInsight[] = [];
@@ -50,6 +50,7 @@ export function selectInsightsV2(
           category: template.category,
           priority: 100, // Highest priority
           weight: template.weight,
+          source: 'GATES',
           evidence: {
             gateKey: gateFail.gateKey,
           },
@@ -75,6 +76,7 @@ export function selectInsightsV2(
           category: template.category,
           priority: 80,
           weight: template.weight,
+          source: 'HOOKS',
           evidence: {
             hookKey: hook.hookKey,
             strength: hook.strength,
@@ -96,6 +98,7 @@ export function selectInsightsV2(
           category: template.category,
           priority: 60,
           weight: template.weight,
+          source: 'PATTERNS',
           evidence: {
             patternKey: pattern.patternKey,
             severity: pattern.severity,
@@ -116,6 +119,7 @@ export function selectInsightsV2(
         category: template.category,
         priority: 40,
         weight: template.weight,
+        source: 'GENERAL',
       });
     }
   }
@@ -209,7 +213,7 @@ export function selectInsightsV2(
     traitDeltas: {}, // Will be filled by trait adjuster
     meta: {
       seed,
-      excludedIds: Array.from(excludedIds),
+      excludedIds: Array.from(excludedIds) as string[],
       pickedIds: selected.map((c) => c.id),
       version: 'v2',
     },

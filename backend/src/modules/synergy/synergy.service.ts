@@ -217,27 +217,22 @@ export class SynergyService {
       }
 
       // 4) Compute correlation matrix (deterministic)
-      const correlationMatrix: Record<TraitKey, Record<TraitKey, number>> = {
-        confidence: {},
-        clarity: {},
-        humor: {},
-        tensionControl: {},
-        emotionalWarmth: {},
-        dominance: {},
-      };
+      const correlationMatrix: Record<TraitKey, Record<TraitKey, number>> = {} as Record<TraitKey, Record<TraitKey, number>>;
 
       for (const traitA of ALL_TRAIT_KEYS) {
+        const row: Record<TraitKey, number> = {} as Record<TraitKey, number>;
         for (const traitB of ALL_TRAIT_KEYS) {
           if (traitA === traitB) {
-            correlationMatrix[traitA][traitB] = 1.0; // Self-correlation
+            row[traitB] = 1.0; // Self-correlation
           } else {
             const correlation = computeCorrelation(
               traitValues[traitA],
               traitValues[traitB],
             );
-            correlationMatrix[traitA][traitB] = correlation;
+            row[traitB] = correlation;
           }
         }
+        correlationMatrix[traitA] = row;
       }
 
       // 5) Build graph data with deterministic positions
@@ -304,19 +299,14 @@ export class SynergyService {
    * Build empty correlation matrix (all zeros)
    */
   private buildEmptyCorrelationMatrix(): Record<TraitKey, Record<TraitKey, number>> {
-    const matrix: Record<TraitKey, Record<TraitKey, number>> = {
-      confidence: {},
-      clarity: {},
-      humor: {},
-      tensionControl: {},
-      emotionalWarmth: {},
-      dominance: {},
-    };
+    const matrix: Record<TraitKey, Record<TraitKey, number>> = {} as Record<TraitKey, Record<TraitKey, number>>;
 
     for (const traitA of ALL_TRAIT_KEYS) {
+      const row: Record<TraitKey, number> = {} as Record<TraitKey, number>;
       for (const traitB of ALL_TRAIT_KEYS) {
-        matrix[traitA][traitB] = traitA === traitB ? 1.0 : 0.0;
+        row[traitB] = traitA === traitB ? 1.0 : 0.0;
       }
+      matrix[traitA] = row;
     }
 
     return matrix;

@@ -9,6 +9,7 @@ import {
   MoodSnapshot,
   MoodTimelinePayload,
   MoodInsight,
+  NamedArc,
 } from './mood.types';
 import { moodInsightsRegistry, MoodInsightCandidate } from './mood.insights.registry';
 import {
@@ -143,9 +144,29 @@ export class MoodService {
   /**
    * Step 5.10: Build mood timeline for a session
    * Computes raw scores, EMA smoothing, tension/warmth/vibe/flow, and mood states
+   * Step 6.10: Checks enableArcDetection feature toggle
    */
   async buildTimelineForSession(sessionId: string): Promise<MoodTimelinePayload> {
     const snapshot = await loadSessionAnalyticsSnapshot(this.prisma, sessionId);
+
+    // Step 6.10: Check enableArcDetection feature toggle from session payload
+    let enableArcDetection = true; // Default to true for backward compatibility
+    try {
+      const session = await this.prisma.practiceSession.findUnique({
+        where: { id: sessionId },
+        select: { payload: true },
+      });
+      if (session?.payload && typeof session.payload === 'object') {
+        const payload = session.payload as any;
+        const normalizedConfig = payload?.normalizedMissionConfigV1;
+        if (normalizedConfig?.statePolicy?.enableArcDetection === false) {
+          enableArcDetection = false;
+        }
+      }
+    } catch (err) {
+      // If we can't load the session or payload, default to enabled
+      logger.debug(`Could not check enableArcDetection for session ${sessionId}, defaulting to enabled`);
+    }
 
     const userMessages = snapshot.messages.filter((m) => m.role === 'USER');
 
@@ -209,11 +230,140 @@ export class MoodService {
       moodPercent: currentSnapshot?.smoothedMoodScore ?? 50,
     };
 
+    // Step 6.7: Detect named arcs (Step 6.10: Feature toggle check)
+    const arcs = enableArcDetection ? this.detectMoodArcs(snapshots) : [];
+
     return {
       version: 1,
       snapshots,
       current,
+      arcs,
     };
+  }
+
+  /**
+   * Step 6.7: Detect named arcs in mood timeline
+   * Analyzes snapshots to identify emotional curve patterns
+   */
+  private detectMoodArcs(snapshots: MoodSnapshot[]): NamedArc[] {
+    if (snapshots.length < 2) {
+      return [];
+    }
+
+    const arcs: NamedArc[] = [];
+    let currentArcStart = 0;
+    let currentArcType: NamedArc['type'] | null = null;
+
+    for (let i = 1; i < snapshots.length; i++) {
+      const prev = snapshots[i - 1];
+      const curr = snapshots[i];
+      const scoreDelta = curr.smoothedMoodScore - prev.smoothedMoodScore;
+      const tensionDelta = curr.tension - prev.tension;
+      const warmthDelta = curr.warmth - prev.warmth;
+
+      // Detect arc type for current transition
+      let detectedType: NamedArc['type'] | null = null;
+
+      // RISING_WARMTH: Consistent upward trend in mood score and warmth
+      if (scoreDelta > 5 && warmthDelta > 3 && curr.smoothedMoodScore > 60) {
+        detectedType = 'RISING_WARMTH';
+      }
+      // COOL_DOWN: Consistent downward trend in mood score and warmth
+      else if (scoreDelta < -5 && warmthDelta < -3 && curr.smoothedMoodScore < 50) {
+        detectedType = 'COOL_DOWN';
+      }
+      // TESTING_SPIKE: Sudden tension increase with mood drop
+      else if (tensionDelta > 20 && scoreDelta < -10) {
+        detectedType = 'TESTING_SPIKE';
+      }
+      // RECOVERY_ARC: Recovering from low mood (was low, now improving)
+      else if (
+        prev.smoothedMoodScore < 40 &&
+        curr.smoothedMoodScore > prev.smoothedMoodScore + 10 &&
+        scoreDelta > 8
+      ) {
+        detectedType = 'RECOVERY_ARC';
+      }
+      // TENSION_BUILD: Gradual tension increase over multiple messages
+      else if (tensionDelta > 5 && curr.tension > 60) {
+        detectedType = 'TENSION_BUILD';
+      }
+      // STABLE_ARC: Consistent mood with low variance
+      else if (
+        Math.abs(scoreDelta) < 5 &&
+        Math.abs(tensionDelta) < 5 &&
+        curr.smoothedMoodScore >= 50 &&
+        curr.smoothedMoodScore <= 70
+      ) {
+        detectedType = 'STABLE_ARC';
+      }
+
+      // If arc type changed, end previous arc and start new one
+      if (detectedType !== currentArcType) {
+        // End previous arc if exists
+        if (currentArcType !== null && currentArcStart < i - 1) {
+          const startSnapshot = snapshots[currentArcStart];
+          const endSnapshot = snapshots[i - 1];
+          arcs.push({
+            type: currentArcType,
+            startTurnIndex: startSnapshot.turnIndex,
+            endTurnIndex: endSnapshot.turnIndex,
+            summary: this.generateArcSummary(currentArcType, startSnapshot, endSnapshot),
+          });
+        }
+
+        // Start new arc
+        if (detectedType !== null) {
+          currentArcStart = i - 1;
+          currentArcType = detectedType;
+        } else {
+          currentArcType = null;
+        }
+      }
+    }
+
+    // Close last arc if still open
+    if (currentArcType !== null && currentArcStart < snapshots.length - 1) {
+      const startSnapshot = snapshots[currentArcStart];
+      const endSnapshot = snapshots[snapshots.length - 1];
+      arcs.push({
+        type: currentArcType,
+        startTurnIndex: startSnapshot.turnIndex,
+        endTurnIndex: endSnapshot.turnIndex,
+        summary: this.generateArcSummary(currentArcType, startSnapshot, endSnapshot),
+      });
+    }
+
+    return arcs;
+  }
+
+  /**
+   * Step 6.7: Generate human-readable summary for an arc
+   */
+  private generateArcSummary(
+    type: NamedArc['type'],
+    start: MoodSnapshot,
+    end: MoodSnapshot,
+  ): string {
+    const scoreChange = end.smoothedMoodScore - start.smoothedMoodScore;
+    const tensionChange = end.tension - start.tension;
+
+    switch (type) {
+      case 'RISING_WARMTH':
+        return `Mood improved from ${start.smoothedMoodScore} to ${end.smoothedMoodScore} (+${scoreChange.toFixed(0)}), warmth increased`;
+      case 'COOL_DOWN':
+        return `Mood cooled from ${start.smoothedMoodScore} to ${end.smoothedMoodScore} (${scoreChange.toFixed(0)}), tension increased`;
+      case 'TESTING_SPIKE':
+        return `Tension spike: tension rose to ${end.tension}, mood dropped to ${end.smoothedMoodScore}`;
+      case 'RECOVERY_ARC':
+        return `Recovery: mood recovered from ${start.smoothedMoodScore} to ${end.smoothedMoodScore} (+${scoreChange.toFixed(0)})`;
+      case 'TENSION_BUILD':
+        return `Tension building: increased from ${start.tension} to ${end.tension} (+${tensionChange.toFixed(0)})`;
+      case 'STABLE_ARC':
+        return `Stable period: mood around ${end.smoothedMoodScore}, consistent performance`;
+      default:
+        return `Arc from turn ${start.turnIndex} to ${end.turnIndex}`;
+    }
   }
 
   /**

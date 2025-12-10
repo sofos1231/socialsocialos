@@ -34,7 +34,6 @@ import { generateNarrativeInsights } from './insights.narrative';
 import { normalizeTraitData } from '../shared/normalizers/chat-message.normalizer';
 import { buildInsightsV2 } from './engine/insights.engine';
 import { loadSessionAnalyticsSnapshot } from '../shared/helpers/session-snapshot.helper';
-import { MissionDeepInsightsPayload } from './insights.types';
 import { StatsService } from '../stats/stats.service';
 import { loadParagraphHistory } from '../analyzer/helpers/paragraph-history';
 import { selectDeepParagraphs } from '../analyzer/templates/deepParagraph.registry';

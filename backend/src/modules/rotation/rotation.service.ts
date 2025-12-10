@@ -16,7 +16,7 @@ import {
 } from '../insights/insights.types';
 import { DeepParagraphDTO } from '../analyzer/analyzer.types';
 import { loadUnifiedInsightHistory, UnifiedInsightHistory } from './rotation.history';
-import { RotationSurface, RotationQuotas, RotationPackResponse } from './rotation.types';
+import { RotationSurface, RotationQuotas, RotationPackResponse, RotationPackMeta } from './rotation.types';
 import { getQuotasForSurface } from './rotation.policy';
 import { generateInsightsV2Seed } from '../insights/engine/insight-prng';
 import { loadSessionAnalyticsSnapshot } from '../shared/helpers/session-snapshot.helper';
@@ -416,6 +416,11 @@ export class RotationService {
     // Step 10: Get quotas
     const quotas = getQuotasForSurface(surface);
 
+    // Count premium insights
+    const premiumInsightIds = selected.filter((c) => c.isPremium).map((c) => c.id);
+    const totalAvailable = selected.length;
+    const filteredBecausePremium = isPremium ? 0 : premiumInsightIds.length;
+
     return {
       sessionId: '', // Will be set by caller
       surface,
@@ -427,6 +432,10 @@ export class RotationService {
         pickedIds,
         quotas,
         version: 'v1',
+        totalAvailable,
+        filteredBecausePremium,
+        isPremiumUser: isPremium,
+        premiumInsightIds: isPremium ? [] : premiumInsightIds,
       },
     };
   }
@@ -588,14 +597,13 @@ export class RotationService {
     const premiumInsightIds = premiumInsights.map((i) => i.id);
 
     // Build new meta object preserving base fields but updating premium-aware fields
-    const baseMeta = basePack.meta ?? {};
+    const baseMeta: Partial<RotationPackMeta> = basePack.meta ?? {};
     const meta: RotationPackResponse['meta'] = {
-      ...baseMeta,
       // Core fields preserved as-is
-      seed: baseMeta.seed,
+      seed: baseMeta.seed ?? '',
       excludedIds: baseMeta.excludedIds ?? [],
-      quotas: baseMeta.quotas,
-      version: baseMeta.version ?? 'v1',
+      quotas: baseMeta.quotas ?? { gate: 0, hook: 0, pattern: 0, tip: 0 },
+      version: (baseMeta.version ?? 'v1') as 'v1',
       // Premium-aware fields
       totalAvailable,
       isPremiumUser,

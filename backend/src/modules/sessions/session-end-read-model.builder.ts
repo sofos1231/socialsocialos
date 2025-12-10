@@ -243,9 +243,31 @@ export class SessionEndReadModelBuilder {
     for (const mem of personaMemories) {
       memorySnapshot[mem.memoryKey] = mem.memoryValue;
     }
+
+    // Step 6.7 Prep: Extract style and escalationSpeed for memory weighting
+    let memoryContextStyle: string | null = null;
+    let memoryContextEscalationSpeed: number | null = null;
+
+    if (session.template?.aiContract && typeof session.template.aiContract === 'object') {
+      const aiContract: any = session.template.aiContract;
+      const config = aiContract.missionConfigV1;
+
+      if (config) {
+        memoryContextStyle = config.style?.aiStyleKey ?? null;
+        memoryContextEscalationSpeed = config.dynamics?.escalationSpeed ?? null;
+      }
+    }
+
     const personaMemory = {
       memorySnapshot: Object.keys(memorySnapshot).length > 0 ? memorySnapshot : null,
-      memoryWritesDuringSession: [], // placeholder, to be filled in Step 6
+      memoryWritesDuringSession: [], // Step 6.7: To be filled when memory writes are tracked during session
+      // Step 6.7 Prep: Context for memory weighting
+      memoryContext: {
+        aiStyleKey: memoryContextStyle,
+        escalationSpeed: memoryContextEscalationSpeed,
+        // Note: escalationSpeed affects memory weight - higher speed = memories written faster/more frequently
+        // This will be used in Step 6.7 when implementing memory writes during session
+      },
     };
 
     // Step 5.14: Extract missionMetadata from aiContract
