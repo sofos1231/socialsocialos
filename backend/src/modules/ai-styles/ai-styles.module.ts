@@ -2,11 +2,12 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../db/prisma.module';
 import { AiStylesController } from './ai-styles.controller';
+import { AiStylesAdminController } from './ai-styles-admin.controller';
 import { AiStylesService } from './ai-styles.service'; // TS2307
 
 @Module({
   imports: [PrismaModule],
-  controllers: [AiStylesController],
+  controllers: [AiStylesController, AiStylesAdminController],
   providers: [AiStylesService],
   exports: [AiStylesService],
 })

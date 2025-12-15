@@ -5,6 +5,39 @@ import { CharismaTraitKey } from '../ai/ai-scoring.types';
 import { MoodState, MoodTimelinePayload, MoodInsight } from '../mood/mood.types';
 
 /**
+ * Phase 4: UserStats checklist aggregates type (stored in DB JSON field)
+ */
+export interface UserStatsChecklistAggregates {
+  totalPositiveHooks: number;
+  totalObjectiveProgress: number;
+  boundarySafeCount: number;
+  momentumMaintainedCount: number;
+  totalMessages: number;
+}
+
+/**
+ * Phase 4: CategoryStats checklist aggregates type (stored in DB JSON field)
+ */
+export interface CategoryChecklistAggregates {
+  totalPositiveHooks: number;
+  totalObjectiveProgress: number;
+  boundaryViolations: number;
+  momentumBreaks: number;
+  totalMessages: number;
+}
+
+/**
+ * Phase 4: PracticeSession checklist aggregates type (stored in DB JSON field)
+ */
+export interface PracticeSessionChecklistAggregates {
+  positiveHookCount: number;
+  objectiveProgressCount: number;
+  boundarySafeStreak: number;
+  momentumStreak: number;
+  totalMessages: number;
+}
+
+/**
  * Trait key type (reused from ai-scoring.types)
  */
 export type TraitKey = CharismaTraitKey;
@@ -47,6 +80,12 @@ export interface TraitsSummaryResponse {
   sessionsThisWeek: number;
   avgScoreThisWeek?: number;
   improvements: Record<TraitKey, TraitImprovement>;
+  checklist?: {
+    positiveHooksThisWeek: number;
+    objectiveProgressThisWeek: number;
+    boundarySafeRateThisWeek: number;
+    momentumMaintainedRateThisWeek: number;
+  };
 }
 
 /**
@@ -71,9 +110,17 @@ export interface TraitHistoryResponse {
 export interface StatsSummaryResponse {
   sessionsTotal: number;
   sessionsThisWeek: number;
+  /** @deprecated - legacy compatibility only, use checklist instead */
   avgScoreThisWeek?: number;
   lastSessionId?: string;
   isPremium: boolean;
+  // Phase 3: Checklist-native weekly metrics
+  checklist?: {
+    positiveHooksThisWeek: number;
+    objectiveProgressThisWeek: number;
+    boundarySafeRateThisWeek: number;
+    momentumMaintainedRateThisWeek: number;
+  };
 }
 
 /**
@@ -172,6 +219,9 @@ export interface HallOfFameMessageItem {
   contentSnippet: string; // Truncated content for preview
   score: number;
   breakdown?: MessageBreakdownDTO; // 5.7 glue - minimal allowlisted DTO
+  // Phase 3: Checklist-native fields
+  tier?: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+  checklistFlags?: string[]; // MessageChecklistFlag[]
 }
 
 /**

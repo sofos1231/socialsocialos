@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request = require('supertest');
 import { v4 as uuidv4 } from 'uuid';
 
 const BASE = process.env.SMOKE_BASE_URL || 'http://localhost:3000';

@@ -91,8 +91,16 @@ export interface TraitImprovement {
 export interface TraitsSummaryResponse {
   traits: TraitSummary[];
   sessionsThisWeek: number;
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   avgScoreThisWeek?: number;
   improvements: Record<string, TraitImprovement>;
+  // Phase 3: Checklist-native weekly metrics
+  checklist?: {
+    positiveHooksThisWeek: number;
+    objectiveProgressThisWeek: number;
+    boundarySafeRateThisWeek: number; // 0-100
+    momentumMaintainedRateThisWeek: number; // 0-100
+  };
 }
 
 export interface TraitHistoryPoint {
@@ -108,9 +116,17 @@ export interface TraitHistoryResponse {
 export interface StatsSummaryResponse {
   sessionsTotal: number;
   sessionsThisWeek: number;
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   avgScoreThisWeek?: number;
   lastSessionId?: string;
   isPremium: boolean;
+  // Phase 3: Checklist-native weekly metrics
+  checklist?: {
+    positiveHooksThisWeek: number;
+    objectiveProgressThisWeek: number;
+    boundarySafeRateThisWeek: number; // 0-100
+    momentumMaintainedRateThisWeek: number; // 0-100
+  };
 }
 
 /**
@@ -169,6 +185,7 @@ export interface Radar360Traits {
 export interface PersonaSensitivityRow {
   personaKey: string;
   sessions: number;
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   avgScore: number;
   deltaPct?: number;
   explanation: string;
@@ -207,8 +224,12 @@ export interface HallOfFameMessageItem {
   recordedAtISO: string;
   turnIndex: number;
   contentSnippet: string;
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   score: number;
   breakdown?: MessageBreakdownDTO;
+  // Phase 3: Checklist-native fields
+  tier?: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+  checklistFlags?: string[]; // MessageChecklistFlag[]
 }
 
 export interface AdvancedMetricsResponse {

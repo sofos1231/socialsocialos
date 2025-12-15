@@ -7,11 +7,11 @@ import { MissionEndSelectedPack, MessageHighlight, EndReasonBanner, MoodTeaser }
 import { getEndReasonCopy } from './missionEndReasons';
 
 /**
- * Compute top 3 and bottom 3 USER messages from session messages
+ * Phase 3: Compute top 3 and bottom 3 USER messages from session messages
  * 
  * Rules:
  * - Filter to USER role only
- * - Sort by score (numeric, descending for top, ascending for bottom)
+ * - Sort by tier first (checklist-driven), then by checklist flag count, then by score (numeric fallback)
  * - Exclude messages without valid scores from ranking
  * - Return up to 3 for each
  */
@@ -24,67 +24,119 @@ function computeTopBottomMessages(
     .filter(m => m.role === 'USER')
     .sort((a, b) => a.turnIndex - b.turnIndex);
 
-  // Create lookup map for rarity: rewardMsg.index is the sequential index in USER-only array (0, 1, 2...)
-  // Backend builds rewards.messages from messageScores array which is USER messages in turnIndex order
-  // So rewards.messages[index] corresponds to the (index)th USER message by turnIndex
+  // Phase 3: Create lookup maps for tier, rarity, and checklist flags
+  // rewardMsg.index is the sequential index in USER-only array (0, 1, 2...)
   const rarityMap = new Map<number, string | null>();
+  const tierMap = new Map<number, 'S+' | 'S' | 'A' | 'B' | 'C' | 'D' | undefined>();
+  
   if (rewardsMessages.length > 0 && userMessages.length > 0) {
-    // Map rewardsMessages[].index (sequential USER message index 0,1,2...) to userMessages array
-    // userMessages is already sorted by turnIndex, so userMessages[index] is the (index)th USER message
-    // Only attach rarity if we can safely match: index < userMessages.length and valid rarity
     for (const rewardMsg of rewardsMessages) {
       if (
         typeof rewardMsg.index === 'number' &&
         rewardMsg.index >= 0 &&
-        rewardMsg.index < userMessages.length &&
-        typeof rewardMsg.rarity === 'string' &&
-        rewardMsg.rarity.length > 0
+        rewardMsg.index < userMessages.length
       ) {
         const userMsg = userMessages[rewardMsg.index];
         if (userMsg) {
-          // Map by turnIndex (the stable identifier across sessions)
-          rarityMap.set(userMsg.turnIndex, rewardMsg.rarity);
+          // Map rarity
+          if (typeof rewardMsg.rarity === 'string' && rewardMsg.rarity.length > 0) {
+            rarityMap.set(userMsg.turnIndex, rewardMsg.rarity);
+          }
+          // Phase 3: Derive tier from rarity (backend may provide tier directly in future)
+          if (rewardMsg.rarity) {
+            const tier = rewardMsg.rarity === 'S+' ? 'S+' :
+                        rewardMsg.rarity === 'S' ? 'S' :
+                        rewardMsg.rarity === 'A' ? 'A' :
+                        rewardMsg.rarity === 'B' ? 'B' :
+                        rewardMsg.rarity === 'C' ? 'C' : 'D' as 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+            tierMap.set(userMsg.turnIndex, tier);
+          }
         }
       }
-      // If index is out of bounds, invalid, or rarity missing, skip (rarity remains null)
     }
   }
 
-  // Separate scored vs unscored
-  const scored: Array<{ msg: SessionDTO['messages'][0]; score: number }> = [];
+  // Phase 3: Separate scored messages with tier/checklist info
+  type ScoredMessage = {
+    msg: SessionDTO['messages'][0];
+    score: number;
+    tier?: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+    checklistFlags?: string[];
+  };
+  const scored: ScoredMessage[] = [];
   const unscored: SessionDTO['messages'] = [];
 
   for (const msg of userMessages) {
     if (msg.score !== null && typeof msg.score === 'number' && msg.score >= 0 && msg.score <= 100) {
-      scored.push({ msg, score: msg.score });
+      const tier = tierMap.get(msg.turnIndex);
+      // Phase 3: For now, checklist flags would come from session.checklist.lastMessageFlags
+      // But we need per-message flags, which backend may not expose yet. Keep empty for now.
+      scored.push({
+        msg,
+        score: msg.score,
+        tier,
+        checklistFlags: undefined, // TODO: Extract from session data when available
+      });
     } else {
       unscored.push(msg);
     }
   }
 
-  // Sort scored messages
-  const sortedTop = [...scored].sort((a, b) => b.score - a.score);
-  const sortedBottom = [...scored].sort((a, b) => a.score - b.score);
+  // Phase 3: Sort by tier first, then by flag count, then by score
+  const tierOrder: Record<string, number> = { 'S+': 5, 'S': 4, 'A': 3, 'B': 2, 'C': 1, 'D': 0 };
+  
+  const sortedTop = [...scored].sort((a, b) => {
+    // Primary: tier (higher is better)
+    const tierA = tierOrder[a.tier || 'D'] ?? 0;
+    const tierB = tierOrder[b.tier || 'D'] ?? 0;
+    if (tierB !== tierA) return tierB - tierA;
+    
+    // Secondary: checklist flag count (more flags is better)
+    const flagsA = a.checklistFlags?.length ?? 0;
+    const flagsB = b.checklistFlags?.length ?? 0;
+    if (flagsB !== flagsA) return flagsB - flagsA;
+    
+    // Tertiary: numeric score (fallback)
+    return b.score - a.score;
+  });
+  
+  const sortedBottom = [...scored].sort((a, b) => {
+    // Primary: tier (lower is worse)
+    const tierA = tierOrder[a.tier || 'D'] ?? 0;
+    const tierB = tierOrder[b.tier || 'D'] ?? 0;
+    if (tierA !== tierB) return tierA - tierB;
+    
+    // Secondary: checklist flag count (fewer flags is worse)
+    const flagsA = a.checklistFlags?.length ?? 0;
+    const flagsB = b.checklistFlags?.length ?? 0;
+    if (flagsA !== flagsB) return flagsA - flagsB;
+    
+    // Tertiary: numeric score (fallback)
+    return a.score - b.score;
+  });
 
-  // Build highlights with safe rarity mapping
-  // Only attach rarity if it was successfully mapped (not null in map means it was found and set)
-  const top: MessageHighlight[] = sortedTop.slice(0, 3).map(({ msg }) => {
+  // Build highlights with tier and rarity
+  const top: MessageHighlight[] = sortedTop.slice(0, 3).map(({ msg, tier }) => {
     const mappedRarity = rarityMap.get(msg.turnIndex);
     return {
       turnIndex: msg.turnIndex,
       content: msg.content,
       score: msg.score!,
-      rarity: mappedRarity ?? null, // Explicit null if not found (safer than undefined)
+      rarity: mappedRarity ?? null,
+      tier, // Phase 3: Include tier
+      checklistFlags: undefined, // TODO: Populate when available
     };
   });
 
-  const bottom: MessageHighlight[] = sortedBottom.slice(0, 3).map(({ msg }) => {
+  const bottom: MessageHighlight[] = sortedBottom.slice(0, 3).map(({ msg, tier }) => {
     const mappedRarity = rarityMap.get(msg.turnIndex);
     return {
       turnIndex: msg.turnIndex,
       content: msg.content,
       score: msg.score!,
-      rarity: mappedRarity ?? null, // Explicit null if not found
+      rarity: mappedRarity ?? null,
+      tier, // Phase 3: Include tier
+      checklistFlags: undefined, // TODO: Populate when available
     };
   });
 
@@ -92,16 +144,38 @@ function computeTopBottomMessages(
 }
 
 /**
- * Compute mood teaser from session data (local computation, no backend call)
+ * Phase 3: Compute mood teaser from session data (checklist-driven)
  */
 function computeMoodTeaser(session: SessionDTO): MoodTeaser | null {
-  const avgScore = session.missionState.averageScore;
+  const avgScore = session.missionState.averageScore; // @deprecated - legacy
   const status = session.missionState.status;
+  const checklist = session.checklist;
 
-  // Simple mood computation based on status and average score
-  // This is a placeholder - Step 5.4 may enhance with backend timeline data
+  // Phase 3: Extract checklist metrics if available
+  let positiveHooks: number | undefined;
+  let objectiveProgress: number | undefined;
+  let boundarySafeRate: number | undefined;
+  let momentumMaintainedRate: number | undefined;
+
+  if (checklist) {
+    positiveHooks = checklist.positiveHookCount;
+    objectiveProgress = checklist.objectiveProgressCount;
+    const totalMessages = session.missionState.totalMessages || 1;
+    // Compute rates as percentages
+    boundarySafeRate = totalMessages > 0 
+      ? Math.round((checklist.boundarySafeStreak / totalMessages) * 100)
+      : 0;
+    momentumMaintainedRate = totalMessages > 0
+      ? Math.round((checklist.momentumStreak / totalMessages) * 100)
+      : 0;
+  }
+
   return {
-    averageScore: avgScore,
+    averageScore: avgScore, // @deprecated - kept for backward compatibility
+    positiveHooks,
+    objectiveProgress,
+    boundarySafeRate,
+    momentumMaintainedRate,
     // timeline: undefined for now (Step 5.4 may add)
   };
 }
@@ -165,6 +239,29 @@ export function buildMissionEndSelectedPack(
     }
   }
 
+  // Phase 3: Build tier map for referenced messages
+  const tierMapForRefs = new Map<number, 'S+' | 'S' | 'A' | 'B' | 'C' | 'D' | undefined>();
+  if (rewardsMessages.length > 0 && userMessages.length > 0) {
+    for (const rewardMsg of rewardsMessages) {
+      if (
+        typeof rewardMsg.index === 'number' &&
+        rewardMsg.index >= 0 &&
+        rewardMsg.index < userMessages.length &&
+        rewardMsg.rarity
+      ) {
+        const userMsg = userMessages[rewardMsg.index];
+        if (userMsg) {
+          const tier = rewardMsg.rarity === 'S+' ? 'S+' :
+                      rewardMsg.rarity === 'S' ? 'S' :
+                      rewardMsg.rarity === 'A' ? 'A' :
+                      rewardMsg.rarity === 'B' ? 'B' :
+                      rewardMsg.rarity === 'C' ? 'C' : 'D' as 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+          tierMapForRefs.set(userMsg.turnIndex, tier);
+        }
+      }
+    }
+  }
+
   // Add referenced messages that aren't in top/bottom
   for (const turnIndex of referencedTurnIndices) {
     if (!existingTurnIndices.has(turnIndex)) {
@@ -175,6 +272,7 @@ export function buildMissionEndSelectedPack(
           content: userMsg.content,
           score: userMsg.score,
           rarity: rarityMap.get(userMsg.turnIndex) ?? null,
+          tier: tierMapForRefs.get(userMsg.turnIndex), // Phase 3: Include tier
         });
       }
     }
@@ -211,6 +309,26 @@ export function buildMissionEndSelectedPack(
   // Compute mood teaser
   const moodTeaser = computeMoodTeaser(session);
 
+  // Phase 3: Extract checklist aggregates if available
+  const checklist = session.checklist;
+  let checklistAggregates: MissionEndSelectedPack['checklist'] | undefined = undefined;
+  if (checklist) {
+    const totalMessages = session.missionState.totalMessages || 1;
+    checklistAggregates = {
+      positiveHookCount: checklist.positiveHookCount,
+      objectiveProgressCount: checklist.objectiveProgressCount,
+      boundarySafeStreak: checklist.boundarySafeStreak,
+      momentumStreak: checklist.momentumStreak,
+      totalMessages,
+      boundarySafeRate: totalMessages > 0 
+        ? Math.round((checklist.boundarySafeStreak / totalMessages) * 100)
+        : 0,
+      momentumMaintainedRate: totalMessages > 0
+        ? Math.round((checklist.momentumStreak / totalMessages) * 100)
+        : 0,
+    };
+  }
+
   return {
     session: {
       id: session.sessionId,
@@ -221,7 +339,7 @@ export function buildMissionEndSelectedPack(
       personaId: session.personaId,
     },
     rewards: {
-      score: session.rewards.score,
+      score: session.rewards.score, // @deprecated - legacy
       xpGained: session.rewards.xpGained,
       coinsGained: session.rewards.coinsGained,
       gemsGained: session.rewards.gemsGained,
@@ -239,6 +357,7 @@ export function buildMissionEndSelectedPack(
     traitDeltas,
     analyzerParagraphs,
     moodTeaser,
+    checklist: checklistAggregates, // Phase 3: Add checklist aggregates
     synergyTeaserLocked: true, // Always locked for Step 5.3
     reservedBadgeSlotData: {
       status: 'placeholder',

@@ -16,6 +16,7 @@ import { RewardReleaseService } from '../../ai-engine/reward-release.service';
 import type { MissionStateV1 } from '../../ai-engine/mission-state-v1.schema';
 import { AiProviderConfig } from './ai-provider.types';
 import { EngineConfigService } from '../../engine-config/engine-config.service';
+import { ModelTierService } from '../model-tier.service';
 
 type IncomingMsg = { role: 'USER' | 'AI'; content: string };
 
@@ -102,6 +103,7 @@ export class AiChatService {
     @Optional()
     @Inject(forwardRef(() => EngineConfigService))
     private readonly engineConfigService?: EngineConfigService, // Step 7.2: Inject EngineConfigService for dynamics profiles
+    private readonly modelTierService?: ModelTierService, // Step 8: Model tier routing
   ) {}
 
   async generateReply(params: {
@@ -131,6 +133,11 @@ export class AiChatService {
     } | null;
     missionState?: MissionStateV1 | null;
     isFirstMessage?: boolean; // Step 6.3: Indicates if this is the first message
+    /**
+     * Step 8: Model tier routing (mini/heavy/hero)
+     * If provided, overrides aiRuntimeProfile.model
+     */
+    modelTier?: 'mini' | 'heavy' | 'hero';
   }): Promise<{ aiReply: string; aiStructured?: AiStructuredReply; aiDebug?: any; errorCode?: string; syntheticReply?: boolean }> {
     const { topic, messages, templateId, personaId } = params;
 
@@ -194,7 +201,7 @@ export class AiChatService {
       openingText = openingResult.openingText;
     }
 
-    const system = this.buildSystemPrompt({
+    const system = await this.buildSystemPrompt({
       topic,
       mission: ctx?.template ? {
         id: ctx.template.id,
@@ -222,12 +229,22 @@ export class AiChatService {
     ];
 
     // Step 6.9: Build AI provider config from mission config + style preset
+    // Step 8: Model tier routing - if modelTier provided, use it to override model
     const aiRuntimeProfile =
       missionConfig && 'aiRuntimeProfile' in missionConfig
         ? missionConfig.aiRuntimeProfile ?? null
         : null;
+    
+    // Step 8: Determine model - modelTier takes precedence over aiRuntimeProfile.model
+    let selectedModel: string | undefined;
+    if (params.modelTier && this.modelTierService) {
+      selectedModel = this.modelTierService.getModelForTier(params.modelTier);
+    } else {
+      selectedModel = aiRuntimeProfile?.model;
+    }
+    
     const aiProviderConfig: AiProviderConfig = {
-      model: aiRuntimeProfile?.model,
+      model: selectedModel,
       temperature: aiRuntimeProfile?.temperature ?? preset.temperature,
       maxTokens: aiRuntimeProfile?.maxTokens ?? 260,
       topP: aiRuntimeProfile?.topP,
@@ -272,6 +289,7 @@ export class AiChatService {
       errorCode = errorResult.errorCode;
       aiReply = "Sorry — I couldn't generate a reply right now.";
       syntheticReply = true;
+      // TODO: record ai_provider_errors_total (errorCode, model, userId)
       this.logger.warn(
         `AI call failed: ${errorResult.errorCode} - ${errorResult.errorMessage}`,
       );
@@ -333,7 +351,7 @@ export class AiChatService {
       }));
   }
 
-  private buildSystemPrompt(params: {
+  private async buildSystemPrompt(params: {
     topic: string;
     mission:
       | {
@@ -372,7 +390,7 @@ export class AiChatService {
     missionState?: MissionStateV1 | null;
     isFirstMessage?: boolean;
     openingText?: string | null;
-  }): string {
+  }): Promise<string> {
     const {
       topic,
       mission,
@@ -406,7 +424,10 @@ export class AiChatService {
           `- Respond with ONE raw JSON object only.`,
           `- No markdown. No code fences. No extra text.`,
           `- Required key: "replyText" (string).`,
-          `- Optional keys: "messageScore" (0-100 number), "rarity" ("C"|"B"|"A"|"S"|"S+"), "tags" (string[]).`,
+          `- Required key: "checklist" (object) with:`,
+          `    - "flags": string[] using only: POSITIVE_HOOK_HIT, MULTIPLE_HOOKS_HIT, OBJECTIVE_PROGRESS, MOOD_STRONG_UP, MOMENTUM_MAINTAINED, NO_BOUNDARY_ISSUES, GOOD_CALIBRATION, CLARITY_GOOD, WARMTH_GOOD`,
+          `    - optional "notes": string[] (brief reasons).`,
+          `- Do NOT return numeric scores. The server will derive scores from the checklist.`,
           schemaDesc ? `- Schema hint: ${schemaDesc}` : null,
         ]
           .filter(Boolean)
@@ -419,7 +440,7 @@ export class AiChatService {
     
     // Step 7.2: If dynamicsProfileCode is set, load profile and use its values as base
     const fullMissionConfig = missionConfig ?? this.extractMissionConfig(aiContract);
-    if (fullMissionConfig?.dynamicsProfileCode && this.engineConfigService && dynamics) {
+    if (fullMissionConfig && 'dynamicsProfileCode' in fullMissionConfig && fullMissionConfig.dynamicsProfileCode && this.engineConfigService && dynamics) {
       try {
         const profile = await this.engineConfigService.getDynamicsProfile(fullMissionConfig.dynamicsProfileCode);
         if (profile && profile.active) {
@@ -463,6 +484,24 @@ export class AiChatService {
     const rewardPermissionsBlock = this.buildRewardPermissionsBlock(missionState, missionConfig, aiContract);
     // Step 6.8: Build modifier hints block
     const modifierHintsBlock = this.buildModifierHintsBlock(missionState);
+
+    const checklistBlock = [
+      ``,
+      `CHECKLIST SCORING (HARD):`,
+      `- For every USER message, set checklist.flags based on the content.`,
+      `- Use only these flags:`,
+      `  * POSITIVE_HOOK_HIT: at least one clearly positive hook or pattern was triggered.`,
+      `  * MULTIPLE_HOOKS_HIT: two or more positive hooks in this single message.`,
+      `  * OBJECTIVE_PROGRESS: clearly advances the mission objective (specific step forward).`,
+      `  * MOOD_STRONG_UP: conversation mood/energy clearly improves because of this message.`,
+      `  * MOMENTUM_MAINTAINED: maintains a good streak without dropping quality.`,
+      `  * NO_BOUNDARY_ISSUES: no boundary problems, respectful and safe.`,
+      `  * GOOD_CALIBRATION: tone matches persona, context, and user signals.`,
+      `  * CLARITY_GOOD: message is clear and easy to follow.`,
+      `  * WARMTH_GOOD: message feels warm/positive/empathetic.`,
+      `- Optional: checklist.notes[] with short human-readable reasons.`,
+      `- Do NOT output numeric scores; the server will compute them from the checklist.`,
+    ].join('\n');
 
     // Step 6.1: Combine style + dynamics for enhanced behavior
     const styleBlock = [
@@ -522,6 +561,7 @@ export class AiChatService {
       rewardPermissionsBlock ? `\n${rewardPermissionsBlock}\n` : ``,
       modifierHintsBlock ? `\n${modifierHintsBlock}\n` : ``,
       openingBlock ? `\n${openingBlock}\n` : ``,
+      checklistBlock,
       ``,
       `🎯 PERSONA CONSISTENCY (CRITICAL):`,
       `- You MUST maintain consistency across ALL layers:`,
@@ -1073,6 +1113,7 @@ export class AiChatService {
 
   /**
    * Step 6.4: Build gate status block for system prompt
+   * Phase 2: Updated to use checklist-based descriptions (no numeric scores)
    */
   private buildGateStatusBlock(missionState: MissionStateV1 | null): string | null {
     if (!missionState?.gateState) return null;
@@ -1081,12 +1122,13 @@ export class AiChatService {
     const metGates = gateState.metGates;
     const unmetGates = gateState.unmetGates;
 
+    // Phase 2: Checklist-based gate descriptions (no numeric score references)
     const gateDescriptions: Record<string, string> = {
       GATE_MIN_MESSAGES: 'Minimum messages sent',
-      GATE_SUCCESS_THRESHOLD: 'Average score above threshold',
-      GATE_FAIL_FLOOR: 'Average score above fail floor',
+      GATE_SUCCESS_THRESHOLD: 'Sufficient positive hooks, objective progress, boundary safety, and momentum',
+      GATE_FAIL_FLOOR: 'Boundary safety maintained and objective progress shown',
       GATE_DISQUALIFIED: 'Not disqualified',
-      GATE_OBJECTIVE_PROGRESS: 'Progress toward objective',
+      GATE_OBJECTIVE_PROGRESS: 'Objective progress demonstrated',
     };
 
     const metGatesList = metGates.map((key) => `  ✅ ${key}: ${gateDescriptions[key] ?? key}`).join('\n');
@@ -1094,14 +1136,14 @@ export class AiChatService {
 
     return [
       `🚪 GATE STATUS (CRITICAL - DO NOT IGNORE):`,
-      `Current gate state for this mission:`,
+      `Current gate state for this mission (based on checklist flags, not numeric scores):`,
       metGates.length > 0 ? `Met Gates:\n${metGatesList}` : `Met Gates: None yet`,
       unmetGates.length > 0 ? `Unmet Gates:\n${unmetGatesList}` : `Unmet Gates: None (all met!)`,
       ``,
       `All Required Gates Met: ${gateState.allRequiredGatesMet ? 'YES ✅' : 'NO ❌'}`,
       gateState.allRequiredGatesMet
-        ? `- All gates are met. You may proceed toward the objective reward when appropriate.`
-        : `- Some gates are not yet met. You must NOT provide the objective reward until all gates are met.`,
+        ? `- All gates are met (positive hooks, objective progress, boundary safety, momentum). You may proceed toward the objective reward when appropriate.`
+        : `- Some gates are not yet met. You must NOT provide the objective reward until all gates are met (sufficient positive hooks, objective progress, boundary safety, and momentum).`,
     ].join('\n');
   }
 

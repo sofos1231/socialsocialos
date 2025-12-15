@@ -1,8 +1,9 @@
 // backend/src/modules/mood/mood.service.ts
 // Step 5.10: Mood timeline service with EMA smoothing and deterministic insights
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
+import { EngineConfigService } from '../engine-config/engine-config.service';
 import { loadSessionAnalyticsSnapshot } from '../shared/helpers/session-snapshot.helper';
 import {
   MoodState,
@@ -160,13 +161,15 @@ function computeFlow(scores: number[], index: number, previousFlow: number | nul
     return Math.round(stability);
   }
 
-  return Math.round(EMA_ALPHA * stability + (1 - EMA_ALPHA) * previousFlow);
+  return Math.round(EMA_ALPHA_DEFAULT * stability + (1 - EMA_ALPHA_DEFAULT) * previousFlow);
 }
 
 @Injectable()
 export class MoodService {
   private moodConfig: any = null; // Cached mood config
   private emaAlpha: number = EMA_ALPHA_DEFAULT;
+  // Patch A: Track last seen revision for cache refresh
+  private lastRevision = -1;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -176,6 +179,11 @@ export class MoodService {
   ) {
     // Load mood config on startup
     this.loadMoodConfig();
+    
+    // Patch A: Register for config update notifications
+    if (this.engineConfigService) {
+      this.engineConfigService.onConfigUpdated(() => this.refreshFromEngineConfig());
+    }
   }
 
   /**
@@ -187,10 +195,31 @@ export class MoodService {
         const config = await this.engineConfigService.getGlobalConfig();
         this.moodConfig = config.mood;
         this.emaAlpha = config.mood?.emaAlpha ?? EMA_ALPHA_DEFAULT;
+        // Patch A: Update revision tracking
+        this.lastRevision = this.engineConfigService.getRevision();
       }
     } catch (e) {
       // Fallback to defaults
       this.emaAlpha = EMA_ALPHA_DEFAULT;
+    }
+  }
+
+  /**
+   * Patch A: Refresh mood config from EngineConfig (for cache invalidation)
+   */
+  async refreshFromEngineConfig(): Promise<void> {
+    this.moodConfig = null;
+    await this.loadMoodConfig();
+  }
+
+  /**
+   * Patch A: Ensure cache is fresh before use (self-healing guarantee)
+   */
+  private async ensureFresh(): Promise<void> {
+    if (!this.engineConfigService) return;
+    const currentRevision = this.engineConfigService.getRevision();
+    if (currentRevision !== this.lastRevision) {
+      await this.refreshFromEngineConfig();
     }
   }
 
@@ -200,6 +229,9 @@ export class MoodService {
    * Step 6.10: Checks enableArcDetection feature toggle
    */
   async buildTimelineForSession(sessionId: string): Promise<MoodTimelinePayload> {
+    // Patch A: Ensure cache is fresh before use
+    await this.ensureFresh();
+    
     const snapshot = await loadSessionAnalyticsSnapshot(this.prisma, sessionId);
 
     // Step 6.10: Check enableArcDetection feature toggle from session payload

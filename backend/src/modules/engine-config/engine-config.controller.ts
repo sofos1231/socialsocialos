@@ -4,11 +4,10 @@
 import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
 import { EngineConfigService } from './engine-config.service';
 import { EngineConfigJson } from './engine-config.types';
-// TODO: Add admin guard when available
-// import { AdminGuard } from '../auth/admin.guard';
+import { AdminGuard } from '../auth/admin.guard';
 
-@Controller('v1/admin/engine-config')
-// @UseGuards(AdminGuard) // TODO: Enable when admin guard is available
+@Controller('admin/engine-config')
+@UseGuards(AdminGuard)
 export class EngineConfigController {
   constructor(private readonly engineConfigService: EngineConfigService) {}
 

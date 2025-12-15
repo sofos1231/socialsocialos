@@ -289,7 +289,7 @@ export default function MissionEndScreen({ route, navigation }: Props) {
           </View>
           <View style={styles.rewardItem}>
             <Text style={styles.rewardValue}>{rewards.score}</Text>
-            <Text style={styles.rewardLabel}>Score</Text>
+            <Text style={styles.rewardLabel}>Legacy Score</Text>
           </View>
         </View>
         {Object.keys(rewards.rarityCounts).length > 0 && (
@@ -299,6 +299,35 @@ export default function MissionEndScreen({ route, navigation }: Props) {
                 <Text style={styles.rarityBadgeText}>{rarity}: {count}</Text>
               </View>
             ))}
+          </View>
+        )}
+
+        {/* Phase 3: Checklist-native summary */}
+        {selectedPack.checklist && (
+          <View style={styles.checklistSection}>
+            <Text style={styles.checklistSectionTitle}>Mission Performance</Text>
+            <View style={styles.checklistGrid}>
+              <View style={styles.checklistItem}>
+                <Text style={styles.checklistValue}>{selectedPack.checklist.positiveHookCount}</Text>
+                <Text style={styles.checklistLabel}>Positive Hooks</Text>
+              </View>
+              <View style={styles.checklistItem}>
+                <Text style={styles.checklistValue}>{selectedPack.checklist.objectiveProgressCount}</Text>
+                <Text style={styles.checklistLabel}>Objective Progress</Text>
+              </View>
+              <View style={styles.checklistItem}>
+                <Text style={styles.checklistValue}>
+                  {selectedPack.checklist.boundarySafeRate ?? 0}%
+                </Text>
+                <Text style={styles.checklistLabel}>Boundary Safe</Text>
+              </View>
+              <View style={styles.checklistItem}>
+                <Text style={styles.checklistValue}>
+                  {selectedPack.checklist.momentumMaintainedRate ?? 0}%
+                </Text>
+                <Text style={styles.checklistLabel}>Momentum Maintained</Text>
+              </View>
+            </View>
           </View>
         )}
 
@@ -553,12 +582,32 @@ export default function MissionEndScreen({ route, navigation }: Props) {
               >
                 <View style={styles.messageHeader}>
                   <Text style={styles.messageIndex}>#{msg.turnIndex + 1}</Text>
-                  {msg.rarity && (
+                  {/* Phase 3: Show tier prominently (preferred over rarity) */}
+                  {(msg.tier || msg.rarity) && (
                     <View style={styles.rarityTag}>
-                      <Text style={styles.rarityTagText}>{msg.rarity}</Text>
+                      <Text style={styles.rarityTagText}>{msg.tier || msg.rarity}</Text>
                     </View>
                   )}
-                  <Text style={styles.messageScore}>Score: {msg.score}</Text>
+                  {/* Phase 3: Show checklist flags if available */}
+                  {msg.checklistFlags && msg.checklistFlags.length > 0 && (
+                    <View style={styles.messageChecklistFlags}>
+                      {msg.checklistFlags.slice(0, 2).map((flag, idx) => (
+                        <View key={idx} style={styles.messageChecklistFlag}>
+                          <Text style={styles.messageChecklistFlagText}>
+                            {flag === 'POSITIVE_HOOK_HIT' ? '🎯' :
+                             flag === 'OBJECTIVE_PROGRESS' ? '✅' :
+                             flag === 'NO_BOUNDARY_ISSUES' ? '🛡️' :
+                             flag === 'MOMENTUM_MAINTAINED' ? '⚡' : '•'}
+                          </Text>
+                        </View>
+                      ))}
+                      {msg.checklistFlags.length > 2 && (
+                        <Text style={styles.messageChecklistMore}>+{msg.checklistFlags.length - 2}</Text>
+                      )}
+                    </View>
+                  )}
+                  {/* Phase 3: Show numeric score as secondary (small, muted) */}
+                  <Text style={styles.messageScoreSecondary}>Score: {msg.score}</Text>
                 </View>
                 <Text style={styles.messageContent}>{msg.content}</Text>
               </View>

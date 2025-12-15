@@ -8,9 +8,11 @@ import {
   ScrollView,
   ActivityIndicator,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AxiosError } from 'axios';
 import { PracticeStackParamList } from '../navigation/types';
 import { fetchMissionRoad, startMission } from '../api/missionsService';
 import { useRequireOnboardingComplete } from '../hooks/useRequireOnboardingComplete';
@@ -28,6 +30,8 @@ type Mission = {
     label?: string;
     displayLabel?: string;
   } | null;
+  isActive?: boolean;
+  isUnlocked?: boolean;
 };
 
 type Lane = {
@@ -110,20 +114,66 @@ export default function MissionRoadScreen() {
   const lanes = useMemo(() => buildLanesFromAny(rawRoad), [rawRoad]);
 
   const handleStart = async (mission: Mission) => {
+    // Guard: Don't start inactive missions
+    if (mission.isActive === false) {
+      Alert.alert('Mission Inactive', 'This mission is currently inactive.');
+      return;
+    }
+
+    // Guard: Don't start locked missions
+    if (mission.isUnlocked === false) {
+      Alert.alert(
+        'Mission Locked',
+        'Complete previous missions in this lane first.',
+      );
+      return;
+    }
+
     try {
       const res = await startMission(mission.id);
 
       // Backend may return { mission: { templateId, aiContract } } (no full mission shape)
       const templateId = res?.mission?.templateId ?? mission.id;
 
+      // Only navigate on success
       navigation.navigate('PracticeSession', {
         missionId: mission.id,
         templateId,
         personaId: mission?.persona?.id,
         title: mission.title ?? 'Practice Mission',
       });
-    } catch (err) {
-      console.error('Start mission failed:', err);
+    } catch (error) {
+      const err = error as AxiosError<any>;
+      const status = err.response?.status;
+      const data = err.response?.data as { code?: string; message?: string } | undefined;
+
+      const code = data?.code;
+      const message = data?.message;
+
+      if (status === 400 && code === 'MISSION_TEMPLATE_INVALID_AT_START') {
+        Alert.alert(
+          'Mission Unavailable',
+          'This mission is misconfigured right now. Please try another one.',
+        );
+      } else if (status === 403 && code === 'MISSION_LOCKED_PREVIOUS_NOT_COMPLETED') {
+        Alert.alert(
+          'Mission Locked',
+          'You must complete earlier missions in this lane first.',
+        );
+      } else if (status === 403 && code === 'MISSION_INACTIVE') {
+        Alert.alert('Mission Inactive', 'This mission is currently inactive.');
+      } else if (status === 404 && code === 'MISSION_TEMPLATE_NOT_FOUND') {
+        Alert.alert(
+          'Mission Not Found',
+          'This mission no longer exists. Try refreshing the mission list.',
+        );
+      } else if (status === 401) {
+        Alert.alert('Session Expired', 'Your session expired. Please log in again.');
+      } else {
+        Alert.alert('Error', 'Could not start this mission. Please try again.');
+      }
+
+      console.error('Start mission failed:', status, code, message, err);
     }
   };
 
@@ -167,12 +217,31 @@ export default function MissionRoadScreen() {
                   <Text style={styles.cardDesc}>{mission.description}</Text>
                 )}
 
+                {mission.isUnlocked === false && (
+                  <View style={styles.lockedBadge}>
+                    <Text style={styles.lockedBadgeText}>🔒 Locked</Text>
+                  </View>
+                )}
+
                 <TouchableOpacity
                   onPress={() => handleStart(mission)}
                   activeOpacity={0.85}
-                  style={styles.startBtn}
+                  disabled={mission.isActive === false || mission.isUnlocked === false}
+                  style={[
+                    styles.startBtn,
+                    (mission.isActive === false || mission.isUnlocked === false) &&
+                      styles.startBtnDisabled,
+                  ]}
                 >
-                  <Text style={styles.startBtnText}>Start Mission</Text>
+                  <Text
+                    style={[
+                      styles.startBtnText,
+                      (mission.isActive === false || mission.isUnlocked === false) &&
+                        styles.startBtnTextDisabled,
+                    ]}
+                  >
+                    Start Mission
+                  </Text>
                 </TouchableOpacity>
               </View>
             ))}
@@ -227,7 +296,25 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderRadius: 10,
   },
+  startBtnDisabled: {
+    backgroundColor: '#2a2a2a',
+    opacity: 0.5,
+  },
   startBtnText: { textAlign: 'center', color: '#000', fontWeight: '800' },
+  startBtnTextDisabled: { color: '#666' },
+  lockedBadge: {
+    backgroundColor: '#3a3a3a',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  lockedBadgeText: {
+    color: '#aaa',
+    fontSize: 12,
+    fontWeight: '600',
+  },
 
   emptyWrap: {
     padding: 16,

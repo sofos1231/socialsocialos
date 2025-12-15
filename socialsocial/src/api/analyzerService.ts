@@ -13,8 +13,12 @@ export interface MessageListItemDTO {
   recordedAtISO: string;
   turnIndex: number;
   contentSnippet: string;
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   score: number;
   breakdown?: MessageBreakdownDTO;
+  // Phase 3: Checklist-native fields
+  tier?: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+  checklistFlags?: string[]; // MessageChecklistFlag[]
 }
 
 /**

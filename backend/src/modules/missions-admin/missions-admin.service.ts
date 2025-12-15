@@ -101,6 +101,46 @@ export class MissionsAdminService {
     return raw;
   }
 
+  /**
+   * Coerces aiContract to wrapped format { missionConfigV1: {...} } if it's raw MissionConfigV1.
+   * Phase 2: Backend must accept both wrapped and raw formats.
+   */
+  private coerceAiContractToWrapped(raw: any): any {
+    // If null/undefined, return as-is
+    if (raw === null || raw === undefined) {
+      return raw;
+    }
+
+    // If already wrapped, return as-is
+    if (
+      typeof raw === 'object' &&
+      !Array.isArray(raw) &&
+      'missionConfigV1' in raw &&
+      typeof raw.missionConfigV1 === 'object' &&
+      raw.missionConfigV1 !== null
+    ) {
+      return raw;
+    }
+
+    // If raw MissionConfigV1 (has version:1 and required fields), wrap it
+    if (
+      typeof raw === 'object' &&
+      !Array.isArray(raw) &&
+      raw !== null &&
+      raw.version === 1 &&
+      typeof raw.dynamics === 'object' &&
+      typeof raw.objective === 'object' &&
+      typeof raw.difficulty === 'object' &&
+      typeof raw.style === 'object' &&
+      typeof raw.statePolicy === 'object'
+    ) {
+      return { missionConfigV1: raw };
+    }
+
+    // Else return unchanged (existing error behavior stays)
+    return raw;
+  }
+
   private async ensureUniqueTemplateCode(base: string) {
     const normalized = normalizeCode(base);
     if (!normalized) return '';
@@ -456,9 +496,12 @@ export class MissionsAdminService {
 
     const aiContract = this.sanitizeAiContract(dto.aiContract);
 
+    // Phase 2: Coerce raw MissionConfigV1 to wrapped format before validation
+    const wrappedAiContract = this.coerceAiContractToWrapped(aiContract);
+
     // Phase 0: Validate missionConfigV1 for create
     // For create, aiContract must exist and be valid (no undefined/null allowed)
-    const validationErrors = validateMissionConfigV1Shape(aiContract);
+    const validationErrors = validateMissionConfigV1Shape(wrappedAiContract);
     if (validationErrors.length > 0) {
       throw new BadRequestException({
         code: 'VALIDATION',
@@ -468,7 +511,7 @@ export class MissionsAdminService {
     }
 
     // ✅ STEP 4.1: Normalize missionConfigV1 before save
-    const normalizeResult = normalizeMissionConfigV1(aiContract);
+    const normalizeResult = normalizeMissionConfigV1(wrappedAiContract);
     if (!normalizeResult.ok) {
       const failedResult = normalizeResult as { ok: false; reason: string; errors?: any[] };
       throw new BadRequestException({
@@ -485,6 +528,12 @@ export class MissionsAdminService {
 
     // Extract normalized config (without endReasonPrecedenceResolved which is runtime-only)
     const normalizedConfig = normalizeResult.value;
+    // Extract optional profile codes from original config (not in NormalizedMissionConfigV1)
+    const originalConfig = wrappedAiContract?.missionConfigV1 as any;
+    const dynamicsProfileCode = originalConfig?.dynamicsProfileCode;
+    const gateRequirementTemplateCode = originalConfig?.gateRequirementTemplateCode;
+    const scoringProfileCode = originalConfig?.scoringProfileCode;
+    
     // Step 6.0 Fix: Preserve FULL normalized MissionConfigV1, including optional fields
     const normalizedAiContract = {
       missionConfigV1: {
@@ -497,6 +546,10 @@ export class MissionsAdminService {
         // Preserve optional fields when present
         ...(normalizedConfig.openings ? { openings: normalizedConfig.openings } : {}),
         ...(normalizedConfig.responseArchitecture ? { responseArchitecture: normalizedConfig.responseArchitecture } : {}),
+        // Preserve profile codes from original config
+        ...(dynamicsProfileCode !== undefined ? { dynamicsProfileCode } : {}),
+        ...(gateRequirementTemplateCode !== undefined ? { gateRequirementTemplateCode } : {}),
+        ...(scoringProfileCode !== undefined ? { scoringProfileCode } : {}),
       },
     };
 
@@ -720,6 +773,9 @@ export class MissionsAdminService {
 
     const aiContract = this.sanitizeAiContract(dto.aiContract);
 
+    // Phase 2: Coerce raw MissionConfigV1 to wrapped format before validation
+    const wrappedAiContract = this.coerceAiContractToWrapped(aiContract);
+
     // ✅ STEP 4.1: For stability, require valid config for active missions
     // Only allow null if explicitly clearing AND mission is being deactivated
     // Determine final active status: use dto.active if provided, otherwise keep existing
@@ -727,7 +783,7 @@ export class MissionsAdminService {
     
     let normalizedAiContract: any = undefined;
     if (dto.aiContract !== undefined) {
-      if (aiContract === null) {
+      if (wrappedAiContract === null) {
         // Only allow null if mission is being deactivated (or already inactive)
         if (willBeActive) {
           throw new BadRequestException({
@@ -738,7 +794,7 @@ export class MissionsAdminService {
         normalizedAiContract = null;
       } else {
         // Validate and normalize
-        const validationErrors = validateMissionConfigV1Shape(aiContract);
+        const validationErrors = validateMissionConfigV1Shape(wrappedAiContract);
         if (validationErrors.length > 0) {
           throw new BadRequestException({
             code: 'VALIDATION',
@@ -747,7 +803,7 @@ export class MissionsAdminService {
           });
         }
 
-        const normalizeResult = normalizeMissionConfigV1(aiContract);
+        const normalizeResult = normalizeMissionConfigV1(wrappedAiContract);
         if (!normalizeResult.ok) {
           const failedResult = normalizeResult as { ok: false; reason: string; errors?: any[] };
           throw new BadRequestException({
@@ -763,6 +819,12 @@ export class MissionsAdminService {
         }
 
         const normalizedConfig = normalizeResult.value;
+        // Extract optional profile codes from original config (not in NormalizedMissionConfigV1)
+        const originalConfig = wrappedAiContract?.missionConfigV1 as any;
+        const dynamicsProfileCode = originalConfig?.dynamicsProfileCode;
+        const gateRequirementTemplateCode = originalConfig?.gateRequirementTemplateCode;
+        const scoringProfileCode = originalConfig?.scoringProfileCode;
+        
         // Step 6.0 Fix: Preserve FULL normalized MissionConfigV1, including optional fields
         normalizedAiContract = {
           missionConfigV1: {
@@ -775,6 +837,10 @@ export class MissionsAdminService {
             // Preserve optional fields when present
             ...(normalizedConfig.openings ? { openings: normalizedConfig.openings } : {}),
             ...(normalizedConfig.responseArchitecture ? { responseArchitecture: normalizedConfig.responseArchitecture } : {}),
+            // Preserve profile codes from original config
+            ...(dynamicsProfileCode !== undefined ? { dynamicsProfileCode } : {}),
+            ...(gateRequirementTemplateCode !== undefined ? { gateRequirementTemplateCode } : {}),
+            ...(scoringProfileCode !== undefined ? { scoringProfileCode } : {}),
           },
         };
 
@@ -1524,7 +1590,7 @@ export class MissionsAdminService {
     // Get average messages per session
     const messageCounts = await Promise.all(
       sessions.map(s => 
-        this.prisma.practiceMessage.count({
+        this.prisma.chatMessage.count({
           where: { sessionId: s.id },
         })
       )
@@ -1599,7 +1665,7 @@ export class MissionsAdminService {
       throw new NotFoundException(`Session ${sessionId} not found`);
     }
 
-    const messages = await this.prisma.practiceMessage.findMany({
+    const messages = await this.prisma.chatMessage.findMany({
       where: { sessionId },
       orderBy: { turnIndex: 'asc' },
       select: {
@@ -1618,8 +1684,8 @@ export class MissionsAdminService {
       select: {
         gateKey: true,
         passed: true,
-        messageIndex: true,
-        triggeredAt: true,
+        reasonCode: true,
+        evaluatedAt: true,
       },
     });
 
@@ -1654,8 +1720,8 @@ export class MissionsAdminService {
       gateOutcomes: gateOutcomes.map(g => ({
         gateKey: g.gateKey,
         passed: g.passed,
-        messageIndex: g.messageIndex,
-        triggeredAt: g.triggeredAt,
+        reasonCode: g.reasonCode,
+        evaluatedAt: g.evaluatedAt,
       })),
       moodTimeline: moodTimeline?.timelineJson || null,
     };
@@ -1682,5 +1748,217 @@ export class MissionsAdminService {
     });
 
     return sessions;
+  }
+
+  /**
+   * Phase 3: Validate MissionConfigV1 without saving
+   */
+  async validateConfig(aiContractRaw: any) {
+    // Sanitize aiContract (handles string, object, null)
+    const aiContract = this.sanitizeAiContract(aiContractRaw);
+
+    // Coerce to wrapped format
+    const wrappedAiContract = this.coerceAiContractToWrapped(aiContract);
+
+    // Validate structure
+    const validationErrors = validateMissionConfigV1Shape(wrappedAiContract);
+    if (validationErrors.length > 0) {
+      throw new BadRequestException({
+        code: 'VALIDATION',
+        message: 'Invalid aiContract.missionConfigV1',
+        details: validationErrors,
+      });
+    }
+
+    // Normalize
+    const normalizeResult = normalizeMissionConfigV1(wrappedAiContract);
+    if (!normalizeResult.ok) {
+      const failedResult = normalizeResult as { ok: false; reason: string; errors?: any[] };
+      throw new BadRequestException({
+        code: 'MISSION_TEMPLATE_INVALID_CONFIG',
+        message:
+          failedResult.reason === 'missing'
+            ? 'Mission template is missing missionConfigV1'
+            : failedResult.reason === 'invalid'
+              ? 'Mission template aiContract is invalid'
+              : 'Mission template aiContract is not a valid object',
+        details: failedResult.errors ?? [],
+      });
+    }
+
+    // Extract normalized config with optional fields preserved
+    const normalizedConfig = normalizeResult.value;
+    const normalizedAiContract = {
+      missionConfigV1: {
+        version: normalizedConfig.version,
+        dynamics: normalizedConfig.dynamics,
+        objective: normalizedConfig.objective,
+        difficulty: normalizedConfig.difficulty,
+        style: normalizedConfig.style,
+        statePolicy: normalizedConfig.statePolicy,
+        // Preserve optional fields when present
+        ...(normalizedConfig.openings ? { openings: normalizedConfig.openings } : {}),
+        ...(normalizedConfig.responseArchitecture ? { responseArchitecture: normalizedConfig.responseArchitecture } : {}),
+        ...(normalizedConfig.aiRuntimeProfile ? { aiRuntimeProfile: normalizedConfig.aiRuntimeProfile } : {}),
+        // Note: scoringProfileCode and dynamicsProfileCode are on MissionConfigV1 but not on NormalizedMissionConfigV1
+        // They are preserved in the original aiContract if needed
+      },
+    };
+
+    return {
+      ok: true,
+      normalizedAiContract,
+    };
+  }
+
+  /**
+   * Phase 3: Generate MissionConfigV1 using builders
+   */
+  async generateConfig(
+    builderType: 'OPENERS' | 'FLIRTING',
+    params: {
+      difficultyLevel: string;
+      aiStyleKey: string;
+      maxMessages: number;
+      timeLimitSec: number;
+      wordLimit?: number | null;
+      userTitle: string;
+      userDescription: string;
+      objectiveKind?: string;
+    },
+  ) {
+    // Validate builderType
+    if (builderType !== 'OPENERS' && builderType !== 'FLIRTING') {
+      throw new BadRequestException({
+        code: 'VALIDATION',
+        message: 'builderType must be "OPENERS" or "FLIRTING"',
+        details: [{ path: 'builderType', message: `Invalid builderType: ${builderType}` }],
+      });
+    }
+
+    // Validate params
+    const errors: MissionConfigValidationError[] = [];
+
+    if (!params.userTitle || typeof params.userTitle !== 'string' || params.userTitle.trim().length === 0) {
+      errors.push({ path: 'params.userTitle', message: 'userTitle is required and must be non-empty' });
+    }
+
+    if (!params.userDescription || typeof params.userDescription !== 'string' || params.userDescription.trim().length === 0) {
+      errors.push({ path: 'params.userDescription', message: 'userDescription is required and must be non-empty' });
+    }
+
+    if (!Number.isFinite(params.maxMessages) || params.maxMessages < 1) {
+      errors.push({ path: 'params.maxMessages', message: 'maxMessages must be >= 1' });
+    }
+
+    if (!Number.isFinite(params.timeLimitSec) || params.timeLimitSec < 0) {
+      errors.push({ path: 'params.timeLimitSec', message: 'timeLimitSec must be >= 0' });
+    }
+
+    if (params.wordLimit !== undefined && params.wordLimit !== null) {
+      if (!Number.isFinite(params.wordLimit) || params.wordLimit < 1) {
+        errors.push({ path: 'params.wordLimit', message: 'wordLimit must be >= 1 if provided' });
+      }
+    }
+
+    // Validate difficultyLevel enum
+    const validDifficulties: MissionDifficulty[] = ['EASY', 'MEDIUM', 'HARD', 'ELITE'];
+    if (!validDifficulties.includes(params.difficultyLevel as MissionDifficulty)) {
+      errors.push({ path: 'params.difficultyLevel', message: `difficultyLevel must be one of: ${validDifficulties.join(', ')}` });
+    }
+
+    // Validate aiStyleKey (basic check - should be non-empty string)
+    if (!params.aiStyleKey || typeof params.aiStyleKey !== 'string' || params.aiStyleKey.trim().length === 0) {
+      errors.push({ path: 'params.aiStyleKey', message: 'aiStyleKey is required and must be non-empty' });
+    }
+
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        code: 'VALIDATION',
+        message: 'Invalid builder parameters',
+        details: errors,
+      });
+    }
+
+    // Import builders
+    const {
+      buildOpenersMissionConfigV1,
+      buildFlirtingMissionConfigV1,
+    } = await import('./mission-config-v1.builders');
+    // MissionObjectiveKind is a type, not a value - import the type directly
+    type MissionObjectiveKind = import('./mission-config-v1.schema').MissionObjectiveKind;
+
+    // Build config
+    let generatedConfig;
+    if (builderType === 'OPENERS') {
+      generatedConfig = buildOpenersMissionConfigV1({
+        difficultyLevel: params.difficultyLevel as MissionDifficulty,
+        aiStyleKey: params.aiStyleKey as AiStyleKey,
+        maxMessages: params.maxMessages,
+        timeLimitSec: params.timeLimitSec,
+        wordLimit: params.wordLimit ?? null,
+        userTitle: params.userTitle.trim(),
+        userDescription: params.userDescription.trim(),
+        objectiveKind: (params.objectiveKind as any) ?? undefined,
+      });
+    } else {
+      generatedConfig = buildFlirtingMissionConfigV1({
+        difficultyLevel: params.difficultyLevel as MissionDifficulty,
+        aiStyleKey: params.aiStyleKey as AiStyleKey,
+        maxMessages: params.maxMessages,
+        timeLimitSec: params.timeLimitSec,
+        wordLimit: params.wordLimit ?? null,
+        userTitle: params.userTitle.trim(),
+        userDescription: params.userDescription.trim(),
+      });
+    }
+
+    // Wrap generated config
+    const wrappedAiContract = { missionConfigV1: generatedConfig };
+
+    // Validate generated config
+    const validationErrors = validateMissionConfigV1Shape(wrappedAiContract);
+    if (validationErrors.length > 0) {
+      throw new BadRequestException({
+        code: 'MISSION_TEMPLATE_INVALID_CONFIG',
+        message: 'Generated config failed validation',
+        details: validationErrors,
+      });
+    }
+
+    // Normalize generated config
+    const normalizeResult = normalizeMissionConfigV1(wrappedAiContract);
+    if (!normalizeResult.ok) {
+      const failedResult = normalizeResult as { ok: false; reason: string; errors?: any[] };
+      throw new BadRequestException({
+        code: 'MISSION_TEMPLATE_INVALID_CONFIG',
+        message: 'Generated config failed normalization',
+        details: failedResult.errors ?? [],
+      });
+    }
+
+    // Extract normalized config with optional fields preserved
+    const normalizedConfig = normalizeResult.value;
+    const normalizedAiContract = {
+      missionConfigV1: {
+        version: normalizedConfig.version,
+        dynamics: normalizedConfig.dynamics,
+        objective: normalizedConfig.objective,
+        difficulty: normalizedConfig.difficulty,
+        style: normalizedConfig.style,
+        statePolicy: normalizedConfig.statePolicy,
+        // Preserve optional fields when present
+        ...(normalizedConfig.openings ? { openings: normalizedConfig.openings } : {}),
+        ...(normalizedConfig.responseArchitecture ? { responseArchitecture: normalizedConfig.responseArchitecture } : {}),
+        ...(normalizedConfig.aiRuntimeProfile ? { aiRuntimeProfile: normalizedConfig.aiRuntimeProfile } : {}),
+        // Note: scoringProfileCode and dynamicsProfileCode are on MissionConfigV1 but not on NormalizedMissionConfigV1
+        // They are preserved in the original aiContract if needed
+      },
+    };
+
+    return {
+      ok: true,
+      generatedAiContract: normalizedAiContract,
+    };
   }
 }

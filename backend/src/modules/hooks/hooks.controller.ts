@@ -6,17 +6,18 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Param,
   Body,
   Query,
   UseGuards,
+  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
-// TODO: Add admin guard when available
-// import { AdminGuard } from '../auth/admin.guard';
+import { AdminGuard } from '../auth/admin.guard';
 
-@Controller('v1/admin/hooks')
-// @UseGuards(AdminGuard) // TODO: Enable when admin guard is available
+@Controller('admin/hooks')
+@UseGuards(AdminGuard)
 export class HooksController {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -103,6 +104,21 @@ export class HooksController {
     });
 
     return { ok: true, hook };
+  }
+
+  /**
+   * DELETE /v1/admin/hooks/:id
+   */
+  @Delete(':id')
+  async deleteHook(@Param('id') id: string) {
+    try {
+      await this.prisma.promptHook.delete({
+        where: { id },
+      });
+      return { ok: true, message: 'Hook deleted.' };
+    } catch (e) {
+      throw new NotFoundException(`Hook with ID ${id} not found.`);
+    }
   }
 
   /**

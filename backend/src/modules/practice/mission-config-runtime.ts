@@ -71,16 +71,36 @@ import {
       return { ok: false, reason: 'not_object' };
     }
   
-    if (!('missionConfigV1' in aiContractUnknown)) {
-      return { ok: false, reason: 'missing' };
+    // Phase 2: Accept raw MissionConfigV1 format (wrap it internally)
+    let wrappedContract: any;
+    if ('missionConfigV1' in aiContractUnknown) {
+      // Already wrapped
+      wrappedContract = aiContractUnknown;
+    } else {
+      // Check if it's raw MissionConfigV1 (has version:1 and required fields)
+      const raw = aiContractUnknown as any;
+      if (
+        raw.version === 1 &&
+        typeof raw.dynamics === 'object' &&
+        typeof raw.objective === 'object' &&
+        typeof raw.difficulty === 'object' &&
+        typeof raw.style === 'object' &&
+        typeof raw.statePolicy === 'object'
+      ) {
+        // Wrap it internally
+        wrappedContract = { missionConfigV1: raw };
+      } else {
+        // Not wrapped and not raw MissionConfigV1
+        return { ok: false, reason: 'missing' };
+      }
     }
   
-    const validationErrors = validateMissionConfigV1Shape(aiContractUnknown);
+    const validationErrors = validateMissionConfigV1Shape(wrappedContract);
     if (validationErrors.length > 0) {
       return { ok: false, reason: 'invalid', errors: validationErrors };
     }
   
-    const config = (aiContractUnknown as any).missionConfigV1 as MissionConfigV1;
+    const config = (wrappedContract as any).missionConfigV1 as MissionConfigV1;
   
     const override = config.statePolicy.endReasonPrecedence;
     const endReasonPrecedenceResolved: MissionEndReasonCode[] =
@@ -167,11 +187,12 @@ import {
       endReasonPrecedenceResolved,
     };
     
-    // Step 7.2: Preserve dynamicsProfileCode and scoringProfileCode for runtime use
+    // Step 7.2: Preserve dynamicsProfileCode, scoringProfileCode, and gateRequirementTemplateCode for runtime use
     // (These are not part of NormalizedMissionConfigV1 but are used by services)
-    if (config.dynamicsProfileCode !== undefined || config.scoringProfileCode !== undefined) {
+    if (config.dynamicsProfileCode !== undefined || config.scoringProfileCode !== undefined || config.gateRequirementTemplateCode !== undefined) {
       (normalized as any).dynamicsProfileCode = config.dynamicsProfileCode ?? null;
       (normalized as any).scoringProfileCode = config.scoringProfileCode ?? null;
+      (normalized as any).gateRequirementTemplateCode = config.gateRequirementTemplateCode ?? null;
     }
   
     return { ok: true, value: normalized };

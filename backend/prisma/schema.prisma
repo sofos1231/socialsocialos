@@ -1,6 +1,3 @@
-// FILE: backend/prisma/schema.prisma
-// NOTE: Practice/Chat stats are currently Option A (rarity/xp-based). Option B trait metrics will be added alongside and gradually replace this.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,91 +8,64 @@ datasource db {
 }
 
 model User {
-  id                 String            @id @default(cuid())
-  email              String            @unique
-  createdAt          DateTime          @default(now())
-  sessionVersion     Int               @default(0)
-  streakCurrent      Int               @default(0)
-  streakLastActiveAt DateTime?
-  passwordHash       String
-  tier               AccountTier       @default(FREE)
-  messages           ChatMessage[]
-  powerUpUsages      PowerUpUsage[]
-  sessions           PracticeSession[]
-  refreshTokens      RefreshToken[]
-  stats              UserStats?
-  wallet             UserWallet?
-
+  id                         String                 @id @default(cuid())
+  email                      String                 @unique
+  createdAt                  DateTime               @default(now())
+  sessionVersion             Int                    @default(0)
+  streakCurrent              Int                    @default(0)
+  streakLastActiveAt         DateTime?
+  passwordHash               String
+  tier                       AccountTier            @default(FREE)
+  attractedTo                AttractionPreference   @default(UNKNOWN)
   /// 6B – Onboarding / Preference fields
-  gender         Gender               @default(UNKNOWN)
-  attractedTo    AttractionPreference @default(UNKNOWN)
-  preferencePath PreferencePath       @default(UNKNOWN_PATH)
-
-  // Gate flags + meta
-  onboardingCompleted   Boolean   @default(false)
-  profileCompleted      Boolean   @default(false)
-  onboardingVersion     String?
-  onboardingCompletedAt DateTime?
-  profileCompletedAt    DateTime?
-  onboardingStep        Int       @default(0) // 0 = not started, 1–10 = last completed step
-
-  // Profile identity
-  displayName                String?
-  avatarType                 AvatarType   @default(DEFAULT)
+  gender                     Gender                 @default(UNKNOWN)
+  preferencePath             PreferencePath         @default(UNKNOWN_PATH)
+  allowLeaderboardVisibility Boolean                @default(true)
   avatarId                   String?
+  avatarType                 AvatarType             @default(DEFAULT)
   avatarUrl                  String?
-  profileTags                String[]     @default([])
+  commitmentLevel            CommitmentLevel?
   countryCode                String?
-  allowLeaderboardVisibility Boolean      @default(true)
-
-  // Onboarding preferences (beyond existing Gender/AttractionPreference/PreferencePath)
-  mainGoal            MainGoal?
-  dailyEffortMinutes  Int?
-  commitmentLevel     CommitmentLevel?
-  selfRatedLevel      Int?
-  wantsHarshFeedback  Boolean?
-
-  preferredStyles     String[]  @default([])
-  interestTags        String[]  @default([])
-
-  notificationsEnabled  Boolean @default(false)
-  preferredReminderTime String?
-
-  // Mission progress
-  missionProgress MissionProgress[]
-
-  // ✅ Rewards ledger (idempotent grants)
-  rewardLedger RewardLedgerEntry[]
-
-  // Phase 0: Deep Insights & Mood relations
-  deepInsights       MissionDeepInsights[]
-  moodTimelines      MissionMoodTimeline[]
-  promptHookTriggers PromptHookTrigger[]
-
-  // Step 5.1: Analytics relations
-  gateOutcomes  GateOutcome[]
-  traitHistory  UserTraitHistory[]
-  traitScores   UserTraitScores?
-
-  // Step 5.4: Badge relations
-  badgeProgress UserBadgeProgress[]
-  badgeEvents   UserBadgeEvent[]
-  badgeLedger   BadgeLedgerEntry[]
-
-  // Step 5.7: Hall of Fame and Burned Messages
-  hallOfFameMessages HallOfFameMessage[]
-  burnedMessages     BurnedMessage[]
-
-  // Step 5.9: Trait Synergy relations
-  traitSynergy SessionTraitSynergy[]
-
-  // Step 5.14: Persona memory and category relations
-  personaMemories      PersonaMemory[]
-  categoryStats        CategoryStats[]
-  categoryProgress     UserCategoryProgress[]
-
-  // Onboarding state tracking
-  onboardingState UserOnboardingState?
+  dailyEffortMinutes         Int?
+  displayName                String?
+  interestTags               String[]               @default([])
+  mainGoal                   MainGoal?
+  notificationsEnabled       Boolean                @default(false)
+  onboardingCompleted        Boolean                @default(false)
+  onboardingCompletedAt      DateTime?
+  onboardingStep             Int                    @default(0)
+  onboardingVersion          String?
+  preferredReminderTime      String?
+  preferredStyles            String[]               @default([])
+  profileCompleted           Boolean                @default(false)
+  profileCompletedAt         DateTime?
+  profileTags                String[]               @default([])
+  selfRatedLevel             Int?
+  wantsHarshFeedback         Boolean?
+  badgeLedger                BadgeLedgerEntry[]
+  burnedMessages             BurnedMessage[]
+  categoryStats              CategoryStats[]
+  messages                   ChatMessage[]
+  gateOutcomes               GateOutcome[]
+  hallOfFameMessages         HallOfFameMessage[]
+  deepInsights               MissionDeepInsights[]
+  moodTimelines              MissionMoodTimeline[]
+  missionProgress            MissionProgress[]
+  personaMemories            PersonaMemory[]
+  powerUpUsages              PowerUpUsage[]
+  sessions                   PracticeSession[]
+  promptHookTriggers         PromptHookTrigger[]
+  refreshTokens              RefreshToken[]
+  rewardLedger               RewardLedgerEntry[]
+  traitSynergy               SessionTraitSynergy[]
+  badgeEvents                UserBadgeEvent[]
+  badgeProgress              UserBadgeProgress[]
+  categoryProgress           UserCategoryProgress[]
+  onboardingState            UserOnboardingState?
+  stats                      UserStats?
+  traitHistory               UserTraitHistory[]
+  traitScores                UserTraitScores?
+  wallet                     UserWallet?
 }
 
 model IdempotencyKey {
@@ -114,24 +84,20 @@ model IdempotencyKey {
 
 /// ✅ Rewards ledger entry (prevents double-award)
 model RewardLedgerEntry {
-  id         String  @id @default(cuid())
+  id         String           @id @default(cuid())
   userId     String
   sessionId  String
   templateId String?
-
-  kind RewardLedgerKind @default(SESSION_REWARD)
-
-  xpDelta    Int @default(0)
-  coinsDelta Int @default(0)
-  gemsDelta  Int @default(0)
-
-  score     Int?
-  isSuccess Boolean?
-  meta      Json?
-  createdAt DateTime @default(now())
-
-  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  kind       RewardLedgerKind @default(SESSION_REWARD)
+  xpDelta    Int              @default(0)
+  coinsDelta Int              @default(0)
+  gemsDelta  Int              @default(0)
+  score      Int?
+  isSuccess  Boolean?
+  meta       Json?
+  createdAt  DateTime         @default(now())
+  session    PracticeSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, kind])
   @@index([userId, createdAt])
@@ -154,141 +120,104 @@ model RefreshToken {
 /// AI Personas – characters for missions
 /// --------------------------------------
 model AiPersona {
-  id          String   @id @default(cuid())
-  code        String   @unique // e.g. "MAYA_FLIRTY"
-  name        String
-  shortLabel  String?
-  description String?
-  style       String?
-  avatarUrl   String?
-  difficulty  Int?
-  voicePreset String? // TTS preset key
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-
-  // Gender compatibility
-  personaGender Gender @default(UNKNOWN)
-
-  // Relations
-  sessions         PracticeSession[]
-  missionTemplates PracticeMissionTemplate[]
-  // Step 5.14: Persona memory
+  id               String                    @id @default(cuid())
+  name             String
+  shortLabel       String?
+  description      String?
+  style            String?
+  avatarUrl        String?
+  difficulty       Int?
+  active           Boolean                   @default(true)
+  createdAt        DateTime                  @default(now())
+  code             String                    @unique
+  voicePreset      String?
+  personaGender    Gender                    @default(UNKNOWN)
   memories         PersonaMemory[]
+  missionTemplates PracticeMissionTemplate[]
+  sessions         PracticeSession[]
 }
 
 /// --------------------------------------
 /// Mission categories (Openers, Flirting…)
 /// --------------------------------------
 model MissionCategory {
-  id          String  @id @default(cuid())
-  code        String  @unique // "OPENERS", "FLIRTING"
-  label       String // "Openers"
-  description String?
-
-  // Attraction-based routing
-  attractionPath          AttractionPath @default(UNISEX)
-  isAttractionSensitive   Boolean        @default(false)
-  dynamicLabelTemplate    String? // e.g. "Approach {{targetPlural}}"
-  displayOrder            Int            @default(0)
-  iconUrl                 String?
-  active                  Boolean        @default(true)
-
-  templates PracticeMissionTemplate[]
-  // Step 5.14: Category stats and progress
-  categoryStats        CategoryStats[]
-  categoryProgress     UserCategoryProgress[]
+  id                    String                    @id @default(cuid())
+  code                  String                    @unique
+  label                 String
+  description           String?
+  isAttractionSensitive Boolean                   @default(false)
+  dynamicLabelTemplate  String?
+  attractionPath        AttractionPath            @default(UNISEX)
+  displayOrder          Int                       @default(0)
+  iconUrl               String?
+  active                Boolean                   @default(true)
+  categoryStats         CategoryStats[]
+  templates             PracticeMissionTemplate[]
+  categoryProgress      UserCategoryProgress[]
 }
 
 /// --------------------------------------
 /// AI Styles – stable mapped "moods"
 /// --------------------------------------
 model AiStyle {
-  id          String     @id @default(cuid())
-  key         AiStyleKey @unique
-  name        String
-  description String
-  tags        String[]   @default([])
-
-  stylePrompt       String @db.Text
-  forbiddenBehavior String @db.Text
+  id                String                    @id @default(cuid())
+  key               AiStyleKey                @unique
+  name              String
+  description       String
+  tags              String[]                  @default([])
+  stylePrompt       String
+  forbiddenBehavior String
   fewShotExamples   Json?
-
-  // Hard constraints / dials
-  maxChars     Int
-  maxLines     Int
-  questionRate Int // 0..100
-  emojiRate    Int // 0..100
-  initiative   Int // 0..5
-  warmth       Int // 0..5
-  judgment     Int // 0..5
-  flirtTension Int // 0..5
-  formality    Int // 0..5
-
-  // Optional model knobs
-  temperature Float?
-  topP        Float?
-
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  missions PracticeMissionTemplate[]
+  maxChars          Int
+  maxLines          Int
+  questionRate      Int
+  emojiRate         Int
+  initiative        Int
+  warmth            Int
+  judgment          Int
+  flirtTension      Int
+  formality         Int
+  temperature       Float?
+  topP              Float?
+  isActive          Boolean                   @default(true)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  missions          PracticeMissionTemplate[]
 }
 
 /// --------------------------------------
 /// Mission template = "practice mission definition"
 /// --------------------------------------
 model PracticeMissionTemplate {
-  id          String  @id @default(cuid())
-  code        String  @unique // "OPENERS_L1_M1"
-  title       String
-  description String?
-
-  // Category & goal
-  categoryId String?
-  category   MissionCategory? @relation(fields: [categoryId], references: [id])
-
-  goalType MissionGoalType?
-
-  // Persona assigned to this mission (optional)
-  personaId String?
-  persona   AiPersona? @relation(fields: [personaId], references: [id])
-
-  // Difficulty & constraints
-  difficulty   MissionDifficulty @default(EASY)
-  timeLimitSec Int               @default(30) // per user message
-  maxMessages  Int? // per mission
-  wordLimit    Int? // per user message
-
-  // Mission Road layout
-  laneIndex  Int @default(0) // column index
-  orderIndex Int @default(0) // position inside lane
-
-  // Voice support
-  isVoiceSupported Boolean @default(true)
-
-  // Rewards (base values, before multipliers)
-  baseXpReward    Int @default(50)
-  baseCoinsReward Int @default(10)
-  baseGemsReward  Int @default(0)
-
-  // ✅ Optional AI style override for this mission (DB-mapped)
-  aiStyleId String?
-  aiStyle   AiStyle? @relation(fields: [aiStyleId], references: [id], onDelete: SetNull)
-
-  // Attraction-based routing
-  isAttractionSensitive Boolean @default(false)
-  targetRomanticGender  Gender? // Nullable; only meaningful when isAttractionSensitive = true
-
-  aiContract Json?
-
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-
-  // Relations
-  sessions    PracticeSession[]
-  progress    MissionProgress[]
-  moodConfigs MissionMoodConfig[]
+  id                    String             @id @default(cuid())
+  code                  String             @unique
+  title                 String
+  description           String?
+  timeLimitSec          Int                @default(30)
+  maxMessages           Int?
+  active                Boolean            @default(true)
+  createdAt             DateTime           @default(now())
+  baseCoinsReward       Int                @default(10)
+  baseGemsReward        Int                @default(0)
+  baseXpReward          Int                @default(50)
+  categoryId            String?
+  goalType              MissionGoalType?
+  isVoiceSupported      Boolean            @default(true)
+  laneIndex             Int                @default(0)
+  orderIndex            Int                @default(0)
+  personaId             String?
+  wordLimit             Int?
+  difficulty            MissionDifficulty  @default(EASY)
+  aiContract            Json?
+  aiStyleId             String?
+  isAttractionSensitive Boolean            @default(false)
+  targetRomanticGender  Gender?
+  moodConfigs           MissionMoodConfig?
+  progress              MissionProgress[]
+  aiStyle               AiStyle?           @relation(fields: [aiStyleId], references: [id])
+  category              MissionCategory?   @relation(fields: [categoryId], references: [id])
+  persona               AiPersona?         @relation(fields: [personaId], references: [id])
+  sessions              PracticeSession[]
 
   @@index([aiStyleId])
 }
@@ -306,83 +235,72 @@ model PowerUpType {
 }
 
 model PracticeSession {
-  id           String        @id @default(cuid())
-  userId       String
-  createdAt    DateTime      @default(now())
-  topic        String
-  score        Int           @default(0)
-  xpGained     Int           @default(0)
-  durationSec  Int           @default(0)
-  notes        String?
-  endedAt      DateTime?
-  overallScore Int?
-  personaId    String?
-  status       MissionStatus @default(IN_PROGRESS)
-  templateId   String?
-  coinsGained  Int           @default(0)
-  gemsGained   Int           @default(0)
-  isSuccess    Boolean?
-  messageCount Int           @default(0)
-  payload      Json?
-  rarityCounts Json?
-  aiMode       String?
-  aiSummary    Json?
-
-  /// --------------------------------------
-  /// ✅ Step 5.1 – End reason fields
-  /// --------------------------------------
-  endReasonCode String?
-  endReasonMeta Json?
-
+  id                 String                   @id @default(cuid())
+  userId             String
+  createdAt          DateTime                 @default(now())
+  topic              String
+  score              Int                      @default(0)
+  xpGained           Int                      @default(0)
+  durationSec        Int                      @default(0)
+  notes              String?
+  endedAt            DateTime?
+  overallScore       Int?
+  personaId          String?
+  status             MissionStatus            @default(IN_PROGRESS)
+  templateId         String?
+  coinsGained        Int                      @default(0)
+  gemsGained         Int                      @default(0)
+  isSuccess          Boolean?
+  messageCount       Int                      @default(0)
+  payload            Json?
+  rarityCounts       Json?
+  aiMode             String?
+  aiSummary          Json?
+  aiCorePayload      Json?
+  aiCoreVersion      String?
   /// --------------------------------------
   /// ⭐ Option B – Core AI Metrics (B4)
   /// --------------------------------------
-  charismaIndex   Int?
-  confidenceScore Int?
-  clarityScore    Int?
-  humorScore      Int?
-  tensionScore    Int?
-  emotionalWarmth Int?
-  dominanceScore  Int?
-
-  fillerWordsCount Int?
-  totalMessages    Int?
-  totalWords       Int?
-
-  aiCoreVersion String?
-  aiCorePayload Json?
+  charismaIndex      Int?
+  clarityScore       Int?
+  confidenceScore    Int?
+  dominanceScore     Int?
+  emotionalWarmth    Int?
+  fillerWordsCount   Int?
+  humorScore         Int?
+  tensionScore       Int?
+  totalMessages      Int?
+  totalWords         Int?
   /// --------------------------------------
-
-  messages ChatMessage[]
-  powerUps PowerUpUsage[]
-
-  // ✅ Rewards ledger relation
-  rewardLedger RewardLedgerEntry[]
-
-  // Phase 0: Deep Insights & Mood relations
+  /// ✅ Step 5.1 – End reason fields
+  /// --------------------------------------
+  endReasonCode      String?
+  endReasonMeta      Json?
+  /// Phase 4: Final session-level checklist aggregates
+  checklistAggregates Json?
+  /// --------------------------------------
+  /// ✅ Phase 1 – Two-Lane AI Engine
+  /// --------------------------------------
+  engineVersionId          String?
+  chatRuntimeProfileKey    String?
+  scoringRuntimeProfileKey String?
+  insightsRuntimeProfileKey String?
+  currentMoodState         String?
+  badgeLedger        BadgeLedgerEntry[]
+  messages           ChatMessage[]
+  gateOutcomes       GateOutcome[]
+  hallOfFameMessages HallOfFameMessage[]
   deepInsights       MissionDeepInsights?
   moodTimeline       MissionMoodTimeline?
+  powerUps           PowerUpUsage[]
+  persona            AiPersona?               @relation(fields: [personaId], references: [id])
+  template           PracticeMissionTemplate? @relation(fields: [templateId], references: [id])
+  user               User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   promptHookTriggers PromptHookTrigger[]
-
-  // Step 5.1: Gate outcomes
-  gateOutcomes GateOutcome[]
-
-  // Step 5.1: Trait history
-  traitHistory UserTraitHistory?
-
-  // Step 5.4: Badge relations
-  badgeEvents    UserBadgeEvent[]
-  badgeLedger    BadgeLedgerEntry[]
-
-  // Step 5.7: Hall of Fame and Burned Messages
-  hallOfFameMessages HallOfFameMessage[]
-
-  // Step 5.9: Trait Synergy relation
-  traitSynergy SessionTraitSynergy?
-
-  persona  AiPersona?               @relation(fields: [personaId], references: [id])
-  template PracticeMissionTemplate? @relation(fields: [templateId], references: [id])
-  user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rewardLedger       RewardLedgerEntry[]
+  traitSynergy       SessionTraitSynergy?
+  badgeEvents        UserBadgeEvent[]
+  traitHistory       UserTraitHistory?
 
   @@index([userId, createdAt])
   @@index([templateId])
@@ -390,37 +308,42 @@ model PracticeSession {
 }
 
 model ChatMessage {
-  id          String        @id @default(cuid())
-  sessionId   String
-  userId      String
-  createdAt   DateTime      @default(now())
-  role        MessageRole
-  content     String
-  grade       MessageGrade?
-  xpDelta     Int           @default(0)
-  coinsDelta  Int           @default(0)
-  gemsDelta   Int           @default(0)
-  isBrilliant Boolean       @default(false)
-  isLifesaver Boolean       @default(false)
-  meta        Json?
-
+  id                String              @id @default(cuid())
+  sessionId         String
+  userId            String
+  createdAt         DateTime            @default(now())
+  role              MessageRole
+  content           String
+  grade             MessageGrade?
+  xpDelta           Int                 @default(0)
+  coinsDelta        Int                 @default(0)
+  gemsDelta         Int                 @default(0)
+  isBrilliant       Boolean             @default(false)
+  isLifesaver       Boolean             @default(false)
+  meta              Json?
+  score             Int?
+  traitData         Json
   /// --------------------------------------
   /// ✅ Step 5.1 – Deterministic ordering + normalized scoring
   /// --------------------------------------
-  turnIndex Int // Position in transcript (0-based, includes USER + AI)
-  score     Int? // Normalized score (0-100, USER messages only)
-  traitData Json // { traits: {...}, flags: [...], label: string }
-
-  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // Step 5.7: Relations for Hall of Fame and Burned Messages
-  hallOfFameEntries HallOfFameMessage[]
+  /// Phase 4: Checklist-native fields
+  tier              String?  // 'S+' | 'S' | 'A' | 'B' | 'C' | 'D'
+  checklistFlags    Json?    // Array of MessageChecklistFlag strings
+  turnIndex         Int
+  /// --------------------------------------
+  /// ✅ Phase 1 – Two-Lane AI Engine
+  /// --------------------------------------
+  scoringSnapshot       Json?
+  moodStateAfterMessage String?
+  latencyMs             Int?
   burnedEntries     BurnedMessage[]
+  session           PracticeSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hallOfFameEntries HallOfFameMessage[]
 
   @@unique([sessionId, turnIndex])
   @@index([sessionId, createdAt])
-  @@index([userId, createdAt]) // Step 5.6: Performance index for user-scoped queries
+  @@index([userId, createdAt])
 }
 
 model UserWallet {
@@ -443,6 +366,8 @@ model UserStats {
   averageMessageScore Float?
   lastSessionAt       DateTime?
   lastUpdatedAt       DateTime  @updatedAt
+  /// Phase 4: Checklist aggregates (authoritative JSON snapshot)
+  checklistAggregates Json?
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -467,16 +392,15 @@ model PowerUpUsage {
 /// Mission progress per user
 /// --------------------------------------
 model MissionProgress {
-  id         String                @id @default(cuid())
+  id         String                  @id @default(cuid())
   userId     String
   templateId String
-  status     MissionProgressStatus @default(LOCKED)
+  status     MissionProgressStatus   @default(LOCKED)
   bestScore  Int?
-  createdAt  DateTime              @default(now())
-  updatedAt  DateTime              @updatedAt
-
-  user     User                    @relation(fields: [userId], references: [id])
-  template PracticeMissionTemplate @relation(fields: [templateId], references: [id])
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+  template   PracticeMissionTemplate @relation(fields: [templateId], references: [id])
+  user       User                    @relation(fields: [userId], references: [id])
 
   @@unique([userId, templateId])
 }
@@ -485,16 +409,15 @@ model MissionProgress {
 /// Step 5.14: Persona Memory
 /// --------------------------------------
 model PersonaMemory {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
   personaId   String
   memoryKey   String
   memoryValue Json
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  persona AiPersona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  persona     AiPersona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, personaId, memoryKey])
   @@index([userId, personaId])
@@ -505,19 +428,20 @@ model PersonaMemory {
 /// Step 5.14: Category Statistics (per-user, per-category)
 /// --------------------------------------
 model CategoryStats {
-  id            String   @id @default(cuid())
+  id            String          @id @default(cuid())
   userId        String
   categoryId    String
   categoryKey   String
   avgScore      Float?
-  sessionsCount Int      @default(0)
-  successCount  Int      @default(0)
-  failCount     Int      @default(0)
-  updatedAt     DateTime @updatedAt
-  createdAt     DateTime @default(now())
-
-  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category MissionCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  sessionsCount Int             @default(0)
+  successCount  Int             @default(0)
+  failCount     Int             @default(0)
+  updatedAt     DateTime        @updatedAt
+  createdAt     DateTime        @default(now())
+  /// Phase 4: Checklist aggregates per category (authoritative JSON snapshot)
+  checklistAggregates Json?
+  category      MissionCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, categoryId])
   @@index([userId, categoryKey])
@@ -533,11 +457,10 @@ model UserCategoryProgress {
   categoryId  String
   status      MissionProgressStatus @default(LOCKED)
   completedAt DateTime?
-  updatedAt   DateTime @updatedAt
-  createdAt   DateTime @default(now())
-
-  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category MissionCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  updatedAt   DateTime              @updatedAt
+  createdAt   DateTime              @default(now())
+  category    MissionCategory       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, categoryId])
   @@index([userId, status])
@@ -545,8 +468,306 @@ model UserCategoryProgress {
 }
 
 /// --------------------------------------
-/// Enums
+/// Phase 0: Deep Insights
 /// --------------------------------------
+model MissionDeepInsights {
+  id                   String          @id @default(cuid())
+  sessionId            String          @unique
+  userId               String
+  missionId            String
+  createdAt            DateTime        @default(now())
+  version              String          @default("v1")
+  insightsJson         Json
+  averageRarityTier    String
+  primaryLabels        String[]        @default([])
+  overallCharismaIndex Int?
+  session              PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([missionId])
+  @@index([averageRarityTier])
+}
+
+/// --------------------------------------
+/// Patch A: Custom Insight Templates (DB-backed, admin-managed)
+/// --------------------------------------
+model CustomInsightTemplate {
+  id            String   @id @default(cuid())
+  key           String   @unique // Unique identifier (e.g., 'custom_tip_1')
+  kind          String   // InsightKind: 'GATE_FAIL' | 'POSITIVE_HOOK' | 'NEGATIVE_PATTERN' | 'GENERAL_TIP' | 'MOOD' | 'SYNERGY' | 'ANALYZER_PARAGRAPH'
+  category      String   @default("general")
+  title         String
+  body          String
+  weight        Int      @default(50) // For weighted selection
+  cooldownMissions Int   @default(3)
+  tags          String[] @default([])
+  requiresJson  Json?   // Optional: { gateKey?, hookKey?, patternKey? }
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([kind])
+  @@index([category])
+}
+
+/// --------------------------------------
+/// Phase 0: Mission Mood Timeline
+/// --------------------------------------
+model MissionMoodTimeline {
+  id                 String          @id @default(cuid())
+  sessionId          String          @unique
+  userId             String
+  missionId          String
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  version            String          @default("v1")
+  timelineJson       Json
+  currentMoodState   String
+  currentMoodPercent Int
+  session            PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([missionId])
+  @@index([currentMoodState])
+}
+
+/// --------------------------------------
+/// Phase 0: Mission Mood Config
+/// --------------------------------------
+model MissionMoodConfig {
+  id          String                  @id @default(cuid())
+  missionId   String                  @unique
+  version     String                  @default("v1")
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  configJson  Json
+  windowSize  Int
+  positiveMin Int
+  neutralMin  Int
+  negativeMin Int
+  mission     PracticeMissionTemplate @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@index([missionId])
+}
+
+/// --------------------------------------
+/// Phase 0: Prompt / Hook System
+/// --------------------------------------
+model PromptHook {
+  id             String              @id @default(cuid())
+  name           String
+  type           String
+  textTemplate   String
+  conditionsJson Json
+  category       String
+  tags           String[]            @default([])
+  priority       Int                 @default(50)
+  isEnabled      Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  version        String              @default("v1")
+  metaJson       Json?
+  triggers       PromptHookTrigger[]
+
+  @@index([category])
+  @@index([type, isEnabled])
+  @@index([priority])
+  @@index([tags])
+}
+
+/// --------------------------------------
+/// Phase 0: Prompt Hook Trigger (analytics/cooldown)
+/// --------------------------------------
+model PromptHookTrigger {
+  id             String          @id @default(cuid())
+  hookId         String
+  sessionId      String
+  userId         String
+  triggeredAt    DateTime        @default(now())
+  matchedContext Json?
+  hook           PromptHook      @relation(fields: [hookId], references: [id], onDelete: Cascade)
+  session        PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, hookId])
+  @@index([hookId, sessionId])
+  @@index([sessionId, triggeredAt])
+  @@index([userId, triggeredAt])
+}
+
+/// --------------------------------------
+/// Step 5.1: Gate Outcomes (session-level gate ledger)
+/// --------------------------------------
+model GateOutcome {
+  id          String          @id @default(cuid())
+  sessionId   String
+  userId      String
+  gateKey     String
+  passed      Boolean
+  reasonCode  String?
+  contextJson Json?
+  evaluatedAt DateTime        @default(now())
+  session     PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, gateKey])
+  @@index([sessionId, evaluatedAt])
+}
+
+/// --------------------------------------
+/// Step 5.1: User Trait History (per-session trait snapshots)
+/// --------------------------------------
+model UserTraitHistory {
+  id              String          @id @default(cuid())
+  sessionId       String          @unique
+  userId          String
+  recordedAt      DateTime        @default(now())
+  traitsJson      Json
+  deltasJson      Json
+  sessionScore    Int?
+  avgMessageScore Float?
+  missionId       String?
+  session         PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, recordedAt])
+  @@index([missionId])
+}
+
+/// --------------------------------------
+/// Step 5.1: User Trait Scores (long-term trait tracking)
+/// --------------------------------------
+model UserTraitScores {
+  userId     String   @id
+  traitsJson Json
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// --------------------------------------
+/// Step 5.4: Badge Progress Tracking
+/// --------------------------------------
+model UserBadgeProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  badgeKey    String
+  categoryKey String
+  tier        Int      @default(0)
+  points      Int      @default(0)
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeKey])
+  @@index([userId, categoryKey])
+}
+
+/// --------------------------------------
+/// Step 5.4: Badge Upgrade Events (for "recent unlock" UX)
+/// --------------------------------------
+model UserBadgeEvent {
+  id        String          @id @default(cuid())
+  userId    String
+  badgeKey  String
+  fromTier  Int
+  toTier    Int
+  sessionId String
+  createdAt DateTime        @default(now())
+  session   PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([sessionId])
+}
+
+/// --------------------------------------
+/// Step 5.4: Badge Idempotency Ledger (prevents double progress/rewards)
+/// --------------------------------------
+model BadgeLedgerEntry {
+  id        String          @id @default(cuid())
+  userId    String
+  sessionId String
+  badgeKey  String
+  kind      BadgeLedgerKind
+  meta      Json?
+  createdAt DateTime        @default(now())
+  session   PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, badgeKey, kind])
+  @@index([userId, createdAt])
+}
+
+/// --------------------------------------
+/// Step 5.7: Hall of Fame Messages (top scoring messages saved by user)
+/// --------------------------------------
+model HallOfFameMessage {
+  id          String          @id @default(cuid())
+  userId      String
+  messageId   String
+  sessionId   String
+  turnIndex   Int
+  categoryKey String?
+  score       Int
+  createdAt   DateTime        @default(now())
+  savedAt     DateTime        @default(now())
+  /// Phase 4: Checklist-native metadata (tier, flags, etc.)
+  meta        Json?
+  message     ChatMessage     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  session     PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@index([userId, createdAt])
+  @@index([sessionId])
+}
+
+/// --------------------------------------
+/// Step 5.7: Burned Messages (user-marked as "never show again")
+/// --------------------------------------
+model BurnedMessage {
+  id        String      @id @default(cuid())
+  userId    String
+  messageId String
+  burnedAt  DateTime    @default(now())
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@index([userId, burnedAt])
+}
+
+/// --------------------------------------
+/// Step 5.9: Trait Synergy Map (per-session correlation analysis)
+/// --------------------------------------
+model SessionTraitSynergy {
+  id          String          @id @default(cuid())
+  sessionId   String          @unique
+  userId      String
+  synergyJson Json
+  computedAt  DateTime        @default(now())
+  session     PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, computedAt])
+  @@index([sessionId])
+}
+
+/// --------------------------------------
+/// User Onboarding State (resume tracking)
+/// --------------------------------------
+model UserOnboardingState {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  onboardingVersion String
+  currentStep       Int       @default(0)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  skipped           Boolean   @default(false)
+  lastUpdatedAt     DateTime  @updatedAt
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
 
 enum MissionStatus {
   IN_PROGRESS
@@ -674,334 +895,29 @@ enum BadgeLedgerKind {
 }
 
 /// --------------------------------------
-/// Phase 0: Deep Insights
-/// --------------------------------------
-model MissionDeepInsights {
-  id        String   @id @default(cuid())
-  sessionId String   @unique
-  userId    String
-  missionId String // templateId
-  createdAt DateTime @default(now())
-  version   String   @default("v1")
-
-  // Store full JSON payload (flexible for evolution)
-  insightsJson Json // MissionDeepInsights interface serialized
-
-  // Denormalized fields for quick queries/filtering
-  averageRarityTier    String // 'D' | 'C' | 'B' | 'A' | 'S' | 'S+'
-  primaryLabels        String[] @default([]) // for search/filtering
-  overallCharismaIndex Int?
-
-  // Relations
-  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-  @@index([missionId])
-  @@index([averageRarityTier])
-}
-
-/// --------------------------------------
-/// Phase 0: Mission Mood Timeline
-/// --------------------------------------
-model MissionMoodTimeline {
-  id        String   @id @default(cuid())
-  sessionId String   @unique
-  userId    String
-  missionId String // templateId
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  version   String   @default("v1")
-
-  // Store full timeline as JSON (array of MoodSnapshot)
-  timelineJson Json
-
-  // Denormalized fields for quick queries
-  currentMoodState   String // Step 5.10: 'COLD' | 'NEUTRAL' | 'WARM' | 'TENSE' | 'FLOW'
-  currentMoodPercent Int // 0-100
-
-  // Relations
-  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-  @@index([missionId])
-  @@index([currentMoodState])
-}
-
-/// --------------------------------------
-/// Phase 0: Mission Mood Config
-/// --------------------------------------
-model MissionMoodConfig {
-  id        String   @id @default(cuid())
-  missionId String   @unique // templateId
-  version   String   @default("v1")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Store full config as JSON (MissionMoodConfig interface)
-  configJson Json
-
-  // Denormalized fields for quick access
-  windowSize  Int
-  positiveMin Int
-  neutralMin  Int
-  negativeMin Int
-
-  // Relations
-  mission PracticeMissionTemplate @relation(fields: [missionId], references: [id], onDelete: Cascade)
-
-  @@index([missionId])
-}
-
-/// --------------------------------------
-/// Phase 0: Prompt / Hook System
-/// --------------------------------------
-model PromptHook {
-  id           String @id @default(cuid()) // or use custom ID format
-  name         String
-  type         String // 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL'
-  textTemplate String @db.Text
-
-  // Store conditions as JSON (flexible structure)
-  conditionsJson Json
-
-  category  String
-  tags      String[] @default([])
-  priority  Int      @default(50) // 1-100
-  isEnabled Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  version   String   @default("v1")
-
-  // Optional metadata
-  metaJson Json?
-
-  // Relations
-  triggers PromptHookTrigger[]
-
-  @@index([category])
-  @@index([type, isEnabled])
-  @@index([priority])
-  @@index([tags])
-}
-
-/// --------------------------------------
-/// Phase 0: Prompt Hook Trigger (analytics/cooldown)
-/// --------------------------------------
-model PromptHookTrigger {
-  id             String   @id @default(cuid())
-  hookId         String
-  sessionId      String
-  userId         String
-  triggeredAt    DateTime @default(now())
-  matchedContext Json? // snapshot of conditions that matched
-
-  // Relations
-  hook    PromptHook      @relation(fields: [hookId], references: [id], onDelete: Cascade)
-  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([sessionId, hookId]) // Step 5.1: Prevent duplicate triggers per session/hook
-  @@index([hookId, sessionId]) // for cooldown checks
-  @@index([sessionId, triggeredAt])
-  @@index([userId, triggeredAt])
-}
-
-/// --------------------------------------
-/// Step 5.1: Gate Outcomes (session-level gate ledger)
-/// --------------------------------------
-model GateOutcome {
-  id          String   @id @default(cuid())
-  sessionId   String
-  userId      String
-  gateKey     String
-  passed      Boolean
-  reasonCode  String?
-  contextJson Json?
-  evaluatedAt DateTime @default(now())
-
-  // Relations
-  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([sessionId, gateKey])
-  @@index([sessionId, evaluatedAt])
-}
-
-/// --------------------------------------
-/// Step 5.1: User Trait History (per-session trait snapshots)
-/// --------------------------------------
-model UserTraitHistory {
-  id              String   @id @default(cuid())
-  sessionId       String   @unique
-  userId          String
-  recordedAt      DateTime @default(now())
-  traitsJson      Json // snapshot of trait values for this session
-  deltasJson      Json // delta vs previous scores
-  sessionScore    Int?
-  avgMessageScore Float?
-  missionId       String? // templateId
-
-  // Relations
-  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, recordedAt])
-  @@index([missionId])
-}
-
-/// --------------------------------------
-/// Step 5.1: User Trait Scores (long-term trait tracking)
-/// --------------------------------------
-model UserTraitScores {
-  userId    String   @id
-  traitsJson Json // long-term aggregated trait scores
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-/// --------------------------------------
-/// Step 5.4: Badge Progress Tracking
-/// --------------------------------------
-model UserBadgeProgress {
-  id         String   @id @default(cuid())
-  userId     String
-  badgeKey   String
-  categoryKey String
-  tier       Int      @default(0) // 0=none, 1=bronze, 2=silver, 3=gold, 4=diamond
-  points     Int      @default(0) // Current points toward next tier
-  updatedAt  DateTime @updatedAt
-  createdAt  DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, badgeKey])
-  @@index([userId, categoryKey])
-}
-
-/// --------------------------------------
-/// Step 5.4: Badge Upgrade Events (for "recent unlock" UX)
-/// --------------------------------------
-model UserBadgeEvent {
-  id         String   @id @default(cuid())
-  userId     String
-  badgeKey   String
-  fromTier   Int      // Previous tier (0-4)
-  toTier     Int      // New tier (0-4)
-  sessionId  String
-  createdAt  DateTime @default(now())
-
-  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-  @@index([sessionId])
-}
-
-/// --------------------------------------
-/// Step 5.4: Badge Idempotency Ledger (prevents double progress/rewards)
-/// --------------------------------------
-model BadgeLedgerEntry {
-  id         String          @id @default(cuid())
-  userId     String
-  sessionId  String
-  badgeKey   String
-  kind       BadgeLedgerKind
-  meta       Json?           // Optional metadata (e.g., fromTier, toTier)
-  createdAt  DateTime        @default(now())
-
-  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@unique([sessionId, badgeKey, kind])
-  @@index([userId, createdAt])
-}
-
-/// --------------------------------------
-/// Step 5.7: Hall of Fame Messages (top scoring messages saved by user)
-/// --------------------------------------
-model HallOfFameMessage {
-  id         String   @id @default(cuid())
-  userId     String
-  messageId  String   // ChatMessage.id
-  sessionId  String
-  turnIndex  Int      // Step 5.6: Message turnIndex for breakdown
-  categoryKey String? // Step 5.6: Optional category key for filtering
-  score      Int      // Cached for quick sorting
-  createdAt  DateTime @default(now()) // Step 5.6: Contract uses createdAt
-  savedAt    DateTime @default(now()) // Keep for backward compatibility
-
-  // Relations
-  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  message ChatMessage     @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, messageId])
-  @@index([userId, createdAt])
-  @@index([sessionId])
-}
-
-/// --------------------------------------
-/// Step 5.7: Burned Messages (user-marked as "never show again")
-/// --------------------------------------
-model BurnedMessage {
-  id        String   @id @default(cuid())
-  userId    String
-  messageId String   // ChatMessage.id
-  burnedAt  DateTime @default(now())
-
-  // Relations
-  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, messageId])
-  @@index([userId, burnedAt])
-}
-
-/// --------------------------------------
-/// Step 5.9: Trait Synergy Map (per-session correlation analysis)
-/// --------------------------------------
-model SessionTraitSynergy {
-  id          String   @id @default(cuid())
-  sessionId   String   @unique
-  userId      String
-  synergyJson Json     // Versioned payload with correlationMatrix, graphData, emotionLinks
-  computedAt  DateTime @default(now())
-
-  // Relations
-  session PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, computedAt])
-  @@index([sessionId])
-}
-
-/// --------------------------------------
-/// User Onboarding State (resume tracking)
-/// --------------------------------------
-model UserOnboardingState {
-  id         String   @id @default(cuid())
-  userId     String   @unique
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  onboardingVersion String
-  currentStep       Int        @default(0) // 0 = before start, 1–10 as defined in onboarding flow
-  startedAt         DateTime?
-  completedAt       DateTime?
-  skipped           Boolean    @default(false)
-
-  lastUpdatedAt     DateTime   @updatedAt
-}
-
-/// --------------------------------------
-/// Step 7.2: Engine Config (Global knobs for scoring, dynamics, gates, mood)
+/// Engine Config - Global engine knobs (GLOBAL_V1)
 /// --------------------------------------
 model EngineConfig {
-  key        String @id @default("GLOBAL_V1")
-  configJson Json   // EngineConfigJson interface
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  key       String   @id               // 'GLOBAL_V1'
+  configJson Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// --------------------------------------
+/// Config Slots - Snapshot system for engine config + practice hub
+/// --------------------------------------
+model ConfigSlot {
+  id              String   @id @default(cuid())
+  name            String
+  slotNumber      Int?     // 1-5 for quick access slots
+  engineConfigJson Json    // Full EngineConfig snapshot
+  categoriesJson  Json?   // Snapshot of categories array
+  missionsJson    Json?   // Snapshot of missions array
+  defaultSeedKey  String? // Default seed selection
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([slotNumber])
+  @@index([name])
 }

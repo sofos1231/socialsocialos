@@ -208,7 +208,9 @@ export default function AdvancedTab({ isPremium }: AdvancedTabProps) {
           {data.personaSensitivity.rows.map((persona, idx) => (
             <View key={idx} style={styles.personaRow}>
               <Text style={styles.personaCode}>{persona.personaKey}</Text>
-              <Text style={styles.personaScore}>Avg: {persona.avgScore}</Text>
+              {/* Phase 3: Mark numeric score as legacy, suggest checklist metrics */}
+              <Text style={styles.personaScoreSecondary}>Legacy Avg: {persona.avgScore}</Text>
+              {/* TODO: Add checklist metrics (e.g., "Avg positive hooks per message") when available */}
               <Text style={styles.cardTextMuted}>{persona.sessions} sessions</Text>
               {persona.deltaPct !== undefined && (
                 <Text style={styles.cardTextMuted}>
@@ -353,10 +355,35 @@ export default function AdvancedTab({ isPremium }: AdvancedTabProps) {
               style={styles.hofMessageRow}
               onPress={() => msg.breakdown && setSelectedMessage(msg.breakdown)}
             >
-              <Text style={styles.hofScore}>{msg.score}</Text>
-              <Text style={styles.hofContent} numberOfLines={2}>
-                {msg.contentSnippet}
-              </Text>
+              {/* Phase 3: Show tier prominently */}
+              {msg.tier ? (
+                <View style={styles.hofTier}>
+                  <Text style={styles.hofTierText}>{msg.tier}</Text>
+                </View>
+              ) : (
+                <Text style={styles.hofScoreSecondary}>{msg.score}</Text>
+              )}
+              <View style={styles.hofContentWrapper}>
+                <Text style={styles.hofContent} numberOfLines={2}>
+                  {msg.contentSnippet}
+                </Text>
+                {/* Phase 3: Show checklist flags */}
+                {msg.checklistFlags && msg.checklistFlags.length > 0 && (
+                  <View style={styles.hofFlagsRow}>
+                    {msg.checklistFlags.slice(0, 2).map((flag, flagIdx) => (
+                      <Text key={flagIdx} style={styles.hofFlag}>
+                        {flag === 'POSITIVE_HOOK_HIT' ? '🎯' :
+                         flag === 'OBJECTIVE_PROGRESS' ? '✅' :
+                         flag === 'NO_BOUNDARY_ISSUES' ? '🛡️' :
+                         flag === 'MOMENTUM_MAINTAINED' ? '⚡' : '•'}
+                      </Text>
+                    ))}
+                    {msg.checklistFlags.length > 2 && (
+                      <Text style={styles.hofFlagMore}>+{msg.checklistFlags.length - 2}</Text>
+                    )}
+                  </View>
+                )}
+              </View>
             </TouchableOpacity>
           ))
         )}
@@ -374,7 +401,8 @@ export default function AdvancedTab({ isPremium }: AdvancedTabProps) {
             {selectedMessage && (
               <>
                 <Text style={styles.modalTitle}>Message Breakdown</Text>
-                <Text style={styles.modalScore}>Score: {selectedMessage.score}</Text>
+                {/* Phase 3: Mark numeric score as legacy */}
+                <Text style={styles.modalScoreSecondary}>Legacy Score: {selectedMessage.score}</Text>
                 
                 <Text style={styles.modalSectionTitle}>Traits:</Text>
                 {TRAIT_KEYS.map((key) => (
@@ -589,6 +617,12 @@ const styles = StyleSheet.create({
     color: '#22c55e',
     marginRight: 12,
   },
+  personaScoreSecondary: {
+    fontSize: 12,
+    color: '#9ca3af',
+    fontStyle: 'italic',
+    marginRight: 12,
+  },
   biasRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -622,10 +656,48 @@ const styles = StyleSheet.create({
     marginRight: 12,
     minWidth: 40,
   },
+  hofScoreSecondary: {
+    fontSize: 12,
+    color: '#9ca3af',
+    fontStyle: 'italic',
+    marginRight: 12,
+    minWidth: 40,
+  },
+  hofTier: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#1f2937',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  hofTierText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fbbf24',
+  },
+  hofContentWrapper: {
+    flex: 1,
+  },
   hofContent: {
     fontSize: 13,
     color: '#E5E7EB',
     flex: 1,
+  },
+  hofFlagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  hofFlag: {
+    fontSize: 12,
+  },
+  hofFlagMore: {
+    fontSize: 10,
+    color: '#9ca3af',
+    fontStyle: 'italic',
   },
   modalOverlay: {
     flex: 1,
@@ -650,6 +722,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#22c55e',
+    marginBottom: 12,
+  },
+  modalScoreSecondary: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#9ca3af',
+    fontStyle: 'italic',
     marginBottom: 12,
   },
   modalContentText: {

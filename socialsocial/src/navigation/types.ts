@@ -135,6 +135,7 @@ export interface PracticeSessionRequest {
 // Per-message breakdown inside rewards.messages
 export interface SessionRewardMessageBreakdown {
   index: number;
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   score: number;
   rarity: RarityTier;
   xp: number;
@@ -143,7 +144,9 @@ export interface SessionRewardMessageBreakdown {
 }
 
 export interface SessionRewards {
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   score: number;
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   messageScore: number;
   isSuccess: boolean;
   xpGained: number;
@@ -159,6 +162,7 @@ export type MissionStateStatus = 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
 export interface MissionStatePayload {
   status: MissionStateStatus;
   progressPct: number; // 0–100
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   averageScore: number;
   totalMessages: number;
   endReasonCode?: MissionEndReasonCode | null;
@@ -182,6 +186,15 @@ export interface ApiChatMessage {
   traitData: ApiTraitData;
 }
 
+// Phase 3: Checklist-native summary (matches backend)
+export interface PracticeChecklistSummary {
+  positiveHookCount: number;
+  objectiveProgressCount: number;
+  boundarySafeStreak: number;
+  momentumStreak: number;
+  lastMessageFlags: string[]; // MessageChecklistFlag[]
+}
+
 // Base response shape from /v1/practice/session
 export interface PracticeSessionResponse {
   ok: boolean;
@@ -194,6 +207,8 @@ export interface PracticeSessionResponse {
   aiStructured?: any; // backend returns this; FE can ignore for now
   missionState?: MissionStatePayload;
   messages?: ApiChatMessage[];
+  // Phase 3: Checklist-native aggregates
+  checklist?: PracticeChecklistSummary;
 }
 
 // ----- Voice practice -----

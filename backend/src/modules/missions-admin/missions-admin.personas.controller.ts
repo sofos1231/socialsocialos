@@ -12,9 +12,11 @@ import {
   Post,
   Put,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { AdminGuard } from '../auth/admin.guard';
 
 function trimOrNull(v: any): string | null {
   if (v === null) return null;
@@ -59,6 +61,7 @@ function prismaToHttp(e: unknown): never {
 }
 
 @Controller('admin/personas')
+@UseGuards(AdminGuard)
 export class MissionsAdminPersonasController {
   constructor(private readonly prisma: PrismaService) {}
 

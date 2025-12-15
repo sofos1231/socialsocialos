@@ -204,7 +204,9 @@ export interface MissionConfigV1StatePolicy {
   maxStrikes: number; // bad-move strikes
   timerSecondsPerMessage?: number | null;
   allowTimerExtension: boolean; // whether MORE_TIME powerup is allowed
+  /** @deprecated Phase 3: Mission success/fail is now checklist-driven, not numeric-score-driven. This field is retained for backward compatibility only. */
   successScoreThreshold: number; // 0–100
+  /** @deprecated Phase 3: Mission success/fail is now checklist-driven, not numeric-score-driven. This field is retained for backward compatibility only. */
   failScoreThreshold: number; // 0–100
   enableGateSequence: boolean;
   enableMoodCollapse: boolean;
@@ -267,6 +269,8 @@ export interface MissionConfigV1 {
   // Step 7.2: Engine config profile references (optional for backward compatibility)
   scoringProfileCode?: string | null;
   dynamicsProfileCode?: string | null;
+  // Gate requirement template reference (optional for backward compatibility)
+  gateRequirementTemplateCode?: string | null;
 }
 
 // ============================================================================
@@ -424,6 +428,10 @@ export function validateMissionConfigV1Shape(
     'statePolicy',
     'openings',
     'responseArchitecture',
+    'aiRuntimeProfile',
+    'scoringProfileCode',
+    'dynamicsProfileCode',
+    'gateRequirementTemplateCode',
   ];
   for (const key in config) {
     if (!allowedTopLevelKeys.includes(key)) {

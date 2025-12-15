@@ -1,6 +1,6 @@
 // backend/src/modules/ai/ai-core-scoring.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef, Optional } from '@nestjs/common';
 import {
   AiSessionResult,
   CoreMetrics,
@@ -8,10 +8,45 @@ import {
   TranscriptMessage,
   CharismaTraitKey,
 } from './ai-scoring.types';
+import { EngineConfigService } from '../engine-config/engine-config.service';
 
 @Injectable()
 export class AiCoreScoringService {
   private readonly logger = new Logger(AiCoreScoringService.name);
+  private traitWeights: {
+    confidence: number;
+    clarity: number;
+    humor: number;
+    tensionControl: number;
+    emotionalWarmth: number;
+    dominance: number;
+  } | null = null;
+
+  constructor(
+    @Optional()
+    @Inject(forwardRef(() => EngineConfigService))
+    private readonly engineConfigService?: EngineConfigService,
+  ) {
+    // Load trait weights on startup
+    this.loadTraitWeights();
+  }
+
+  /**
+   * Load trait weights from EngineConfig
+   */
+  private async loadTraitWeights() {
+    try {
+      if (this.engineConfigService) {
+        const profile = await this.engineConfigService.getScoringProfile();
+        if (profile?.traitWeights) {
+          this.traitWeights = profile.traitWeights;
+        }
+      }
+    } catch (e) {
+      // Fallback to defaults (will use hard-coded values)
+      this.traitWeights = null;
+    }
+  }
 
   /**
    * Core Option B engine.
@@ -44,12 +79,12 @@ export class AiCoreScoringService {
     }
 
     // 1) Evaluate each message into traits + label + flags
-    const messagesEval: MessageEvaluation[] = transcript.map((msg) =>
-      this.evaluateMessage(msg),
+    const messagesEval: MessageEvaluation[] = await Promise.all(
+      transcript.map((msg) => this.evaluateMessage(msg)),
     );
 
     // 2) Aggregate into CoreMetrics
-    const metrics = this.computeCoreMetrics(messagesEval);
+    const metrics = await this.computeCoreMetrics(messagesEval);
 
     const result: AiSessionResult = {
       metrics,
@@ -64,10 +99,10 @@ export class AiCoreScoringService {
     return result;
   }
 
-  private evaluateMessage(msg: TranscriptMessage): MessageEvaluation {
+  private async evaluateMessage(msg: TranscriptMessage): Promise<MessageEvaluation> {
     const text = (msg.text ?? '').trim();
     const baseScore = this.computeBaseScore(text);
-    const traits = this.distributeScoreIntoTraits(baseScore, text);
+    const traits = await this.distributeScoreIntoTraits(baseScore, text);
 
     const avgTrait =
       Object.values(traits).reduce((a, b) => a + b, 0) /
@@ -117,47 +152,89 @@ export class AiCoreScoringService {
     return 70; // slightly penalize over-long walls
   }
 
-  private distributeScoreIntoTraits(
+  private async distributeScoreIntoTraits(
     baseScore: number,
     text: string,
-  ): Record<CharismaTraitKey, number> {
+  ): Promise<Record<CharismaTraitKey, number>> {
     const lower = text.toLowerCase();
+
+    // Get base trait values and adjustments from config
+    let traitBaseValues = {
+      humor: 40,
+      tensionControl: 50,
+      emotionalWarmth: 50,
+      dominance: 50,
+    };
+    let traitAdjustments: Array<{
+      pattern: string;
+      trait: string;
+      value: number;
+    }> = [];
+
+    try {
+      if (this.engineConfigService) {
+        const profile = await this.engineConfigService.getScoringProfile();
+        if (profile?.traitBaseValues) {
+          traitBaseValues = profile.traitBaseValues;
+        }
+        if (profile?.traitAdjustments && profile.traitAdjustments.length > 0) {
+          traitAdjustments = profile.traitAdjustments;
+        }
+      }
+    } catch (e) {
+      // Use defaults if config unavailable
+    }
 
     let confidence = baseScore;
     let clarity = baseScore;
-    let humor = 40;
-    let tensionControl = 50;
-    let emotionalWarmth = 50;
-    let dominance = 50;
+    let humor = traitBaseValues.humor;
+    let tensionControl = traitBaseValues.tensionControl;
+    let emotionalWarmth = traitBaseValues.emotionalWarmth;
+    let dominance = traitBaseValues.dominance;
 
-    // Questions → tension & engagement
-    if (/\?/.test(text)) {
-      tensionControl += 10;
-    }
+    // Apply pattern-based adjustments from config
+    // Pattern detection logic is intentionally hard-coded (regex/string matching)
+    // but adjustment amounts come from config
+    for (const adjustment of traitAdjustments) {
+      let matches = false;
 
-    // Emojis / laughter → humor
-    if (/haha|lol|😂|😅/.test(lower)) {
-      humor += 20;
-    }
+      // Pattern matching logic (intentionally hard-coded - this is the detection algorithm)
+      switch (adjustment.pattern) {
+        case 'questionMark':
+          matches = /\?/.test(text);
+          break;
+        case 'emoji':
+          matches = /haha|lol|😂|😅/.test(lower);
+          break;
+        case 'softLanguage':
+          matches = lower.includes('maybe') || lower.includes('i guess');
+          break;
+        case 'leadingLanguage':
+          matches = lower.includes("let's") || lower.includes('lets ');
+          break;
+        case 'warmWords':
+          matches =
+            lower.includes('nice') ||
+            lower.includes('glad') ||
+            lower.includes('love');
+          break;
+        default:
+          // Unknown pattern - skip
+          continue;
+      }
 
-    // Softening language → less confidence/dominance
-    if (lower.includes('maybe') || lower.includes('i guess')) {
-      confidence -= 15;
-      dominance -= 10;
-    }
-
-    // Leading language → more dominance
-    if (lower.includes("let's") || lower.includes('lets ')) {
-      dominance += 15;
-    }
-
-    // Warm words → emotionalWarmth
-    if (
-      lower.includes('nice') ||
-      lower.includes('glad') ||
-      lower.includes('love')
-    ) {
-      emotionalWarmth += 15;
+      if (matches) {
+        // Apply adjustment to the specified trait
+        const traitKey = adjustment.trait as CharismaTraitKey;
+        if (traitKey === 'confidence') confidence += adjustment.value;
+        else if (traitKey === 'clarity') clarity += adjustment.value;
+        else if (traitKey === 'humor') humor += adjustment.value;
+        else if (traitKey === 'tensionControl')
+          tensionControl += adjustment.value;
+        else if (traitKey === 'emotionalWarmth')
+          emotionalWarmth += adjustment.value;
+        else if (traitKey === 'dominance') dominance += adjustment.value;
+      }
     }
 
     const clamp = (v: number) => Math.max(0, Math.min(100, v));
@@ -172,7 +249,7 @@ export class AiCoreScoringService {
     };
   }
 
-  private computeCoreMetrics(messages: MessageEvaluation[]): CoreMetrics {
+  private async computeCoreMetrics(messages: MessageEvaluation[]): Promise<CoreMetrics> {
     const userMessages = messages.filter((m) => m.sentBy === 'user');
 
     const totalMessages = userMessages.length;
@@ -180,7 +257,19 @@ export class AiCoreScoringService {
       .map((m) => (m.text ? m.text.trim().split(/\s+/).length : 0))
       .reduce((a, b) => a + b, 0);
 
-    const fillerList = ['like', 'um', 'uh', 'you know', 'kinda', 'sort of'];
+    // Get filler words from config if available
+    let fillerList: string[] = ['like', 'um', 'uh', 'you know', 'kinda', 'sort of'];
+    try {
+      if (this.engineConfigService) {
+        const profile = await this.engineConfigService.getScoringProfile();
+        if (profile?.fillerWords && profile.fillerWords.length > 0) {
+          fillerList = profile.fillerWords;
+        }
+      }
+    } catch (e) {
+      // Use default filler words
+    }
+
     const fillerWordsCount = userMessages
       .map((m) => m.text.toLowerCase())
       .reduce((acc, text) => {
@@ -207,12 +296,22 @@ export class AiCoreScoringService {
     const emotionalWarmth = avgTrait('emotionalWarmth');
     const dominance = avgTrait('dominance');
 
+    // Use trait weights from config if available, otherwise fall back to hard-coded defaults
+    const weights = this.traitWeights || {
+      confidence: 0.3,
+      clarity: 0.25,
+      humor: 0.15,
+      tensionControl: 0.1,
+      emotionalWarmth: 0.2,
+      dominance: 0.0,
+    };
+
     const charismaIndex = Math.round(
-      0.3 * confidence +
-        0.25 * clarity +
-        0.2 * emotionalWarmth +
-        0.15 * humor +
-        0.1 * tensionControl,
+      weights.confidence * confidence +
+        weights.clarity * clarity +
+        weights.emotionalWarmth * emotionalWarmth +
+        weights.humor * humor +
+        weights.tensionControl * tensionControl,
     );
 
     const overallScore = charismaIndex;

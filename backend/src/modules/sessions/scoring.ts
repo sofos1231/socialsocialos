@@ -31,6 +31,39 @@ export interface SessionRewardsSummary {
 }
 
 /**
+ * Checklist-based scoring (Step 7 Thin Lane)
+ * The AI now returns checklist flags; we deterministically map them to a numeric score.
+ */
+export enum MessageChecklistFlag {
+  // high-value “wins”
+  POSITIVE_HOOK_HIT = 'POSITIVE_HOOK_HIT',
+  MULTIPLE_HOOKS_HIT = 'MULTIPLE_HOOKS_HIT',
+  OBJECTIVE_PROGRESS = 'OBJECTIVE_PROGRESS',
+  MOOD_STRONG_UP = 'MOOD_STRONG_UP',
+  MOMENTUM_MAINTAINED = 'MOMENTUM_MAINTAINED',
+
+  // safety / calibration
+  NO_BOUNDARY_ISSUES = 'NO_BOUNDARY_ISSUES',
+  GOOD_CALIBRATION = 'GOOD_CALIBRATION',
+
+  // optional “soft” checks
+  CLARITY_GOOD = 'CLARITY_GOOD',
+  WARMTH_GOOD = 'WARMTH_GOOD',
+}
+
+export interface MessageChecklistSnapshot {
+  flags: MessageChecklistFlag[];
+  notes?: string[];
+}
+
+export interface ChecklistScoreResult {
+  numericScore: number;
+  tier: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+  rarity: MessageRarity;
+  flags: MessageChecklistFlag[];
+}
+
+/**
  * Map a numeric score to a rarity tier.
  *
  * 0–59  => C
@@ -45,6 +78,80 @@ export function scoreToRarity(score: number): MessageRarity {
   if (score >= 75) return 'A';
   if (score >= 60) return 'B';
   return 'C';
+}
+
+/**
+ * Map numeric score to the tier scale used by FastPath/accumulator.
+ */
+export function scoreToTier(score: number): ChecklistScoreResult['tier'] {
+  if (score >= 95) return 'S+';
+  if (score >= 85) return 'S';
+  if (score >= 75) return 'A';
+  if (score >= 60) return 'B';
+  if (score >= 40) return 'C';
+  return 'D';
+}
+
+function tierToRarity(tier: ChecklistScoreResult['tier']): MessageRarity {
+  switch (tier) {
+    case 'S+':
+      return 'S+';
+    case 'S':
+      return 'S';
+    case 'A':
+      return 'A';
+    case 'B':
+      return 'B';
+    case 'C':
+    case 'D':
+    default:
+      return 'C';
+  }
+}
+
+/**
+ * Deterministically convert checklist flags into numeric score + tier/rarity.
+ * This is the new single source for per-message numeric scores (AI no longer invents numbers).
+ */
+export function scoreFromChecklist(snapshot: MessageChecklistSnapshot): ChecklistScoreResult {
+  const flags = Array.isArray(snapshot?.flags) ? snapshot.flags : [];
+
+  // Start low to make missing checklist information safe by default.
+  // A bare message with no flags scores as a low "D/C" until safety is proven.
+  let score = 35;
+
+  // Big wins
+  if (flags.includes(MessageChecklistFlag.POSITIVE_HOOK_HIT)) score += 18;
+  if (flags.includes(MessageChecklistFlag.OBJECTIVE_PROGRESS)) score += 18;
+  if (flags.includes(MessageChecklistFlag.MOOD_STRONG_UP)) score += 12;
+
+  // Momentum/quality
+  if (flags.includes(MessageChecklistFlag.MULTIPLE_HOOKS_HIT)) score += 10;
+  if (flags.includes(MessageChecklistFlag.MOMENTUM_MAINTAINED)) score += 6;
+  if (flags.includes(MessageChecklistFlag.GOOD_CALIBRATION)) score += 6;
+
+  // Soft quality nudges
+  if (flags.includes(MessageChecklistFlag.CLARITY_GOOD)) score += 3;
+  if (flags.includes(MessageChecklistFlag.WARMTH_GOOD)) score += 3;
+
+  // Safety: without NO_BOUNDARY_ISSUES we hard-cap the score to keep it in a low band.
+  const hasBoundarySafety = flags.includes(MessageChecklistFlag.NO_BOUNDARY_ISSUES);
+  if (!hasBoundarySafety) {
+    score = Math.min(score, 45);
+  }
+
+  // Clamp
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  const tier = scoreToTier(score);
+  const rarity = tierToRarity(tier);
+
+  return {
+    numericScore: score,
+    tier,
+    rarity,
+    flags,
+  };
 }
 
 /**

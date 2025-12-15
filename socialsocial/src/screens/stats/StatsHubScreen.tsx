@@ -91,6 +91,22 @@ export default function StatsHubScreen() {
               </View>
             </View>
 
+            {/* Phase 3: Checklist metrics (if available from dashboard) */}
+            {dashboard?.checklist && (
+              <View style={styles.checklistRow}>
+                <View style={styles.miniCard}>
+                  <Text style={styles.cardLabel}>Positive Hooks</Text>
+                  <Text style={styles.cardValue}>{dashboard.checklist.positiveHooksThisWeek ?? 0}</Text>
+                  <Text style={styles.cardTextMuted}>This week</Text>
+                </View>
+                <View style={styles.miniCard}>
+                  <Text style={styles.cardLabel}>Objective Hits</Text>
+                  <Text style={styles.cardValue}>{dashboard.checklist.objectiveProgressThisWeek ?? 0}</Text>
+                  <Text style={styles.cardTextMuted}>This week</Text>
+                </View>
+              </View>
+            )}
+
             {/* 2×2 Grid of Stat Category Cards */}
             <View style={styles.gridContainer}>
               <View style={styles.gridRow}>

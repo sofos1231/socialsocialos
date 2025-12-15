@@ -9,14 +9,17 @@ import {
     Patch,
     Post,
     Put,
+    UseGuards,
   } from '@nestjs/common';
   import { MissionsAdminService } from './missions-admin.service';
   import {
     CreateMissionCategoryDto,
     UpdateMissionCategoryDto,
   } from './dto/admin-category.dto';
+  import { AdminGuard } from '../auth/admin.guard';
   
   @Controller('admin/missions/categories')
+  @UseGuards(AdminGuard)
   export class MissionsAdminCategoriesController {
     constructor(
       private readonly missionsAdminService: MissionsAdminService,

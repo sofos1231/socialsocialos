@@ -49,9 +49,10 @@ Test these endpoints:
 Once running, access these dashboards:
 
 1. **Control Panel** (Main Launcher): http://localhost:5173/control-panel.html
-2. **Frontend Dashboard** (API Testing): http://localhost:5173/frontend-dashboard.html
-3. **Middleware Dashboard** (Auto-Wiring): http://localhost:5173/middleware-dashboard.html
-4. **Backend Dashboard** (Logs & Management): http://localhost:5173/backend-dashboard.html
+2. **Dev Dashboard** (Mission Editor): http://localhost:5173/dev-dashboard.html
+3. **Frontend Dashboard** (API Testing): http://localhost:5173/frontend-dashboard.html
+4. **Middleware Dashboard** (Auto-Wiring): http://localhost:5173/middleware-dashboard.html
+5. **Backend Dashboard** (Logs & Management): http://localhost:5173/backend-dashboard.html
 
 ## EXPECTED OUTPUT
 

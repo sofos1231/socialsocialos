@@ -67,6 +67,14 @@ export interface EngineScoringProfile {
     c: number; // 0.7
   };
 
+  // Base trait values (used when baseScore is not directly applied to a trait)
+  traitBaseValues: {
+    humor: number; // 40
+    tensionControl: number; // 50
+    emotionalWarmth: number; // 50
+    dominance: number; // 50
+  };
+
   // Pattern-based trait adjustments
   traitAdjustments: Array<{
     pattern: string; // "questionMark", "emoji", "softLanguage", "leadingLanguage", "warmWords"
@@ -117,6 +125,59 @@ export interface EngineDynamicsProfile {
 }
 
 /**
+ * Micro-dynamics configuration - thresholds for risk/momentum/flow calculations
+ */
+export interface EngineMicroDynamicsConfig {
+  // Risk index calculation
+  risk: {
+    baseRiskFromScore: { min: number; max: number }; // Score 0-50: min, Score 70-100: max
+    tensionPenalty: { threshold: number; maxPenalty: number }; // Tension > threshold applies penalty
+    difficultyAdjustments: { [key: string]: number }; // HARD: -15, MEDIUM: -5, etc.
+    progressAdjustments: { early: number; late: number }; // Early (<30%): -10, Late (>70%): +10
+  };
+  // Momentum index calculation
+  momentum: {
+    scoreDeltaMultiplier: number; // 0.5
+    gateProgressMultiplier: number; // 0.3
+    moodBonuses: { positive: number; negative: number }; // +10, -10
+    trendMultiplier: number; // 0.3
+  };
+  // Flow index calculation
+  flow: {
+    varianceToFlowMultiplier: number; // 2.0 (converts stdDev to flow reduction)
+  };
+}
+
+/**
+ * Persona drift configuration - thresholds for persona stability detection
+ */
+export interface EnginePersonaConfig {
+  // Stability penalties for different drift types
+  driftPenalties: {
+    styleMoodConflict: number; // -20 for FLIRTY vs cold/annoyed
+    styleMoodConflictMinor: number; // -15 for WARM vs cold
+    dynamicsMoodConflict: number; // -15 for high flirtiveness vs cold/annoyed
+    vulnerabilityMoodConflict: number; // -10 for high vulnerability vs cold
+    scoreStyleConflict: number; // -15 for low scores with warm style/mood
+    negativeFlagsConflict: number; // -10 for negative flags with positive style
+  };
+  // Modifier event thresholds
+  modifierEvents: {
+    tensionSpikeThreshold: number; // 0.7
+    moodDropSeverity: { low: number; high: number }; // 0.6, 0.9
+    scoreCollapseThreshold: number; // 30 point drop
+    scoreCollapseSeverityDivisor: number; // 50
+    negativeFlagsThreshold: number; // 2 flags
+    negativeFlagsSeverityDivisor: number; // 3
+  };
+  // Modifier effects
+  modifierEffects: {
+    reduceRiskAmount: number; // -20
+    lowerWarmthAmount: number; // -15
+  };
+}
+
+/**
  * Gate configuration
  */
 export interface EngineGateConfig {
@@ -134,6 +195,17 @@ export interface EngineGateConfig {
     min: number;
   }>;
   maxFailures?: number; // Max failures before gate fails
+}
+
+/**
+ * Gate Requirement Template - defines which gates are required for a mission
+ */
+export interface EngineGateRequirementTemplate {
+  code: string; // e.g. "BASIC_CHAT_FLOW", "QUALITY_THRESHOLD"
+  name: string;
+  description: string;
+  active: boolean;
+  requiredGates: string[]; // Array of GateKey strings (e.g. ["GATE_MIN_MESSAGES", "GATE_SUCCESS_THRESHOLD"])
 }
 
 /**
@@ -192,6 +264,22 @@ export interface EngineStatePolicyConfig {
 }
 
 /**
+ * Micro feedback configuration - per-score-band feedback messages
+ */
+export interface EngineMicroFeedbackConfig {
+  bands: Array<{
+    minScore: number;
+    maxScore: number;
+    rarity: string; // 'S+', 'S', 'A', 'B', 'C'
+    message: string; // Default feedback text
+    labelKey?: string; // Optional i18n key
+  }>;
+  // Special cases
+  veryShortMessage?: string; // For messages < 5 chars
+  defaultMessage?: string; // Fallback if no band matches
+}
+
+/**
  * Root EngineConfig JSON structure
  */
 export interface EngineConfigJson {
@@ -203,8 +291,23 @@ export interface EngineConfigJson {
 
   gates: EngineGateConfig[];
 
+  gateRequirementTemplates: EngineGateRequirementTemplate[];
+
   mood: EngineMoodConfig;
 
   statePolicy: EngineStatePolicyConfig;
+
+  microFeedback?: EngineMicroFeedbackConfig;
+
+  microDynamics?: EngineMicroDynamicsConfig;
+
+  persona?: EnginePersonaConfig;
+
+  // Config Slots (stored in slots array, not in main config)
+  slots?: Array<{
+    name: string;
+    createdAt: string;
+    config: EngineConfigJson;
+  }>;
 }
 

@@ -18,6 +18,7 @@ export interface AiProviderConfig {
   presencePenalty?: number;
   frequencyPenalty?: number;
   timeoutMs?: number;
+  responseFormat?: string; // e.g., 'json_object' for OpenAI
   retryConfig?: {
     maxAttempts?: number; // Default: 3
     backoffMs?: number[]; // Default: [200, 500, 1000]

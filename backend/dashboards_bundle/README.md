@@ -22,17 +22,22 @@ dashboards_bundle/
 - **Features**: Dashboard registry, health status, quick launch buttons
 - **URL**: `http://localhost:5173/control-panel.html`
 
-### 2. Frontend Dashboard (`frontend-dashboard.html`)
+### 2. Dev Dashboard (`dev-dashboard.html`)
+- **Purpose**: Mission editor and admin interface
+- **Features**: Mission CRUD, AI contract editing, engine config, login/JWT management
+- **URL**: `http://localhost:5173/dev-dashboard.html`
+
+### 3. Frontend Dashboard (`frontend-dashboard.html`)
 - **Purpose**: Smoke testing frontend API integration
 - **Features**: Test buttons for practice categories, user profile, stats
 - **URL**: `http://localhost:5173/frontend-dashboard.html`
 
-### 3. Middleware Dashboard (`middleware-dashboard.html`)
+### 4. Middleware Dashboard (`middleware-dashboard.html`)
 - **Purpose**: Auto-wiring between frontend components and backend endpoints
 - **Features**: Scan, auto-wire, apply patch, export bundle
 - **URL**: `http://localhost:5173/middleware-dashboard.html`
 
-### 4. Backend Dashboard (`backend-dashboard.html`)
+### 5. Backend Dashboard (`backend-dashboard.html`)
 - **Purpose**: API management and monitoring
 - **Features**: Real-time logs via SSE, contract management, wiring validation
 - **URL**: `http://localhost:5173/backend-dashboard.html`

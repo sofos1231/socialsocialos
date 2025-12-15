@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request = require('supertest');
 import { v4 as uuidv4 } from 'uuid';
 import { createTestApp } from './utils/http';
 import { resetDb } from './utils/prisma';

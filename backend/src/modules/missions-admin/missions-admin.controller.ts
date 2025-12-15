@@ -10,12 +10,15 @@ import {
   Post,
   Put,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { MissionsAdminService } from './missions-admin.service';
 import { CreateMissionDto, UpdateMissionDto } from './dto/admin-mission.dto';
 import { ReorderMissionsDto } from './dto/admin-missions-reorder.dto';
+import { AdminGuard } from '../auth/admin.guard';
 
 @Controller('admin/missions')
+@UseGuards(AdminGuard)
 export class MissionsAdminController {
   constructor(private readonly missionsAdminService: MissionsAdminService) {}
 
@@ -193,5 +196,38 @@ export class MissionsAdminController {
   ) {
     const limitNum = limit ? parseInt(limit, 10) : 10;
     return this.missionsAdminService.getMissionSessions(id, limitNum);
+  }
+
+  /**
+   * Phase 3: POST /v1/admin/missions/validate-config
+   * Validates MissionConfigV1 without saving
+   */
+  @Post('validate-config')
+  async validateConfig(@Body() body: { aiContract: any }) {
+    return this.missionsAdminService.validateConfig(body.aiContract);
+  }
+
+  /**
+   * Phase 3: POST /v1/admin/missions/generate-config
+   * Generates MissionConfigV1 using builders
+   */
+  @Post('generate-config')
+  async generateConfig(
+    @Body()
+    body: {
+      builderType: 'OPENERS' | 'FLIRTING';
+      params: {
+        difficultyLevel: string;
+        aiStyleKey: string;
+        maxMessages: number;
+        timeLimitSec: number;
+        wordLimit?: number | null;
+        userTitle: string;
+        userDescription: string;
+        objectiveKind?: string;
+      };
+    },
+  ) {
+    return this.missionsAdminService.generateConfig(body.builderType, body.params);
   }
 }

@@ -15,7 +15,9 @@ ADD COLUMN     "status" "MissionStatus" NOT NULL DEFAULT 'IN_PROGRESS',
 ADD COLUMN     "templateId" TEXT;
 
 -- CreateTable
-CREATE TABLE "AiPersona" (
+-- NOTE: Made idempotent with IF NOT EXISTS to avoid P3006 when shadow DB replays migrations.
+-- The table may already exist from migration 20250115000000_add_attraction_routing.
+CREATE TABLE IF NOT EXISTS "AiPersona" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "shortLabel" TEXT,
@@ -30,7 +32,9 @@ CREATE TABLE "AiPersona" (
 );
 
 -- CreateTable
-CREATE TABLE "PracticeMissionTemplate" (
+-- NOTE: Made idempotent with IF NOT EXISTS to avoid P3006 when shadow DB replays migrations.
+-- The table may already exist from migration 20250115000000_add_attraction_routing.
+CREATE TABLE IF NOT EXISTS "PracticeMissionTemplate" (
     "id" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "title" TEXT NOT NULL,
@@ -119,7 +123,8 @@ CREATE TABLE "PowerUpUsage" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "PracticeMissionTemplate_code_key" ON "PracticeMissionTemplate"("code");
+-- NOTE: Made idempotent to avoid duplicate index errors when shadow DB replays migrations.
+CREATE UNIQUE INDEX IF NOT EXISTS "PracticeMissionTemplate_code_key" ON "PracticeMissionTemplate"("code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "PowerUpType_code_key" ON "PowerUpType"("code");

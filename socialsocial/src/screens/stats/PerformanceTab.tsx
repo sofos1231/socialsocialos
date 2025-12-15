@@ -117,6 +117,35 @@ export default function PerformanceTab() {
         </View>
       )}
 
+      {/* Phase 3: Checklist metrics this week */}
+      {summary.checklist && (
+        <View style={styles.checklistCard}>
+          <Text style={styles.checklistCardTitle}>This Week's Performance</Text>
+          <View style={styles.checklistMetricsGrid}>
+            <View style={styles.checklistMetric}>
+              <Text style={styles.checklistMetricValue}>{summary.checklist.positiveHooksThisWeek}</Text>
+              <Text style={styles.checklistMetricLabel}>Positive Hooks</Text>
+            </View>
+            <View style={styles.checklistMetric}>
+              <Text style={styles.checklistMetricValue}>{summary.checklist.objectiveProgressThisWeek}</Text>
+              <Text style={styles.checklistMetricLabel}>Objective Hits</Text>
+            </View>
+            <View style={styles.checklistMetric}>
+              <Text style={styles.checklistMetricValue}>{summary.checklist.boundarySafeRateThisWeek}%</Text>
+              <Text style={styles.checklistMetricLabel}>Boundary Safe</Text>
+            </View>
+            <View style={styles.checklistMetric}>
+              <Text style={styles.checklistMetricValue}>{summary.checklist.momentumMaintainedRateThisWeek}%</Text>
+              <Text style={styles.checklistMetricLabel}>Momentum</Text>
+            </View>
+          </View>
+          {/* Phase 3: Legacy score shown as secondary */}
+          {summary.avgScoreThisWeek !== undefined && (
+            <Text style={styles.legacyScoreNote}>Legacy Avg Score: {summary.avgScoreThisWeek}</Text>
+          )}
+        </View>
+      )}
+
       {/* Trait bars */}
       {summary.traits.map((trait) => (
         <TraitBarCard
@@ -218,5 +247,49 @@ const styles = StyleSheet.create({
   weekInfoSubtext: {
     fontSize: 13,
     color: '#9CA3AF',
+  },
+  // Phase 3: Checklist metrics card
+  checklistCard: {
+    backgroundColor: '#111827',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#1f2937',
+  },
+  checklistCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#F9FAFB',
+    marginBottom: 12,
+  },
+  checklistMetricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  checklistMetric: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#1f2937',
+    padding: 12,
+    borderRadius: 8,
+  },
+  checklistMetricValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#22c55e',
+    marginBottom: 4,
+  },
+  checklistMetricLabel: {
+    fontSize: 11,
+    color: '#9CA3AF',
+  },
+  legacyScoreNote: {
+    marginTop: 12,
+    fontSize: 11,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 });

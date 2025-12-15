@@ -1,25 +1,93 @@
 // backend/src/modules/ai-engine/persona-drift.service.ts
 // Step 6.8: Persona Drift Detection & Modifier Service
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef, Optional } from '@nestjs/common';
 import {
   PersonaStabilityContext,
   PersonaStabilityResult,
   ModifierEvent,
 } from './persona-drift.types';
 import { ActiveModifier } from './mission-state-v1.schema';
+import { EngineConfigService } from '../engine-config/engine-config.service';
 
 @Injectable()
 export class PersonaDriftService {
+  private personaConfig: any = null;
+  // Wave 4.1: Track last seen revision for self-healing
+  private lastRevision = -1;
+
+  constructor(
+    @Optional()
+    @Inject(forwardRef(() => EngineConfigService))
+    private readonly engineConfigService?: EngineConfigService,
+  ) {
+    // Load persona config on startup
+    this.loadPersonaConfig();
+    
+    // Wave 4: Register for config update notifications
+    if (this.engineConfigService) {
+      this.engineConfigService.onConfigUpdated(() => this.refreshFromEngineConfig());
+    }
+  }
+
+  /**
+   * Load persona config from EngineConfig
+   */
+  private async loadPersonaConfig() {
+    try {
+      if (this.engineConfigService) {
+        this.personaConfig = await this.engineConfigService.getPersonaConfig();
+      }
+    } catch (e) {
+      // Fallback to defaults (will use hard-coded values)
+      this.personaConfig = null;
+    }
+  }
+
+  /**
+   * Wave 4: Refresh persona config from EngineConfig (for cache invalidation)
+   */
+  async refreshFromEngineConfig(): Promise<void> {
+    this.personaConfig = null;
+    await this.loadPersonaConfig();
+    // Wave 4.1: Update revision tracking
+    if (this.engineConfigService) {
+      this.lastRevision = this.engineConfigService.getRevision();
+    }
+  }
+
+  /**
+   * Wave 4.1: Ensure cache is fresh before use (self-healing guarantee)
+   */
+  private async ensureFresh(): Promise<void> {
+    if (!this.engineConfigService) return;
+    const currentRevision = this.engineConfigService.getRevision();
+    if (currentRevision !== this.lastRevision) {
+      await this.refreshFromEngineConfig();
+    }
+  }
   /**
    * Step 6.8: Compute persona stability score
    * Checks consistency between config layers (style, dynamics, difficulty, mood) and actual behavior
    */
-  computePersonaStability(context: PersonaStabilityContext): PersonaStabilityResult {
+  async computePersonaStability(context: PersonaStabilityContext): Promise<PersonaStabilityResult> {
+    // Wave 4.1: Ensure cache is fresh before use
+    await this.ensureFresh();
+    
     let stability = 100; // Start at perfect consistency
     let driftReason: string | null = null;
 
     const { style, dynamics, moodState, recentScores, recentFlags } = context;
+
+    // Get config or use defaults
+    const driftPenalties = this.personaConfig?.driftPenalties || {
+      styleMoodConflict: -20,
+      styleMoodConflictMinor: -15,
+      dynamicsMoodConflict: -15,
+      vulnerabilityMoodConflict: -10,
+      scoreStyleConflict: -15,
+      negativeFlagsConflict: -10,
+    };
 
     // Check 1: Style vs Mood consistency
     // If style is "FLIRTY" but mood is "cold", there's a drift
@@ -28,10 +96,10 @@ export class PersonaDriftService {
       const mood = moodState.currentMood.toLowerCase();
 
       if (styleKey.includes('flirt') && (mood === 'cold' || mood === 'annoyed')) {
-        stability -= 20;
+        stability += driftPenalties.styleMoodConflict;
         driftReason = `Style (${styleKey}) conflicts with mood (${mood})`;
       } else if (styleKey.includes('warm') && mood === 'cold') {
-        stability -= 15;
+        stability += driftPenalties.styleMoodConflictMinor;
         if (!driftReason) driftReason = `Style (${styleKey}) conflicts with mood (${mood})`;
       }
     }
@@ -43,13 +111,13 @@ export class PersonaDriftService {
       const mood = moodState.currentMood.toLowerCase();
 
       if (flirtiveness > 70 && (mood === 'cold' || mood === 'annoyed')) {
-        stability -= 15;
+        stability += driftPenalties.dynamicsMoodConflict;
         if (!driftReason) driftReason = `High flirtiveness (${flirtiveness}) conflicts with mood (${mood})`;
       }
 
       const vulnerability = dynamics.vulnerability ?? 50;
       if (vulnerability > 70 && mood === 'cold') {
-        stability -= 10;
+        stability += driftPenalties.vulnerabilityMoodConflict;
         if (!driftReason) driftReason = `High vulnerability (${vulnerability}) conflicts with mood (${mood})`;
       }
     }
@@ -62,7 +130,7 @@ export class PersonaDriftService {
 
       // Low scores with warm style/dynamics = drift
       if (avgScore < 40 && (style?.aiStyleKey?.toLowerCase().includes('warm') || mood === 'warm')) {
-        stability -= 15;
+        stability += driftPenalties.scoreStyleConflict;
         if (!driftReason) driftReason = `Low scores (${avgScore.toFixed(0)}) conflict with warm style/mood`;
       }
     }
@@ -76,7 +144,7 @@ export class PersonaDriftService {
       );
 
       if (negativeFlags.length > 0 && style?.aiStyleKey?.toLowerCase().includes('warm')) {
-        stability -= 10;
+        stability += driftPenalties.negativeFlagsConflict;
         if (!driftReason) driftReason = `Negative flags conflict with positive style`;
       }
     }
@@ -97,8 +165,18 @@ export class PersonaDriftService {
     const events: ModifierEvent[] = [];
     const { moodState, recentScores, recentFlags } = context;
 
+    // Get config or use defaults
+    const modifierEvents = this.personaConfig?.modifierEvents || {
+      tensionSpikeThreshold: 0.7,
+      moodDropSeverity: { low: 0.6, high: 0.9 },
+      scoreCollapseThreshold: 30,
+      scoreCollapseSeverityDivisor: 50,
+      negativeFlagsThreshold: 2,
+      negativeFlagsSeverityDivisor: 3,
+    };
+
     // Event 1: Tension spike
-    if (moodState.tensionLevel > 0.7) {
+    if (moodState.tensionLevel > modifierEvents.tensionSpikeThreshold) {
       events.push({
         type: 'tension_spike',
         severity: moodState.tensionLevel,
@@ -112,9 +190,12 @@ export class PersonaDriftService {
     // Event 2: Mood drop
     const negativeMoods = ['cold', 'annoyed', 'bored'];
     if (negativeMoods.includes(moodState.currentMood)) {
+      const severity = moodState.positivityPct < 30 
+        ? modifierEvents.moodDropSeverity.high 
+        : modifierEvents.moodDropSeverity.low;
       events.push({
         type: 'mood_drop',
-        severity: moodState.positivityPct < 30 ? 0.9 : 0.6,
+        severity,
         context: {
           moodState: moodState.currentMood,
         },
@@ -127,10 +208,10 @@ export class PersonaDriftService {
       const previousScore = recentScores[recentScores.length - 2];
       const drop = previousScore - lastScore;
 
-      if (drop > 30) {
+      if (drop > modifierEvents.scoreCollapseThreshold) {
         events.push({
           type: 'score_collapse',
-          severity: Math.min(1.0, drop / 50),
+          severity: Math.min(1.0, drop / modifierEvents.scoreCollapseSeverityDivisor),
           context: {
             currentScore: lastScore,
           },
@@ -145,10 +226,10 @@ export class PersonaDriftService {
         f.toLowerCase().includes('negative') || f.toLowerCase().includes('low-impact'),
       ).length;
 
-      if (negativeCount >= 2) {
+      if (negativeCount >= modifierEvents.negativeFlagsThreshold) {
         events.push({
           type: 'flag_negative',
-          severity: Math.min(1.0, negativeCount / 3),
+          severity: Math.min(1.0, negativeCount / modifierEvents.negativeFlagsSeverityDivisor),
           context: {
             flags: allFlags,
           },
@@ -178,9 +259,23 @@ export class PersonaDriftService {
     // Remove expired modifiers
     modifiers = modifiers.filter((m) => m.remainingTurns > 0);
 
+    // Get config or use defaults
+    const modifierEffects = this.personaConfig?.modifierEffects || {
+      reduceRiskAmount: -20,
+      lowerWarmthAmount: -15,
+    };
+    const modifierEvents = this.personaConfig?.modifierEvents || {
+      tensionSpikeThreshold: 0.7,
+      moodDropSeverity: { low: 0.6, high: 0.9 },
+      scoreCollapseThreshold: 30,
+      scoreCollapseSeverityDivisor: 50,
+      negativeFlagsThreshold: 2,
+      negativeFlagsSeverityDivisor: 3,
+    };
+
     // Add new modifiers based on events
     for (const event of events) {
-      if (event.type === 'tension_spike' && event.severity > 0.7) {
+      if (event.type === 'tension_spike' && event.severity > modifierEvents.tensionSpikeThreshold) {
         // High tension → lower risk for next 3 turns
         const existing = modifiers.find((m) => m.key === 'lowerRiskForNext3Turns');
         if (!existing) {
@@ -194,7 +289,7 @@ export class PersonaDriftService {
         }
       }
 
-      if (event.type === 'mood_drop' && event.severity > 0.7) {
+      if (event.type === 'mood_drop' && event.severity > modifierEvents.moodDropSeverity.low) {
         // Mood drop → lower warmth for next 2 turns
         const existing = modifiers.find((m) => m.key === 'lowerWarmthForNext2Turns');
         if (!existing) {
@@ -245,14 +340,20 @@ export class PersonaDriftService {
     let adjustedWarmth = currentState.warmth ?? null;
     const modifierHints: string[] = [];
 
+    // Get config or use defaults
+    const modifierEffects = this.personaConfig?.modifierEffects || {
+      reduceRiskAmount: -20,
+      lowerWarmthAmount: -15,
+    };
+
     for (const modifier of modifiers) {
       if (modifier.effect === 'reduceRisk' && adjustedRiskIndex !== null) {
-        adjustedRiskIndex = Math.max(0, adjustedRiskIndex - 20);
+        adjustedRiskIndex = Math.max(0, adjustedRiskIndex + modifierEffects.reduceRiskAmount);
         modifierHints.push(`Risk reduced due to: ${modifier.reason ?? modifier.key}`);
       }
 
       if (modifier.effect === 'lowerWarmth' && adjustedWarmth !== null) {
-        adjustedWarmth = Math.max(0, adjustedWarmth - 15);
+        adjustedWarmth = Math.max(0, adjustedWarmth + modifierEffects.lowerWarmthAmount);
         modifierHints.push(`Warmth reduced due to: ${modifier.reason ?? modifier.key}`);
       }
     }

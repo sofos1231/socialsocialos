@@ -1,17 +1,36 @@
 // backend/src/modules/engine-config/engine-config-prompts.controller.ts
 // Step 7.2: Read-only prompt visibility endpoints
 
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
+import { EngineConfigService } from './engine-config.service';
+import { AdminGuard } from '../auth/admin.guard';
 
-@Controller('v1/admin/prompts')
+@Controller('admin/prompts')
+@UseGuards(AdminGuard)
 export class EngineConfigPromptsController {
+  constructor(private readonly engineConfigService: EngineConfigService) {}
+
   /**
    * GET /v1/admin/prompts/micro-feedback
-   * Returns read-only list of micro feedback messages by score band
+   * Returns read-only list of micro feedback messages by score band from EngineConfig
    */
   @Get('micro-feedback')
-  getMicroFeedback() {
-    // Hard-coded micro feedback messages from AiScoringService.buildMicroFeedback
+  async getMicroFeedback() {
+    try {
+      const microFeedbackConfig = await this.engineConfigService.getMicroFeedbackConfig();
+      if (microFeedbackConfig?.bands) {
+        const feedback = microFeedbackConfig.bands.map((band) => ({
+          scoreRange: `${band.minScore}-${band.maxScore}`,
+          rarity: band.rarity,
+          message: band.message,
+        }));
+        return { ok: true, feedback };
+      }
+    } catch (e) {
+      // Fall through to hard-coded defaults
+    }
+
+    // Fallback to hard-coded defaults (matches original behavior)
     return {
       ok: true,
       feedback: [
@@ -28,7 +47,7 @@ export class EngineConfigPromptsController {
         {
           scoreRange: '72-83',
           rarity: 'A',
-          message: 'Good message. You're on the right track – a bit more playfulness or detail would level this up.',
+          message: `Good message. You're on the right track – a bit more playfulness or detail would level this up.`,
         },
         {
           scoreRange: '58-71',

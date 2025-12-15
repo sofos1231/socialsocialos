@@ -20,7 +20,9 @@ export class PracticeController {
   @Post('session')
   @UseGuards(JwtAuthGuard)
   async session(@Req() req: any, @Body() dto: CreatePracticeSessionDto) {
+    // TODO: record fastpath_latency_ms here (start timer at HTTP entry)
     const userId = req.user?.sub ?? req.user?.id;
     return this.practiceService.runPracticeSession(userId, dto);
+    // TODO: record fastpath_latency_ms here (stop timer after response returned)
   }
 }

@@ -5,6 +5,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service';
 import { AiScoringService } from '../ai/ai-scoring.service';
@@ -19,11 +20,26 @@ import type { MissionStateV1, GateState } from '../ai-engine/mission-state-v1.sc
 import { GatesService, type GateKey } from '../gates/gates.service';
 import { RewardReleaseService } from '../ai-engine/reward-release.service';
 import { getGateRequirementsForObjective } from '../ai-engine/registries/objective-gate-mappings.registry';
+import { EngineConfigService } from '../engine-config/engine-config.service';
 // Step 6.6: Import micro-dynamics service
 import { MicroDynamicsService } from '../ai-engine/micro-dynamics.service';
 // Step 6.8: Import persona drift service
 import { PersonaDriftService } from '../ai-engine/persona-drift.service';
 import { MissionsService } from '../missions/missions.service';
+// Step 8: Import FastPath services
+import { MoodStateMachineService } from '../mission-state/mood-state-machine.service';
+import { ScoreAccumulatorService } from '../ai/score-accumulator.service';
+import { computeUiEventHint, computeRarity } from './utils/micro-interactions.utils';
+import {
+  MessageChecklistFlag,
+  MessageChecklistSnapshot,
+  scoreFromChecklist,
+  scoreToTier,
+} from '../sessions/scoring';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { DeepAnalysisJobPayload } from '../queue/jobs/deep-analysis.job';
+import { MessageAnalysisJobPayload } from '../queue/jobs/message-analysis.job';
 import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
 import {
   normalizeMissionConfigV1,
@@ -86,6 +102,14 @@ export interface MissionStatePayload {
 
   endReasonCode?: MissionEndReasonCode | null;
   endReasonMeta?: Record<string, any> | null;
+  checklist?: {
+    positiveHookCount: number;
+    objectiveProgressCount: number;
+    boundarySafeStreak: number;
+    momentumStreak: number;
+    lastFlags?: MessageChecklistFlag[] | null;
+    requiredFlagHits: number;
+  };
 }
 
 function safeTrim(s: any): string {
@@ -101,6 +125,72 @@ function clampInt(n: any, min: number, max: number, fallback: number): number {
   if (!Number.isFinite(v)) return fallback;
   return Math.max(min, Math.min(max, Math.floor(v)));
 }
+
+/**
+ * Step 8: Parse Step 8 structured JSON from AI response
+ * Extracts micro-interaction fields from aiStructured.raw or aiReply
+ */
+/**
+ * Phase 2: Removed numeric score fields - all scores derived from checklist via scoreFromChecklist
+ */
+function parseStep8StructuredJson(aiStructured: any, aiReply: string): {
+  reply: string;
+  checklist?: MessageChecklistSnapshot;
+  moodDelta?: 'up' | 'down' | 'stable';
+  tensionDelta?: 'up' | 'down' | 'stable';
+  comfortDelta?: 'up' | 'down' | 'stable';
+  boundaryRisk?: 'low' | 'med' | 'high';
+  microFlags?: string[];
+} {
+  // Try to parse from aiStructured.raw first
+  const raw = aiStructured?.raw;
+  if (raw && typeof raw === 'object') {
+    const reply = typeof raw.reply === 'string' ? raw.reply : aiReply;
+    let checklist: MessageChecklistSnapshot | undefined;
+    if (raw.checklist && typeof raw.checklist === 'object') {
+      const rawFlags = Array.isArray(raw.checklist.flags) ? raw.checklist.flags : [];
+      const normalizedFlags = rawFlags.filter((f: any) =>
+        Object.values(MessageChecklistFlag).includes(f as MessageChecklistFlag),
+      ) as MessageChecklistFlag[];
+      const notes = Array.isArray(raw.checklist.notes)
+        ? raw.checklist.notes.filter((n: any) => typeof n === 'string')
+        : undefined;
+      if (normalizedFlags.length > 0) {
+        checklist = { flags: normalizedFlags, notes };
+      }
+    }
+    // Phase 2: Removed localScoreTier and localScoreNumeric - scores derived from checklist only
+    const moodDelta = ['up', 'down', 'stable'].includes(raw.moodDelta)
+      ? (raw.moodDelta as 'up' | 'down' | 'stable')
+      : undefined;
+    const tensionDelta = ['up', 'down', 'stable'].includes(raw.tensionDelta)
+      ? (raw.tensionDelta as 'up' | 'down' | 'stable')
+      : undefined;
+    const comfortDelta = ['up', 'down', 'stable'].includes(raw.comfortDelta)
+      ? (raw.comfortDelta as 'up' | 'down' | 'stable')
+      : undefined;
+    const boundaryRisk = ['low', 'med', 'high'].includes(raw.boundaryRisk)
+      ? (raw.boundaryRisk as 'low' | 'med' | 'high')
+      : undefined;
+    const microFlags = Array.isArray(raw.microFlags)
+      ? raw.microFlags.filter((f: any) => typeof f === 'string')
+      : undefined;
+
+    return {
+      reply,
+      checklist,
+      moodDelta,
+      tensionDelta,
+      comfortDelta,
+      boundaryRisk,
+      microFlags,
+    };
+  }
+
+  // Phase 2: Fallback - missing checklist will result in safe low score via scoreFromChecklist({ flags: [] })
+  return { reply: aiReply };
+}
+
 
 type BasePolicy = { maxMessages: number; successScore: number; failScore: number };
 
@@ -268,55 +358,101 @@ function computeMissionState(
   messageScores: number[],
   policy: Required<MissionStatePayload>['policy'],
   minMessagesBeforeEnd?: number | null,
+  checklistAgg?: {
+    positiveHookCount: number;
+    objectiveProgressCount: number;
+    boundarySafeStreak: number;
+    momentumStreak: number;
+    lastFlags?: MessageChecklistFlag[] | null;
+  } | null,
 ): MissionStatePayload {
   const totalUserMessages = messageScores.length;
+
+  // Phase 2: Checklist-driven mission state (numeric scores only for legacy compatibility)
+  const defaultChecklist = {
+    positiveHookCount: checklistAgg?.positiveHookCount ?? 0,
+    objectiveProgressCount: checklistAgg?.objectiveProgressCount ?? 0,
+    boundarySafeStreak: checklistAgg?.boundarySafeStreak ?? 0,
+    momentumStreak: checklistAgg?.momentumStreak ?? 0,
+    lastFlags: checklistAgg?.lastFlags ?? null,
+  };
+
+  // Legacy averageScore computed for compatibility only (not used for decisions)
+  const sum = messageScores.reduce((acc, v) => acc + v, 0);
+  const avgRaw = messageScores.length > 0 ? sum / messageScores.length : 0;
+  const averageScore = Math.round(avgRaw);
 
   if (!messageScores.length) {
     return {
       status: 'IN_PROGRESS',
       progressPct: 0,
-      averageScore: 0,
+      averageScore: 0, // Legacy field
       totalMessages: 0,
       remainingMessages: policy.maxMessages,
       mood: 'SAFE',
       policy,
       disqualified: false,
       disqualify: null,
+      checklist: { ...defaultChecklist, requiredFlagHits: 0 },
     };
   }
 
-  const sum = messageScores.reduce((acc, v) => acc + v, 0);
-  const avgRaw = sum / messageScores.length;
-  const averageScore = Math.round(avgRaw);
-
+  // Phase 2: Checklist-based progress calculation
   const rawProgress = (totalUserMessages / Math.max(1, policy.maxMessages)) * 100;
-  const progressPct = Math.max(5, Math.min(100, Math.round(rawProgress)));
+  const hasBoundarySafety = defaultChecklist.boundarySafeStreak >= totalUserMessages * 0.8; // 80% boundary-safe
+  const hasPositiveHook = defaultChecklist.positiveHookCount >= Math.ceil(totalUserMessages * 0.4); // At least 40% have hooks
+  const hasObjectiveProgress = defaultChecklist.objectiveProgressCount >= Math.ceil(totalUserMessages * 0.3); // At least 30% show progress
+  const hasMomentum = defaultChecklist.momentumStreak >= Math.max(2, Math.ceil(totalUserMessages * 0.5)); // At least 50% maintain momentum
+
+  // Checklist-based success criteria
+  const checklistPassCount = [hasPositiveHook, hasObjectiveProgress, hasBoundarySafety, hasMomentum].filter(Boolean).length;
+  const checklistProgress = Math.min(100, checklistPassCount * 25 + defaultChecklist.momentumStreak * 5);
+  const progressPct = Math.max(
+    5,
+    Math.min(
+      100,
+      Math.round(rawProgress * 0.4 + checklistProgress * 0.6), // Weighted toward checklist
+    ),
+  );
 
   const minEnd = minMessagesBeforeEnd ?? policy.maxMessages;
 
+  // Phase 2: Mission success/fail determined by checklist, NOT numeric thresholds
   let status: MissionStateStatus = 'IN_PROGRESS';
   if (totalUserMessages >= policy.maxMessages && totalUserMessages >= minEnd) {
-    status = averageScore >= policy.successScore ? 'SUCCESS' : 'FAIL';
+    // Success requires: boundary safety + objective progress + (hook OR momentum)
+    const successCriteria = hasBoundarySafety && hasObjectiveProgress && (hasPositiveHook || hasMomentum);
+    status = successCriteria ? 'SUCCESS' : 'FAIL';
   }
 
   const remainingMessages = Math.max(0, policy.maxMessages - totalUserMessages);
 
+  // Phase 2: Mood determined by checklist flags, not numeric scores
   let mood: MissionMood = 'SAFE';
-  if (status === 'SUCCESS') mood = 'GOOD';
-  else if (averageScore < policy.failScore) mood = 'DANGER';
-  else if (averageScore < policy.failScore + 7) mood = 'WARNING';
-  else if (averageScore >= policy.successScore - 5) mood = 'GOOD';
+  if (!hasBoundarySafety) {
+    mood = 'DANGER'; // Critical: boundary violations
+  } else if (status === 'SUCCESS') {
+    mood = 'GOOD';
+  } else if (!hasObjectiveProgress && !hasPositiveHook) {
+    mood = 'WARNING'; // Low engagement
+  } else if (hasMomentum || hasPositiveHook) {
+    mood = 'GOOD'; // Positive signals present
+  }
 
   return {
-    status,
-    progressPct,
-    averageScore,
+    status, // Determined by checklist, not averageScore
+    progressPct, // Weighted toward checklist
+    averageScore, // Legacy compatibility only
     totalMessages: totalUserMessages,
     remainingMessages,
-    mood,
+    mood, // Determined by checklist flags
     policy,
     disqualified: false,
     disqualify: null,
+    checklist: {
+      ...defaultChecklist,
+      requiredFlagHits: checklistPassCount,
+    },
   };
 }
 
@@ -339,11 +475,18 @@ function computeEndReason(params: {
   status: MissionStateStatus;
   disqualified: boolean;
   disqualify: DisqualifyResult | null;
-  averageScore: number;
+  averageScore: number; // Legacy compatibility only
   policy: Required<MissionStatePayload>['policy'];
   normalizedConfig: NormalizedMissionConfigV1 | null;
   // Step 6.4: Gate state for objective-based missions
   gateState?: { allRequiredGatesMet: boolean; unmetGates: string[] } | null;
+  // Phase 2: Checklist aggregates for end reason meta
+  checklistAgg?: {
+    positiveHookCount: number;
+    objectiveProgressCount: number;
+    boundarySafeStreak: number;
+    momentumStreak: number;
+  } | null;
 }): { code: MissionEndReasonCode | null; meta: Record<string, any> | null } {
   if (params.aiMode === 'FREEPLAY') {
     return { code: null, meta: null };
@@ -381,6 +524,14 @@ function computeEndReason(params: {
       return {
         code: 'SUCCESS_GATE_SEQUENCE',
         meta: {
+          // Phase 2: Checklist aggregates (primary)
+          checklist: params.checklistAgg ? {
+            positiveHookCount: params.checklistAgg.positiveHookCount,
+            objectiveProgressCount: params.checklistAgg.objectiveProgressCount,
+            boundarySafeStreak: params.checklistAgg.boundarySafeStreak,
+            momentumStreak: params.checklistAgg.momentumStreak,
+          } : null,
+          // Legacy numeric fields (compatibility only)
           averageScore: params.averageScore,
           successScoreThreshold: params.policy.successScore,
           failScoreThreshold: params.policy.failScore,
@@ -396,6 +547,14 @@ function computeEndReason(params: {
       return {
         code: 'FAIL_GATE_SEQUENCE',
         meta: {
+          // Phase 2: Checklist aggregates (primary)
+          checklist: params.checklistAgg ? {
+            positiveHookCount: params.checklistAgg.positiveHookCount,
+            objectiveProgressCount: params.checklistAgg.objectiveProgressCount,
+            boundarySafeStreak: params.checklistAgg.boundarySafeStreak,
+            momentumStreak: params.checklistAgg.momentumStreak,
+          } : null,
+          // Legacy numeric fields (compatibility only)
           averageScore: params.averageScore,
           successScoreThreshold: params.policy.successScore,
           failScoreThreshold: params.policy.failScore,
@@ -411,60 +570,47 @@ function computeEndReason(params: {
     // If gate state exists but gates aren't met and FAIL_GATE_SEQUENCE not allowed, fall through to normal logic
   }
 
+  // Phase 2: Build meta with checklist aggregates (primary) and legacy numeric fields (compatibility)
+  const baseMeta = {
+    // Phase 2: Checklist aggregates (primary)
+    checklist: params.checklistAgg ? {
+      positiveHookCount: params.checklistAgg.positiveHookCount,
+      objectiveProgressCount: params.checklistAgg.objectiveProgressCount,
+      boundarySafeStreak: params.checklistAgg.boundarySafeStreak,
+      momentumStreak: params.checklistAgg.momentumStreak,
+    } : null,
+    // Legacy numeric fields (compatibility only)
+    averageScore: params.averageScore,
+    successScoreThreshold: params.policy.successScore,
+    failScoreThreshold: params.policy.failScore,
+    naturalReason,
+    finalStatus: params.status,
+    ...(params.gateState ? {
+      gateState: {
+        allRequiredGatesMet: params.gateState.allRequiredGatesMet,
+        unmetGates: params.gateState.unmetGates ?? [],
+      },
+    } : {}),
+  };
+
   if (!params.normalizedConfig || !params.normalizedConfig.statePolicy.allowedEndReasons) {
     return {
       code: naturalReason,
-      meta: {
-        averageScore: params.averageScore,
-        successScoreThreshold: params.policy.successScore,
-        failScoreThreshold: params.policy.failScore,
-        naturalReason,
-        finalStatus: params.status,
-        ...(params.gateState ? {
-          gateState: {
-            allRequiredGatesMet: params.gateState.allRequiredGatesMet,
-            unmetGates: params.gateState.unmetGates ?? [],
-          },
-        } : {}),
-      },
+      meta: baseMeta,
     };
   }
 
   if (allowedEndReasons.length === 0) {
     return {
       code: naturalReason,
-      meta: {
-        averageScore: params.averageScore,
-        successScoreThreshold: params.policy.successScore,
-        failScoreThreshold: params.policy.failScore,
-        naturalReason,
-        finalStatus: params.status,
-        ...(params.gateState ? {
-          gateState: {
-            allRequiredGatesMet: params.gateState.allRequiredGatesMet,
-            unmetGates: params.gateState.unmetGates ?? [],
-          },
-        } : {}),
-      },
+      meta: baseMeta,
     };
   }
 
   if (allowedEndReasons.includes(naturalReason)) {
     return {
       code: naturalReason,
-      meta: {
-        averageScore: params.averageScore,
-        successScoreThreshold: params.policy.successScore,
-        failScoreThreshold: params.policy.failScore,
-        naturalReason,
-        finalStatus: params.status,
-        ...(params.gateState ? {
-          gateState: {
-            allRequiredGatesMet: params.gateState.allRequiredGatesMet,
-            unmetGates: params.gateState.unmetGates ?? [],
-          },
-        } : {}),
-      },
+      meta: baseMeta,
     };
   }
 
@@ -489,11 +635,7 @@ function computeEndReason(params: {
   return {
     code: remappedCode,
     meta: {
-      averageScore: params.averageScore,
-      successScoreThreshold: params.policy.successScore,
-      failScoreThreshold: params.policy.failScore,
-      naturalReason,
-      finalStatus: params.status,
+      ...baseMeta,
       remapped: true,
       originalNaturalReason: naturalReason,
     },
@@ -533,6 +675,8 @@ function sanitizePracticeResponse<T extends Record<string, any>>(resp: T): T {
 
 @Injectable()
 export class PracticeService {
+  private readonly logger = new Logger(PracticeService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiScoring: AiScoringService,
@@ -551,7 +695,42 @@ export class PracticeService {
     private readonly personaDriftService: PersonaDriftService,
     // Persona compatibility: use missions service as single source of truth
     private readonly missionsService: MissionsService,
+    // Step 8: Inject FastPath services
+    private readonly moodStateMachine: MoodStateMachineService,
+    private readonly scoreAccumulator: ScoreAccumulatorService,
+    // Gate requirement templates
+    private readonly engineConfigService?: EngineConfigService,
+    @InjectQueue('deep-analysis') private readonly deepAnalysisQueue?: Queue,
+    @InjectQueue('message-analysis') private readonly messageAnalysisQueue?: Queue,
   ) {}
+
+  /**
+   * Phase 1: Extract localSeverity from structured AI output
+   */
+  private extractLocalSeverity(step8Data: ReturnType<typeof parseStep8StructuredJson>, aiStructured: any): 'NORMAL' | 'RUDE' | 'VERY_RUDE' | 'CREEPY' | 'VULNERABLE' {
+    // Try to get from structured output
+    const raw = aiStructured?.raw;
+    if (raw && typeof raw === 'object') {
+      const severity = raw.localSeverity;
+      if (typeof severity === 'string') {
+        const upper = severity.toUpperCase();
+        if (upper === 'NORMAL' || upper === 'RUDE' || upper === 'VERY_RUDE' || upper === 'CREEPY' || upper === 'VULNERABLE') {
+          return upper as 'NORMAL' | 'RUDE' | 'VERY_RUDE' | 'CREEPY' | 'VULNERABLE';
+        }
+      }
+    }
+
+    // Derive from boundaryRisk as fallback
+    const boundaryRisk = step8Data.boundaryRisk ?? 'low';
+    if (boundaryRisk === 'high') {
+      return 'CREEPY';
+    } else if (boundaryRisk === 'med') {
+      return 'RUDE';
+    }
+
+    // Default to NORMAL
+    return 'NORMAL';
+  }
 
   private async resolveFreePlayAiStyle(params: {
     templateId: string | null;
@@ -874,11 +1053,32 @@ export class PracticeService {
       const openings = normalizedMissionConfigV1.openings;
       const personaInitMood = openings?.personaInitMood ?? null;
 
-      // Step 6.4: Get gate requirements for objective
+      // Step 6.4: Get gate requirements - check for gate requirement template first, then fallback to objective+difficulty mapping
       const objective = normalizedMissionConfigV1.objective;
       const difficultyLevel = normalizedMissionConfigV1.difficulty?.level ?? MissionDifficulty.EASY;
-      const gateRequirement = getGateRequirementsForObjective(objective.kind, difficultyLevel);
-      const requiredGates: GateKey[] = gateRequirement?.requiredGates ?? [];
+      
+      let requiredGates: GateKey[] = [];
+      
+      // Check if mission has a gate requirement template code
+      const gateRequirementTemplateCode = (normalizedMissionConfigV1 as any).gateRequirementTemplateCode;
+      if (gateRequirementTemplateCode && this.engineConfigService) {
+        try {
+          const template = await this.engineConfigService.getGateRequirementTemplate(gateRequirementTemplateCode);
+          if (template && template.requiredGates) {
+            requiredGates = template.requiredGates as GateKey[];
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Failed to load gate requirement template ${gateRequirementTemplateCode}, falling back to objective mapping: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+      
+      // Fallback to objective+difficulty mapping if no template or template load failed
+      if (requiredGates.length === 0) {
+        const gateRequirement = getGateRequirementsForObjective(objective.kind, difficultyLevel);
+        requiredGates = gateRequirement?.requiredGates ?? [];
+      }
 
       if (isFirstMessage) {
         // Step 6.3: Initialize mission state from openings
@@ -1115,278 +1315,6 @@ export class PracticeService {
       );
     }
 
-    let messageScores: number[] = [];
-    let lastScoringResult: any = null;
-    let lastFlags: string[] = [];
-    // lastTraits is already declared above
-
-    if (isContinuation && existingScores.length === existingUserCount && existingScores.length > 0) {
-      const deltaNormalized: AiPracticeMessageInput[] = deltaUser.map((m, idx) => ({
-        index: existingScores.length + idx,
-        role: 'user',
-        content: m.content,
-      }));
-
-      // Step 6.2: Extract difficulty config from normalized mission config
-      const difficultyConfig = normalizedMissionConfigV1?.difficulty ?? null;
-      // Step 6.1 Fix: Seed previousScore for continuation recoveryDifficulty calculation
-      const lastExistingScore = existingScores.length > 0 ? existingScores[existingScores.length - 1] : null;
-
-      lastScoringResult = await this.aiScoring.scoreConversation({
-        userId,
-        personaId,
-        templateId,
-        messages: deltaNormalized,
-        difficultyConfig,
-        previousScoreSeed: lastExistingScore,
-      });
-
-      const deltaScores = (lastScoringResult?.perMessage ?? []).map((m) => m.score);
-      if (deltaScores.length === 0)
-        throw new BadRequestException('AI scoring produced no message scores.');
-
-      messageScores = [...existingScores, ...deltaScores];
-    } else {
-      const allUser = fullTranscript.filter((m) => m.role === 'USER');
-      const normalizedAll: AiPracticeMessageInput[] = allUser.map((m, idx) => ({
-        index: idx,
-        role: 'user',
-        content: m.content,
-      }));
-
-      // Step 6.2: Extract difficulty config from normalized mission config
-      const difficultyConfig = normalizedMissionConfigV1?.difficulty ?? null;
-
-      lastScoringResult = await this.aiScoring.scoreConversation({
-        userId,
-        personaId,
-        templateId,
-        messages: normalizedAll,
-        difficultyConfig,
-      });
-
-      messageScores = (lastScoringResult?.perMessage ?? []).map((m) => m.score);
-      if (messageScores.length === 0)
-        throw new BadRequestException('AI scoring produced no message scores.');
-    }
-
-    // Step 6.5: Extract last message scoring details for mood update
-    const lastScore = messageScores[messageScores.length - 1] ?? 0;
-    const lastMessageScore = lastScoringResult?.perMessage?.[lastScoringResult.perMessage.length - 1];
-    if (lastMessageScore) {
-      lastFlags = lastMessageScore.tags ?? [];
-      // Extract traits if available in scoring result
-      // Note: Actual trait extraction depends on scoring service structure
-      lastTraits = null; // Placeholder - will be populated when trait data is available
-    }
-
-    // Get previous traits from existing payload
-    const previousTraits = existingSession?.payload && typeof existingSession.payload === 'object'
-      ? (existingSession.payload as any)?.lastTraits ?? null
-      : null;
-
-    // Update mission state with scoring results
-    if (missionStateV1 && normalizedMissionConfigV1) {
-      missionStateV1 = this.missionStateService.updateMissionState(
-        missionStateV1,
-        messageScores,
-        lastScore,
-        lastFlags,
-        lastTraits,
-        previousTraits,
-        normalizedMissionConfigV1.difficulty ?? null,
-        effectivePolicy.failScore,
-        effectivePolicy.successScore,
-        effectivePolicy.maxMessages,
-      );
-
-      // Step 6.4: Evaluate gates and update gate state
-      if (normalizedMissionConfigV1.objective && missionStateV1.gateState) {
-        const gateEvaluationContext = {
-          userMessageCount: messageScores.length,
-          averageScore: missionStateV1.averageScore,
-          messageScores: messageScores,
-          progressPct: missionStateV1.progressPct,
-          isDisqualified: false,
-          endReasonCode: null,
-        };
-
-        const requiredGates = missionStateV1.gateState.requiredGates as GateKey[];
-        const gateResults = this.gatesService.evaluateGatesForActiveSession(
-          gateEvaluationContext,
-          requiredGates,
-        );
-
-        // Update gate state
-        const updatedGates: Record<string, { passed: boolean; reasonCode?: string | null; evaluatedAt?: string | null }> = {};
-        const metGates: string[] = [];
-        const unmetGates: string[] = [];
-
-        for (const result of gateResults) {
-          updatedGates[result.gateKey] = {
-            passed: result.passed,
-            reasonCode: result.reasonCode ?? null,
-            evaluatedAt: new Date().toISOString(),
-          };
-
-          if (result.passed) {
-            metGates.push(result.gateKey);
-          } else {
-            unmetGates.push(result.gateKey);
-          }
-        }
-
-        // Check additional conditions (mood, tension, etc.)
-        const objective = normalizedMissionConfigV1.objective;
-        const difficultyLevel = normalizedMissionConfigV1.difficulty?.level ?? MissionDifficulty.EASY;
-        const gateRequirement = getGateRequirementsForObjective(objective.kind, difficultyLevel);
-        const additionalConditions = gateRequirement?.additionalConditions ?? [];
-
-        let allConditionsMet = unmetGates.length === 0;
-
-        // Evaluate additional conditions
-        for (const condition of additionalConditions) {
-          if (condition.startsWith('mood >=')) {
-            const requiredMood = condition.split('>=')[1]?.trim();
-            const moodOrder = ['cold', 'neutral', 'warm', 'excited', 'interested'];
-            const currentMoodIndex = moodOrder.indexOf(missionStateV1.mood.currentMood);
-            const requiredMoodIndex = moodOrder.indexOf(requiredMood);
-            if (currentMoodIndex < requiredMoodIndex) {
-              allConditionsMet = false;
-            }
-          } else if (condition.startsWith('tension <')) {
-            const maxTension = parseFloat(condition.split('<')[1]?.trim() ?? '1');
-            if (missionStateV1.mood.tensionLevel >= maxTension) {
-              allConditionsMet = false;
-            }
-          }
-        }
-
-        missionStateV1.gateState = {
-          gates: updatedGates,
-          allRequiredGatesMet: allConditionsMet,
-          requiredGates: requiredGates,
-          metGates,
-          unmetGates,
-        };
-      }
-
-      // Step 6.6: Compute micro-dynamics state (Step 6.10: Feature toggle check)
-      const enableMicroDynamics = normalizedMissionConfigV1?.statePolicy?.enableMicroDynamics !== false;
-      if (missionStateV1 && enableMicroDynamics) {
-        const recentScores = messageScores.slice(-3); // Last 3 scores
-        const microDynamicsContext = {
-          currentScore: lastScore,
-          recentScores,
-          tensionLevel: missionStateV1.mood.tensionLevel,
-          moodState: missionStateV1.mood.currentMood,
-          difficultyLevel: normalizedMissionConfigV1.difficulty?.level ?? null,
-          progressPct: missionStateV1.progressPct,
-          gateProgress: missionStateV1.gateState
-            ? {
-                metGates: missionStateV1.gateState.metGates,
-                unmetGates: missionStateV1.gateState.unmetGates,
-              }
-            : null,
-        };
-
-        const microDynamics = this.microDynamicsService.computeMicroDynamics(microDynamicsContext);
-        missionStateV1.microDynamics = microDynamics;
-
-        // Step 6.6: Future micro-gates hook (stub for now)
-        // TODO Step 6.6+: Implement micro-gates evaluation
-        // const microGatesResult = this.microDynamicsService.evaluateMicroGates(microDynamics, microDynamicsContext);
-        // if (!microGatesResult.passed) {
-        //   // Apply micro-gate consequences
-        // }
-      } else if (missionStateV1 && !enableMicroDynamics) {
-        // Step 6.10: If micro-dynamics disabled, leave it undefined
-        missionStateV1.microDynamics = undefined;
-      }
-
-      // Step 6.8: Compute persona stability and update modifiers (Step 6.10: Feature toggle checks)
-      const enablePersonaDriftDetection = normalizedMissionConfigV1?.statePolicy?.enablePersonaDriftDetection !== false;
-      const enableModifiers = normalizedMissionConfigV1?.statePolicy?.enableModifiers !== false;
-      if (missionStateV1 && normalizedMissionConfigV1 && enablePersonaDriftDetection) {
-        const recentFlagsArray: string[][] = [];
-        if (lastFlags && lastFlags.length > 0) {
-          recentFlagsArray.push(lastFlags);
-        }
-        // Add previous flags if available (simplified - in production would track last 2-3)
-        const recentTraitsArray: Array<Record<string, number> | null> = [];
-        if (lastTraits) {
-          recentTraitsArray.push(lastTraits);
-        }
-        if (previousTraits) {
-          recentTraitsArray.push(previousTraits);
-        }
-
-        const personaStabilityContext = {
-          style: normalizedMissionConfigV1.style ?? null,
-          dynamics: normalizedMissionConfigV1.dynamics ?? null,
-          difficulty: normalizedMissionConfigV1.difficulty ?? null,
-          moodState: missionStateV1.mood,
-          recentScores: messageScores.slice(-3),
-          recentFlags: recentFlagsArray,
-          recentTraits: recentTraitsArray,
-        };
-
-        const personaStabilityResult = this.personaDriftService.computePersonaStability(
-          personaStabilityContext,
-        );
-        missionStateV1.personaStability = personaStabilityResult.personaStability;
-        missionStateV1.lastDriftReason = personaStabilityResult.lastDriftReason;
-
-        // Step 6.8: Detect modifier events and update modifiers (Step 6.10: Feature toggle check)
-        if (enableModifiers) {
-          const modifierEvents = this.personaDriftService.detectModifierEvents(personaStabilityContext);
-          const existingModifiers = missionStateV1.activeModifiers ?? [];
-          const updatedModifiers = this.personaDriftService.updateModifiersFromEvents(
-            modifierEvents,
-            existingModifiers,
-          );
-          missionStateV1.activeModifiers = updatedModifiers.length > 0 ? updatedModifiers : null;
-        } else {
-          // Step 6.10: If modifiers disabled, clear them
-          missionStateV1.activeModifiers = null;
-        }
-      } else if (missionStateV1 && (!enablePersonaDriftDetection || !enableModifiers)) {
-        // Step 6.10: If persona drift detection disabled, leave stability undefined
-        if (!enablePersonaDriftDetection) {
-          missionStateV1.personaStability = undefined;
-          missionStateV1.lastDriftReason = undefined;
-        }
-        // If modifiers disabled, clear them
-        if (!enableModifiers) {
-          missionStateV1.activeModifiers = null;
-        }
-      }
-    }
-
-    const missionState = computeMissionState(messageScores, effectivePolicy, minMessagesBeforeEndResolved);
-
-    // Step 6.4: Pass gate state to computeEndReason
-    const endReason = computeEndReason({
-      aiMode,
-      status: missionState.status,
-      disqualified: false,
-      disqualify: null,
-      averageScore: missionState.averageScore,
-      policy: effectivePolicy,
-      normalizedConfig: normalizedMissionConfigV1,
-      gateState: missionStateV1?.gateState ?? null,
-    });
-    missionState.endReasonCode = endReason.code;
-    missionState.endReasonMeta = endReason.meta;
-
-    // ✅ Step 5.3: Normalize endReasonCode/endReasonMeta before returning
-    const normalizedEndReason = normalizeEndReason(
-      missionState.endReasonCode,
-      missionState.endReasonMeta,
-    );
-    missionState.endReasonCode = normalizedEndReason.endReasonCode;
-    missionState.endReasonMeta = normalizedEndReason.endReasonMeta;
-
     // Step 6.3-6.5: Build unified mission config for prompt builder
     // Step 6.4: Now includes objective
     const unifiedMissionConfig = normalizedMissionConfigV1
@@ -1400,6 +1328,9 @@ export class PracticeService {
         }
       : null;
 
+    // Phase 1: Lane A - FastPath - Call AI with mini model and request structured JSON
+    // Measure latency
+    const startedAt = Date.now();
     const { aiReply, aiDebug, aiStructured, errorCode, syntheticReply } = await this.aiChat.generateReply({
       userId,
       topic,
@@ -1418,49 +1349,93 @@ export class PracticeService {
         : null,
       missionState: missionStateV1,
       isFirstMessage,
+      // Step 8: Use mini model for FastPath
+      modelTier: 'mini',
     });
+    const latencyMs = Date.now() - startedAt;
+    
+    // Phase 1: Log latency for monitoring
+    this.logger.log(`Lane A latency: ${latencyMs}ms for session ${existingSession?.id || 'new'}`);
 
-    // Step 6.10: Build AI call trace snapshot
-    const aiCallSnapshot: import('../ai/ai-trace.types').AiCallTraceSnapshot = {
-      missionId: templateId ?? 'freeplay',
-      sessionId: existingSession?.id ?? dto.sessionId ?? undefined,
-      userId,
-      aiProfile: normalizedMissionConfigV1?.aiRuntimeProfile
-        ? {
-            model: normalizedMissionConfigV1.aiRuntimeProfile.model,
-            temperature: normalizedMissionConfigV1.aiRuntimeProfile.temperature,
-            maxTokens: normalizedMissionConfigV1.aiRuntimeProfile.maxTokens,
-          }
-        : undefined,
-      dynamics: normalizedMissionConfigV1?.dynamics ?? null,
-      difficulty: normalizedMissionConfigV1?.difficulty ?? null,
-      moodState: missionStateV1?.mood ?? null,
-      microDynamics: missionStateV1?.microDynamics ?? null,
-      personaStability: missionStateV1?.personaStability ?? null,
-      activeModifiers: missionStateV1?.activeModifiers ?? null,
-      provider: aiDebug?.provider ?? 'openai',
-      model: aiDebug?.model ?? 'unknown',
-      latencyMs: aiDebug?.latencyMs ?? 0,
-      tokenUsage: aiDebug?.tokens
-        ? {
-            promptTokens: aiDebug.tokens.promptTokens,
-            completionTokens: aiDebug.tokens.completionTokens,
-            totalTokens: aiDebug.tokens.totalTokens,
-          }
-        : undefined,
-      errorCode: errorCode as any,
-      syntheticReply: syntheticReply ?? false,
-      timestamp: new Date().toISOString(),
-    };
+    // Phase 1: Parse structured JSON and extract localSeverity
+    const step8Data = parseStep8StructuredJson(aiStructured, aiReply);
+    const localSeverity = this.extractLocalSeverity(step8Data, aiStructured);
+    
+    // Step 8: Apply safe defaults if parsing failed
+    const moodDelta = step8Data.moodDelta ?? 'stable';
+    const tensionDelta = step8Data.tensionDelta ?? 'stable';
+    const comfortDelta = step8Data.comfortDelta ?? 'stable';
+    const boundaryRisk = step8Data.boundaryRisk ?? 'low';
+    const microFlags = step8Data.microFlags ?? [];
 
-    // Step 6.10: Add snapshot to trace array
-    trace.aiCallSnapshots.push(aiCallSnapshot);
+    const checklistSnapshot =
+      step8Data.checklist && step8Data.checklist.flags?.length
+        ? step8Data.checklist
+        : { flags: [] };
+    const checklistScore = scoreFromChecklist(checklistSnapshot);
+
+    const localScoreNumeric = checklistScore.numericScore;
+    const localScoreTier = checklistScore.tier;
+
+    // ============================================================================
+    // LANE A: Fast path — NO heavy analytics here. All deep scoring/mood/gates 
+    // happens in MessageAnalysisWorker (Lane B).
+    // ============================================================================
+    
+    // Phase 1.1: Removed heavy logic from Lane A:
+    // - Mood state machine updates → moved to MessageAnalysisWorker
+    // - Score accumulator updates → moved to MessageAnalysisWorker  
+    // - Mission state service updates → moved to MessageAnalysisWorker
+    // - Gate evaluation → moved to MessageAnalysisWorker
+    // - Micro-dynamics computation → moved to MessageAnalysisWorker
+    // - Persona drift detection → moved to MessageAnalysisWorker
+    //
+    // Lane A now only:
+    // - Extracts localSeverity from structured output
+    // - Builds minimal messageScores for persistence (from checklist)
+    // - Reads currentMoodState from stored session (updated by Lane B)
+    // - Enqueues message-analysis job for heavy work
+
+    // Build minimal messageScores from checklist for persistence
+    let messageScores: number[] = [];
+    const lastFlags: string[] = checklistScore.flags.map((f) => f.toString());
+
+    if (isContinuation && existingScores.length > 0) {
+      messageScores = [...existingScores, localScoreNumeric];
+    } else {
+      const allUserMessages = fullTranscript.filter((m) => m.role === 'USER');
+      if (allUserMessages.length === 1) {
+        messageScores = [localScoreNumeric];
+      } else {
+        const previousScores = existingScores.length > 0 
+          ? existingScores 
+          : Array(allUserMessages.length - 1).fill(0);
+        messageScores = [...previousScores, localScoreNumeric];
+      }
+    }
+
+    // Phase 1.1: Removed aiCallSnapshot building (uses missionStateV1 which is no longer updated in Lane A)
+    // Trace snapshots will be built in Lane B if needed
 
     // Step 6.4 Fix: Server-side reward leakage guard
-    let finalAiReply = aiReply;
-    if (normalizedMissionConfigV1?.objective && missionStateV1?.gateState) {
+    // Step 8: Use parsed reply from structured JSON, fallback to aiReply
+    let finalAiReply = step8Data.reply || aiReply;
+    // Phase 1.1: Reward leakage guard simplified - use stored session state
+    // Full gate state evaluation happens in Lane B, so we use minimal check here
+    if (normalizedMissionConfigV1?.objective && existingSession) {
+      // Read gate state from stored session payload (updated by Lane B)
+      const storedPayload = existingSession.payload as any;
+      const storedGateState = storedPayload?.missionStateV1?.gateState;
+      
+      // Temporary: Use minimal missionStateV1 for reward permissions (will be improved in Phase 2)
+      const sessionCurrentMood = (existingSession as any).currentMoodState || 'NEUTRAL';
+      const tempMissionState = missionStateV1 || {
+        mood: { currentMood: sessionCurrentMood, tensionLevel: 50 },
+        gateState: storedGateState || null,
+      };
+      
       const rewardPermissions = this.rewardReleaseService.getRewardPermissionsForState(
-        missionStateV1,
+        tempMissionState as any,
         normalizedMissionConfigV1.objective,
       );
 
@@ -1495,11 +1470,56 @@ export class PracticeService {
 
     const transcriptToPersist: TranscriptMsg[] = [...fullTranscript, { role: 'AI', content: finalAiReply }];
 
-    const transcriptForCore: TranscriptMessage[] = transcriptToPersist.map((m) => ({
-      text: m.content,
-      sentBy: m.role === 'USER' ? 'user' : 'ai',
-    }));
-    const aiCoreResult = await this.aiCore.scoreSession(transcriptForCore);
+    // Phase 1.1: Removed aiCore.scoreSession() call from Lane A (heavy, moved to Lane B)
+    // aiCoreResult will be computed in MessageAnalysisWorker if needed
+    const aiCoreResult = null;
+
+    // Phase 1: Add latency for AI message
+    (payloadExtras as any).latencyMs = latencyMs;
+
+    // Phase 1.1: Mission state computation simplified - use stored state from session
+    // Heavy computation (gates, progress, end reason) happens in Lane B
+    // For Lane A response, we use minimal state derived from message count
+    const checklistAgg = {
+      positiveHookCount: checklistScore.flags.includes(MessageChecklistFlag.POSITIVE_HOOK_HIT) ? 1 : 0,
+      objectiveProgressCount: checklistScore.flags.includes(MessageChecklistFlag.OBJECTIVE_PROGRESS) ? 1 : 0,
+      boundarySafeStreak: checklistScore.flags.includes(MessageChecklistFlag.NO_BOUNDARY_ISSUES) ? 1 : 0,
+      momentumStreak: checklistScore.flags.includes(MessageChecklistFlag.MOMENTUM_MAINTAINED) ? 1 : 0,
+      lastFlags: checklistScore.flags,
+    };
+
+    // Temporary: Minimal mission state for response (will be replaced by stored state in Phase 2)
+    const missionState = computeMissionState(
+      messageScores,
+      effectivePolicy,
+      minMessagesBeforeEndResolved,
+      checklistAgg,
+    );
+
+    // Temporary: Minimal end reason computation (full logic in Lane B)
+    const endReason = computeEndReason({
+      aiMode,
+      status: missionState.status,
+      disqualified: false,
+      disqualify: null,
+      averageScore: missionState.averageScore,
+      policy: effectivePolicy,
+      normalizedConfig: normalizedMissionConfigV1,
+      gateState: null, // Gates evaluated in Lane B
+      checklistAgg: checklistAgg,
+    });
+    missionState.endReasonCode = endReason.code;
+    missionState.endReasonMeta = endReason.meta;
+
+    // ✅ Step 5.3: Normalize endReasonCode/endReasonMeta before returning
+    {
+      const normalizedEndReason = normalizeEndReason(
+        missionState.endReasonCode,
+        missionState.endReasonMeta,
+      );
+      missionState.endReasonCode = normalizedEndReason.endReasonCode;
+      missionState.endReasonMeta = normalizedEndReason.endReasonMeta;
+    }
 
     const saved = await this.sessions.createScoredSessionFromScores({
       userId,
@@ -1518,29 +1538,139 @@ export class PracticeService {
       endReasonMeta: missionState.endReasonMeta ?? null,
     });
 
+    // Phase 1.1: Read currentMoodState from saved session (updated by Lane B)
+    // Reload session to get latest state after save
+    // Note: currentMoodState field may not exist until migration is run, so we handle gracefully
+    const savedSession = await this.prisma.practiceSession.findUnique({
+      where: { id: saved.sessionId },
+    });
+    const currentMoodString = ((savedSession as any)?.currentMoodState?.toLowerCase()) || 
+                              (missionStateV1?.mood?.currentMood?.toLowerCase()) || 
+                              'neutral';
+    const localScoreRarity = checklistScore?.rarity ?? computeRarity(localScoreTier);
+    const uiEventHint = computeUiEventHint(localScoreTier, microFlags, boundaryRisk);
+    const lastUserMessageIndex = fullTranscript.filter((m) => m.role === 'USER').length;
+
+    // Step 8: Build FastPath response
+    const fastPathResponse = {
+      ...saved,
+      aiReply: finalAiReply,
+      aiStructured,
+      aiDebug: process.env.NODE_ENV !== 'production' ? aiDebug : undefined,
+      mission: templateId
+        ? {
+            templateId,
+            difficulty: template?.difficulty ?? null,
+            goalType: template?.goalType ?? null,
+            maxMessages: effectivePolicy.maxMessages,
+            scoring: {
+              successScore: effectivePolicy.successScore, // @deprecated - legacy compatibility
+              failScore: effectivePolicy.failScore, // @deprecated - legacy compatibility
+            },
+            aiStyle: (template?.aiStyle ?? null) as AiStyle | null,
+            aiContract: template?.aiContract ?? null,
+          }
+        : null,
+      missionState,
+      // Phase 3: Checklist-native aggregates
+      checklist: {
+        positiveHookCount: checklistAgg.positiveHookCount,
+        objectiveProgressCount: checklistAgg.objectiveProgressCount,
+        boundarySafeStreak: checklistAgg.boundarySafeStreak,
+        momentumStreak: checklistAgg.momentumStreak,
+        lastMessageFlags: Array.isArray(checklistAgg.lastFlags)
+          ? checklistAgg.lastFlags.map((f) => f.toString())
+          : [],
+      },
+      // Step 8: Micro-interaction fields
+      currentMood: currentMoodString,
+      localScoreTier,
+      localScoreNumeric,
+      localScoreRarity,
+      uiEventHint,
+      microFlags,
+      moodDelta,
+      tensionDelta,
+      comfortDelta,
+      boundaryRisk,
+      turnIndex: lastUserMessageIndex,
+      // Phase 1: Add localSeverity to response
+      localSeverity,
+    };
+
+    // Phase 1: Enqueue message-analysis job (per-message analysis)
+    const usedSessionId = saved.sessionId;
+    const lastMessageIndex = transcriptToPersist.length - 1; // AI reply index
+    
+    if (this.messageAnalysisQueue) {
+      try {
+        const messageAnalysisPayload: MessageAnalysisJobPayload = {
+          sessionId: usedSessionId,
+          messageIndex: lastMessageIndex,
+          userId,
+        };
+
+        // Fire-and-forget: don't await, don't block FastPath
+        this.messageAnalysisQueue.add('message-analysis', messageAnalysisPayload, {
+          jobId: `message-analysis:${usedSessionId}:${lastMessageIndex}`, // Deduplication
+        }).catch((err) => {
+          // TODO: record queue_processing_errors_total
+          console.error(`[PracticeService] Failed to enqueue message analysis job:`, err);
+        });
+      } catch (err: any) {
+        // TODO: record queue_processing_errors_total
+        console.error(`[PracticeService] Error enqueueing message analysis job:`, err);
+        // Don't throw - FastPath must continue even if queue fails
+      }
+    } else {
+      // Queue not available - log but don't block
+      console.warn(`[PracticeService] Message analysis queue not available, skipping job enqueue`);
+    }
+
+    // Phase 1.1: Deprecated - deep-analysis is now replaced by per-message `message-analysis` worker + `insights` worker.
+    // Deep-analysis queue is kept for legacy endpoints/admin flows only.
+    // Commented out for main chat path to avoid duplicate work with message-analysis.
+    /*
+    if (this.deepAnalysisQueue) {
+      try {
+        const jobPayload: DeepAnalysisJobPayload = {
+          traceId: `trace-${usedSessionId}-${lastUserMessageIndex}-${Date.now()}`,
+          missionId: templateId ?? 'freeplay',
+          sessionId: usedSessionId,
+          userId,
+          lastMessageIndex: lastUserMessageIndex,
+          fastTags: {
+            localScoreTier,
+            moodDelta,
+            tensionDelta,
+            comfortDelta,
+            boundaryRisk,
+            microFlags,
+          },
+          timestamp: new Date().toISOString(),
+        };
+
+        // Fire-and-forget: don't await, don't block FastPath
+        this.deepAnalysisQueue.add('deep-analysis', jobPayload, {
+          jobId: `deep-analysis:${usedSessionId}:${lastUserMessageIndex}`, // Deduplication
+        }).catch((err) => {
+          // TODO: record queue_processing_errors_total
+          console.error(`[PracticeService] Failed to enqueue deep analysis job:`, err);
+        });
+      } catch (err: any) {
+        // TODO: record queue_processing_errors_total
+        console.error(`[PracticeService] Error enqueueing deep analysis job:`, err);
+        // Don't throw - FastPath must continue even if queue fails
+      }
+    } else {
+      // Queue not available - log but don't block
+      console.warn(`[PracticeService] Deep analysis queue not available, skipping job enqueue`);
+    }
+    */
+
+    // TODO: record fastpath_latency_ms here (stop timer)
+
     // ✅ Step 5.6: Apply allowlist-only serializer (no spreading raw objects)
-      return toPracticeSessionResponsePublic(
-        sanitizePracticeResponse({
-          ...saved,
-          aiReply: finalAiReply,
-          aiStructured,
-        aiDebug: process.env.NODE_ENV !== 'production' ? aiDebug : undefined,
-        mission: templateId
-          ? {
-              templateId,
-              difficulty: template?.difficulty ?? null,
-              goalType: template?.goalType ?? null,
-              maxMessages: effectivePolicy.maxMessages,
-              scoring: {
-                successScore: effectivePolicy.successScore,
-                failScore: effectivePolicy.failScore,
-              },
-              aiStyle: (template?.aiStyle ?? null) as AiStyle | null,
-              aiContract: template?.aiContract ?? null,
-            }
-          : null,
-        missionState,
-      }),
-    );
+    return toPracticeSessionResponsePublic(sanitizePracticeResponse(fastPathResponse));
   }
 }

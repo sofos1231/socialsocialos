@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
@@ -14,6 +15,8 @@ const STATUS_COMPLETED = MissionProgressStatus.COMPLETED;
 
 @Injectable()
 export class MissionsService {
+  private readonly logger = new Logger(MissionsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -208,6 +211,7 @@ export class MissionsService {
         isUnlocked,
         isCompleted,
         isCurrent: currentId === t.id,
+        isActive: !!t.active,
       };
     });
   }
@@ -238,36 +242,90 @@ export class MissionsService {
       include: { persona: true, category: true },
     });
 
-    if (!template) throw new NotFoundException('Mission template not found.');
-    if (!(template as any).active)
-      throw new ForbiddenException('Mission is inactive.');
+    if (!template) {
+      const code = 'MISSION_TEMPLATE_NOT_FOUND';
+      const message = 'Mission template not found.';
+      this.logger.warn(
+        `startMissionForUser failed: code=${code} userId=${userId} templateId=${templateId} reason=${message}`,
+      );
+      throw new NotFoundException({
+        code,
+        message,
+        templateId,
+      });
+    }
+
+    if (!(template as any).active) {
+      const code = 'MISSION_INACTIVE';
+      const message = 'Mission is inactive.';
+      this.logger.warn(
+        `startMissionForUser failed: code=${code} userId=${userId} templateId=${template.id} templateCode=${template.code} reason=${message}`,
+      );
+      throw new ForbiddenException({
+        code,
+        message,
+        templateId: template.id,
+        templateCode: template.code,
+      });
+    }
 
     // ✅ STEP 4.2: Pre-flight validation - ensure template has valid aiContract
     if (!template.aiContract || template.aiContract === null) {
+      const code = 'MISSION_TEMPLATE_INVALID_AT_START';
+      const message = 'Mission template is missing aiContract configuration';
+      this.logger.warn(
+        `startMissionForUser failed: code=${code} userId=${userId} templateId=${template.id} templateCode=${template.code} reason=${message}`,
+      );
       throw new BadRequestException({
-        code: 'MISSION_TEMPLATE_INVALID_AT_START',
-        message: 'Mission template is missing aiContract configuration',
+        code,
+        message,
+        templateId: template.id,
+        templateCode: template.code,
       });
     }
 
     const normalizeResult = normalizeMissionConfigV1(template.aiContract);
     if (!normalizeResult.ok) {
       const failedResult = normalizeResult as { ok: false; reason: string; errors?: any[] };
+      const code = 'MISSION_TEMPLATE_INVALID_AT_START';
+      const message =
+        failedResult.reason === 'missing'
+          ? 'Mission template aiContract is missing missionConfigV1'
+          : failedResult.reason === 'invalid'
+            ? 'Mission template aiContract is invalid'
+            : 'Mission template aiContract is not a valid object';
+      
+      // Log first 3 validation errors for debugging
+      const errors = failedResult.errors ?? [];
+      const firstErrors = errors.slice(0, 3).map(e => `${e.path}: ${e.message}`).join('; ');
+      const errorSummary = firstErrors ? ` (${firstErrors})` : '';
+      
+      this.logger.warn(
+        `startMissionForUser failed: code=${code} userId=${userId} templateId=${template.id} templateCode=${template.code} reason=${message}${errorSummary}`,
+      );
       throw new BadRequestException({
-        code: 'MISSION_TEMPLATE_INVALID_AT_START',
-        message:
-          failedResult.reason === 'missing'
-            ? 'Mission template aiContract is missing missionConfigV1'
-            : failedResult.reason === 'invalid'
-              ? 'Mission template aiContract is invalid'
-              : 'Mission template aiContract is not a valid object',
-        details: failedResult.errors ?? [],
+        code,
+        message,
+        templateId: template.id,
+        templateCode: template.code,
+        details: errors,
       });
     }
 
     const isUnlocked = await this.isUnlockedForUser(userId, template as any);
-    if (!isUnlocked)
-      throw new ForbiddenException('You must complete earlier missions first.');
+    if (!isUnlocked) {
+      const code = 'MISSION_LOCKED_PREVIOUS_NOT_COMPLETED';
+      const message = 'You must complete earlier missions in this lane first.';
+      this.logger.warn(
+        `startMissionForUser failed: code=${code} userId=${userId} templateId=${template.id} templateCode=${template.code} reason=${message}`,
+      );
+      throw new ForbiddenException({
+        code,
+        message,
+        templateId: template.id,
+        templateCode: template.code,
+      });
+    }
 
     // Select compatible persona for attraction-sensitive missions
     const compatiblePersona = await this.selectCompatiblePersona(

@@ -41,11 +41,15 @@ type ChatMsg = {
   role: 'USER' | 'AI';
   content: string;
   // scoring metadata – for USER messages only
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   score?: number;
   rarity?: RarityTier;
   xpDelta?: number;
   coinsDelta?: number;
   gemsDelta?: number;
+  // Phase 3: Checklist-native fields
+  tier?: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+  checklistFlags?: string[]; // MessageChecklistFlag[]
 };
 
 function makeId() {
@@ -80,8 +84,10 @@ function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
 }
 
-const DEFAULT_SUCCESS_SCORE = 80;
-const DEFAULT_FAIL_SCORE = 60;
+// Phase 3: Legacy constants - kept only for visual styling, not logic
+// Mission success/fail is now checklist-driven (via missionState.status)
+const DEFAULT_SUCCESS_SCORE = 80; // @deprecated - cosmetic only
+const DEFAULT_FAIL_SCORE = 60; // @deprecated - cosmetic only
 
 function formatFreePlaySubtitle(fp?: FreePlayConfig) {
   if (!fp) return 'Free play • Custom scenario';
@@ -204,6 +210,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
   const mapRewardsToLatestUserMessage = (
     msgs: ChatMsg[],
     breakdowns: SessionRewardMessageBreakdown[] | undefined,
+    response?: PracticeSessionResponse,
   ): ChatMsg[] => {
     if (!breakdowns || breakdowns.length === 0) return msgs;
 
@@ -221,10 +228,26 @@ export default function PracticeScreen({ route, navigation }: Props) {
     const updated = [...msgs];
     const target = updated[lastUserIndex];
 
+    // Phase 3: Extract tier from rarity (rarity maps to tier: S+ → S+, S → S, A → A, B → B, C → C)
+    // For now, derive tier from rarity; backend may provide tier directly in future
+    const tierFromRarity = lastBreakdown.rarity === 'S+' ? 'S+' :
+                           lastBreakdown.rarity === 'S' ? 'S' :
+                           lastBreakdown.rarity === 'A' ? 'A' :
+                           lastBreakdown.rarity === 'B' ? 'B' :
+                           lastBreakdown.rarity === 'C' ? 'C' : 'D' as 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+
+    // Phase 3: Extract checklist flags from response (from checklist.lastMessageFlags or aiStructured)
+    let checklistFlags: string[] | undefined = undefined;
+    if (response?.checklist?.lastMessageFlags && Array.isArray(response.checklist.lastMessageFlags)) {
+      checklistFlags = response.checklist.lastMessageFlags;
+    }
+
     updated[lastUserIndex] = {
       ...target,
-      score: lastBreakdown.score,
+      score: lastBreakdown.score, // @deprecated - legacy
       rarity: lastBreakdown.rarity,
+      tier: tierFromRarity,
+      checklistFlags,
       xpDelta: lastBreakdown.xp,
       coinsDelta: lastBreakdown.coins,
       gemsDelta: lastBreakdown.gems,
@@ -243,22 +266,19 @@ export default function PracticeScreen({ route, navigation }: Props) {
   const moodTarget = useMemo(() => {
     if (!missionState) return { mood01: 0.5, opacity01: 0 };
 
+    // Phase 3: Mission success/fail is checklist-driven, use status directly
+    // NO numeric score logic - status comes from backend checklist evaluation
     if (missionState.status === 'SUCCESS') return { mood01: 1, opacity01: 0.32 };
     if (missionState.status === 'FAIL') return { mood01: 0, opacity01: 0.34 };
 
-    const avg =
-      typeof missionState.averageScore === 'number' && Number.isFinite(missionState.averageScore)
-        ? missionState.averageScore
-        : 0;
-
-    const denom = Math.max(1, DEFAULT_SUCCESS_SCORE - DEFAULT_FAIL_SCORE);
-    const mood01 = clamp01((avg - DEFAULT_FAIL_SCORE) / denom);
-
+    // Phase 3: For IN_PROGRESS, use neutral mood
+    // Legacy numeric averageScore is NOT used for decisions - only cosmetic display
+    // DEFAULT_SUCCESS_SCORE and DEFAULT_FAIL_SCORE are NOT used for logic anymore
     const turns = typeof missionState.totalMessages === 'number' ? missionState.totalMessages : 0;
     const intensity = clamp01((turns + 1) / 4);
     const opacity01 = 0.12 + 0.18 * intensity;
 
-    return { mood01, opacity01 };
+    return { mood01: 0.5, opacity01 }; // Neutral mood for in-progress
   }, [missionState]);
 
   useEffect(() => {
@@ -328,7 +348,7 @@ export default function PracticeScreen({ route, navigation }: Props) {
       const serverState = res?.missionState ?? null;
       if (serverState) setMissionState(serverState);
 
-      let updated: ChatMsg[] = mapRewardsToLatestUserMessage(nextMessages, rewards?.messages);
+      let updated: ChatMsg[] = mapRewardsToLatestUserMessage(nextMessages, rewards?.messages, res);
 
       const aiReplyText = extractAiReply(res);
       const aiMsg: ChatMsg = { id: makeId(), role: 'AI', content: aiReplyText };
@@ -396,27 +416,84 @@ export default function PracticeScreen({ route, navigation }: Props) {
 
   const topSubtitle = isFreePlay ? formatFreePlaySubtitle(freeplay) : (hasPersonaHints ? 'Guided mission • AI coach' : 'Practice • No hints');
 
+  // Phase 3: Helper to get tier-based styling (prefer tier over numeric score)
+  const getTierStyle = (tier?: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D', score?: number | null): any => {
+    const tierOrder: Record<string, number> = { 'S+': 5, 'S': 4, 'A': 3, 'B': 2, 'C': 1, 'D': 0 };
+    
+    // Prefer tier if available, fallback to score for backward compatibility
+    if (tier) {
+      const tierValue = tierOrder[tier] ?? 0;
+      if (tierValue >= 5) { // S+
+        return {
+          borderColor: '#f97316',
+          borderWidth: 2,
+          shadowOpacity: 0.45,
+          shadowRadius: 10,
+        };
+      } else if (tierValue >= 4) { // S
+        return {
+          borderColor: '#eab308',
+          borderWidth: 2,
+          shadowOpacity: 0.35,
+          shadowRadius: 8,
+        };
+      } else if (tierValue >= 3) { // A
+        return {
+          borderColor: '#4ade80',
+          borderWidth: 1.5,
+        };
+      }
+    } else if (typeof score === 'number') {
+      // Legacy fallback to numeric score
+      if (score >= 95) {
+        return {
+          borderColor: '#f97316',
+          borderWidth: 2,
+          shadowOpacity: 0.45,
+          shadowRadius: 10,
+        };
+      } else if (score >= 90) {
+        return {
+          borderColor: '#eab308',
+          borderWidth: 2,
+          shadowOpacity: 0.35,
+          shadowRadius: 8,
+        };
+      } else if (score >= 85) {
+        return {
+          borderColor: '#4ade80',
+          borderWidth: 1.5,
+        };
+      }
+    }
+    return {};
+  };
+
+  // Phase 3: Helper to format checklist flag for display
+  const formatChecklistFlag = (flag: string): string => {
+    // Convert flag like "POSITIVE_HOOK_HIT" to readable label
+    const flagLabels: Record<string, string> = {
+      'POSITIVE_HOOK_HIT': '🎯 Hook',
+      'OBJECTIVE_PROGRESS': '✅ Progress',
+      'NO_BOUNDARY_ISSUES': '🛡️ Safe',
+      'MOMENTUM_MAINTAINED': '⚡ Momentum',
+      'MULTIPLE_HOOKS_HIT': '🔥 Multi',
+      'MOOD_STRONG_UP': '📈 Mood',
+      'GOOD_CALIBRATION': '🎚️ Calibrated',
+      'CLARITY_GOOD': '💬 Clear',
+      'WARMTH_GOOD': '❤️ Warm',
+    };
+    return flagLabels[flag] || flag.replace(/_/g, ' ').toLowerCase();
+  };
+
   const renderMessageBubble = (m: ChatMsg, index: number) => {
     const isUser = m.role === 'USER';
     const score = m.score ?? null;
+    const tier = m.tier;
+    const checklistFlags = m.checklistFlags;
 
-    const rarityStyle: any = {};
-    if (isUser && typeof score === 'number') {
-      if (score >= 95) {
-        rarityStyle.borderColor = '#f97316';
-        rarityStyle.borderWidth = 2;
-        rarityStyle.shadowOpacity = 0.45;
-        rarityStyle.shadowRadius = 10;
-      } else if (score >= 90) {
-        rarityStyle.borderColor = '#eab308';
-        rarityStyle.borderWidth = 2;
-        rarityStyle.shadowOpacity = 0.35;
-        rarityStyle.shadowRadius = 8;
-      } else if (score >= 85) {
-        rarityStyle.borderColor = '#4ade80';
-        rarityStyle.borderWidth = 1.5;
-      }
-    }
+    // Phase 3: Use tier-based styling (prefer tier over numeric score)
+    const rarityStyle = getTierStyle(tier, score);
 
     const Wrapper = isUser ? TouchableOpacity : View;
     const wrapperProps: any = isUser
@@ -434,10 +511,30 @@ export default function PracticeScreen({ route, navigation }: Props) {
       >
         <Text style={styles.msgText}>{m.content}</Text>
 
-        {isUser && m.rarity && (
+        {/* Phase 3: Show tier prominently (preferred over rarity) */}
+        {isUser && (tier || m.rarity) && (
           <View style={styles.rarityTag}>
-            <Text style={styles.rarityText}>{m.rarity}</Text>
+            <Text style={styles.rarityText}>{tier || m.rarity}</Text>
           </View>
+        )}
+
+        {/* Phase 3: Show checklist flags */}
+        {isUser && checklistFlags && checklistFlags.length > 0 && (
+          <View style={styles.checklistFlagsRow}>
+            {checklistFlags.slice(0, 3).map((flag, idx) => (
+              <View key={idx} style={styles.checklistFlagTag}>
+                <Text style={styles.checklistFlagText}>{formatChecklistFlag(flag)}</Text>
+              </View>
+            ))}
+            {checklistFlags.length > 3 && (
+              <Text style={styles.checklistFlagMore}>+{checklistFlags.length - 3}</Text>
+            )}
+          </View>
+        )}
+
+        {/* Phase 3: Show numeric score as secondary (small, muted) */}
+        {isUser && typeof score === 'number' && (
+          <Text style={styles.scoreSecondary}>Score: {score}</Text>
         )}
       </Animated.View>
     );
@@ -833,6 +930,36 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f172a',
   },
   rarityText: { color: '#fbbf24', fontSize: 10, fontWeight: '700' },
+  // Phase 3: Checklist flags styling
+  checklistFlagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 6,
+    gap: 4,
+    alignItems: 'center',
+  },
+  checklistFlagTag: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  checklistFlagText: {
+    color: '#e5e7eb',
+    fontSize: 9,
+    fontWeight: '500',
+  },
+  checklistFlagMore: {
+    color: '#9ca3af',
+    fontSize: 9,
+    fontStyle: 'italic',
+  },
+  scoreSecondary: {
+    marginTop: 4,
+    color: '#9ca3af',
+    fontSize: 10,
+    fontStyle: 'italic',
+  },
 
   emptyState: {
     alignItems: 'center',

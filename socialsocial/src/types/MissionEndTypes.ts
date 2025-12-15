@@ -9,8 +9,12 @@ import { InsightCard, DeepParagraphDTO } from './InsightsDTO';
 export interface MessageHighlight {
   turnIndex: number;
   content: string;
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   score: number;
   rarity: string | null;
+  // Phase 3: Checklist-native fields
+  tier?: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+  checklistFlags?: string[]; // MessageChecklistFlag[]
 }
 
 /**
@@ -28,8 +32,14 @@ export interface EndReasonBanner {
  * Mood teaser (computed locally)
  */
 export interface MoodTeaser {
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   averageScore: number;
   timeline?: any; // Optional: backend timeline if exists in future
+  // Phase 3: Checklist-native metrics
+  positiveHooks?: number;
+  objectiveProgress?: number;
+  boundarySafeRate?: number; // 0-100
+  momentumMaintainedRate?: number; // 0-100
 }
 
 /**
@@ -49,11 +59,23 @@ export interface MissionEndSelectedPack {
 
   // Rewards (safe defaults: all zeros if missing)
   rewards: {
+    /** @deprecated - legacy numeric score, kept for cosmetic display only */
     score: number;
     xpGained: number;
     coinsGained: number;
     gemsGained: number;
     rarityCounts: Record<string, number>; // e.g. { 'S': 2, 'A': 1 }
+  };
+
+  // Phase 3: Checklist-native aggregates for mission summary
+  checklist?: {
+    positiveHookCount: number;
+    objectiveProgressCount: number;
+    boundarySafeStreak: number;
+    momentumStreak: number;
+    totalMessages: number;
+    boundarySafeRate?: number; // 0-100 (computed)
+    momentumMaintainedRate?: number; // 0-100 (computed)
   };
 
   // End reason (normalized)

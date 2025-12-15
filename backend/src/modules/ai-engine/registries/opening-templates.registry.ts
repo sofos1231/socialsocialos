@@ -11,7 +11,9 @@ export type OpeningTemplateKey =
   | 'WARM_COMPLIMENT'
   | 'CURIOUS_OBSERVATION'
   | 'BOLD_STATEMENT'
-  | 'SHY_APPROACH';
+  | 'SHY_APPROACH'
+  | 'ENERGETIC_GREETING'
+  | 'CONFIDENT_OPENER';
 
 export interface OpeningTemplate {
   key: OpeningTemplateKey;
@@ -119,6 +121,28 @@ export const OPENING_TEMPLATES: Record<OpeningTemplateKey, OpeningTemplate> = {
     variables: ['greeting', 'question'],
     defaultEnergy: 0.3,
     defaultCuriosity: 0.6,
+  },
+
+  ENERGETIC_GREETING: {
+    key: 'ENERGETIC_GREETING',
+    name: 'Energetic Greeting',
+    description: 'High-energy, enthusiastic opening',
+    compatibleStyles: [AiStyleKey.PLAYFUL, AiStyleKey.FLIRTY, AiStyleKey.CHAOTIC],
+    template: 'Hey! {{greeting}} 😊',
+    variables: ['greeting'],
+    defaultEnergy: 0.85,
+    defaultCuriosity: 0.6,
+  },
+
+  CONFIDENT_OPENER: {
+    key: 'CONFIDENT_OPENER',
+    name: 'Confident Opener',
+    description: 'Self-assured, direct opening statement',
+    compatibleStyles: [AiStyleKey.DIRECT, AiStyleKey.CHALLENGING, AiStyleKey.NEUTRAL],
+    template: '{{statement}}',
+    variables: ['statement'],
+    defaultEnergy: 0.75,
+    defaultCuriosity: 0.5,
   },
 };
 

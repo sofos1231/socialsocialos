@@ -49,7 +49,11 @@ export class MissionsController {
     );
 
     if (!result) {
-      throw new ForbiddenException('Mission cannot be started.');
+      throw new ForbiddenException({
+        code: 'MISSION_CANNOT_BE_STARTED',
+        message: 'Mission cannot be started due to an internal constraint.',
+        templateId: id,
+      });
     }
 
     return {

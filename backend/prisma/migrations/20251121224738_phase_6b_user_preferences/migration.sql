@@ -1,5 +1,12 @@
 -- CreateEnum
-CREATE TYPE "Gender" AS ENUM ('MALE', 'FEMALE', 'OTHER', 'UNKNOWN');
+-- NOTE: Made idempotent to avoid P3006 when shadow DB replays migrations.
+-- The enum may already exist from migration 20250115000000_add_attraction_routing.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'Gender') THEN
+    CREATE TYPE "Gender" AS ENUM ('MALE', 'FEMALE', 'OTHER', 'UNKNOWN');
+  END IF;
+END $$;
 
 -- CreateEnum
 CREATE TYPE "AttractionPreference" AS ENUM ('WOMEN', 'MEN', 'BOTH', 'OTHER', 'UNKNOWN');

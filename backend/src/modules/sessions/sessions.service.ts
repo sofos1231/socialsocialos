@@ -25,6 +25,8 @@ import {
   MessageEvaluationInput,
   SessionRewardsSummary,
   MessageRarity,
+  scoreToTier,
+  MessageChecklistFlag,
 } from './scoring';
 import {
   MessageGrade,
@@ -47,6 +49,10 @@ import { normalizeEndReason } from '../shared/normalizers/end-reason.normalizer'
 // Step 5.13: Import SessionEndReadModel builder
 import { SessionEndReadModelBuilder } from './session-end-read-model.builder';
 import { SessionEndReadModel } from '../shared/types/session-end-read-model.types';
+// Step 8: Import queue for priority deep analysis jobs
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { DeepAnalysisJobPayload } from '../queue/jobs/deep-analysis.job';
 
 // Temporary: mock scores for the /sessions/mock endpoint
 const MOCK_MESSAGE_SCORES: number[] = [62, 74, 88, 96];
@@ -123,6 +129,8 @@ export class SessionsService {
     private readonly rotationService: RotationService,
     // Step 5.14: Inject category stats service
     private readonly categoryStatsService: CategoryStatsService,
+    // Step 8: Inject queue for priority deep analysis jobs
+    @InjectQueue('deep-analysis') private readonly deepAnalysisQueue?: Queue,
   ) {
     // Step 5.13: Initialize builder (inject Prisma)
     this.sessionEndReadModelBuilder = new SessionEndReadModelBuilder(this.prisma);
@@ -275,10 +283,10 @@ export class SessionsService {
 
     const shouldFinalize = isFinalStatus;
 
+    // Phase 1-4: Free-play success is now purely checklist-driven via missionStatus
+    // (removed numeric threshold finalScore >= 60 - missionStatus already evaluates checklist aggregates)
     const isSuccess: boolean | null = shouldFinalize
-      ? templateId
-        ? missionStatus === 'SUCCESS'
-        : missionStatus === 'SUCCESS' && finalScore >= 60
+      ? missionStatus === 'SUCCESS'
       : null;
 
     const targetStatus: MissionStatus = shouldFinalize
@@ -368,6 +376,72 @@ export class SessionsService {
 
       const finalEndedAt = shouldFinalize ? now : null;
 
+      // Phase 4: Extract final checklist aggregates for PracticeSession.checklistAggregates
+      let sessionChecklistAggregates: {
+        positiveHookCount: number;
+        objectiveProgressCount: number;
+        boundarySafeStreak: number;
+        momentumStreak: number;
+        totalMessages: number;
+      } | null = null;
+
+      try {
+        // Prefer endReasonMeta.checklist (final mission aggregates) if available
+        if (endReasonMeta && typeof endReasonMeta === 'object' && (endReasonMeta as any).checklist) {
+          const checklist = (endReasonMeta as any).checklist;
+          sessionChecklistAggregates = {
+            positiveHookCount: typeof checklist.positiveHookCount === 'number' ? checklist.positiveHookCount : 0,
+            objectiveProgressCount: typeof checklist.objectiveProgressCount === 'number' ? checklist.objectiveProgressCount : 0,
+            boundarySafeStreak: typeof checklist.boundarySafeStreak === 'number' ? checklist.boundarySafeStreak : 0,
+            momentumStreak: typeof checklist.momentumStreak === 'number' ? checklist.momentumStreak : 0,
+            totalMessages: messageScores.length,
+          };
+        } else {
+          // Fallback to fastPathScoreSnapshot from extraPayload
+          const fastPathSnapshot = extraPayload && typeof extraPayload === 'object' ? (extraPayload as any).fastPathScoreSnapshot : null;
+          if (fastPathSnapshot && typeof fastPathSnapshot === 'object') {
+            sessionChecklistAggregates = {
+              positiveHookCount: typeof fastPathSnapshot.positiveHookCount === 'number' ? fastPathSnapshot.positiveHookCount : 0,
+              objectiveProgressCount: typeof fastPathSnapshot.objectiveProgressCount === 'number' ? fastPathSnapshot.objectiveProgressCount : 0,
+              boundarySafeStreak: typeof fastPathSnapshot.boundarySafeStreak === 'number' ? fastPathSnapshot.boundarySafeStreak : 0,
+              momentumStreak: typeof fastPathSnapshot.momentumStreak === 'number' ? fastPathSnapshot.momentumStreak : 0,
+              totalMessages: typeof fastPathSnapshot.messageCount === 'number' ? fastPathSnapshot.messageCount : messageScores.length,
+            };
+          }
+        }
+      } catch (err) {
+        // If extraction fails, leave as null (backward compatible)
+        console.warn(`[SessionsService] Failed to extract checklist aggregates for PracticeSession:`, err);
+      }
+
+      // Phase 1: Extract runtime profile keys from extraPayload or use defaults
+      let engineVersionId: string | null = null;
+      let chatRuntimeProfileKey: string | null = null;
+      let scoringRuntimeProfileKey: string | null = null;
+      let insightsRuntimeProfileKey: string | null = null;
+      let currentMoodState: string | null = null;
+
+      if (extraPayload && typeof extraPayload === 'object') {
+        const payload = extraPayload as any;
+        // Extract from normalizedMissionConfigV1 if available
+        const normalizedConfig = payload.normalizedMissionConfigV1;
+        if (normalizedConfig && typeof normalizedConfig === 'object') {
+          engineVersionId = normalizedConfig.version ? `v${normalizedConfig.version}` : 'v1';
+          chatRuntimeProfileKey = normalizedConfig.aiRuntimeProfile?.model 
+            ? `chat_${normalizedConfig.aiRuntimeProfile.model}` 
+            : 'chat_fast';
+          scoringRuntimeProfileKey = normalizedConfig.scoringProfileCode || 'scoring_default';
+          insightsRuntimeProfileKey = normalizedConfig.insightsProfileCode || 'insights_default';
+        }
+      }
+
+      // Phase 1: Defaults if not found
+      if (!engineVersionId) engineVersionId = 'v1';
+      if (!chatRuntimeProfileKey) chatRuntimeProfileKey = 'chat_fast';
+      if (!scoringRuntimeProfileKey) scoringRuntimeProfileKey = 'scoring_default';
+      if (!insightsRuntimeProfileKey) insightsRuntimeProfileKey = 'insights_default';
+      if (!currentMoodState) currentMoodState = 'NEUTRAL';
+
       const baseSessionData = {
         userId,
         topic,
@@ -394,6 +468,14 @@ export class SessionsService {
 
         endReasonCode: endReasonCode ?? null,
         endReasonMeta: endReasonMeta ?? null,
+        // Phase 4: Final session-level checklist aggregates
+        checklistAggregates: sessionChecklistAggregates,
+        // Phase 1: Two-lane AI engine fields
+        engineVersionId,
+        chatRuntimeProfileKey,
+        scoringRuntimeProfileKey,
+        insightsRuntimeProfileKey,
+        currentMoodState,
       };
 
       const session = sessionIdToUse
@@ -449,6 +531,26 @@ export class SessionsService {
             patterns,
           };
 
+          // Phase 4: Extract tier and checklistFlags for ChatMessage storage
+          // Tier: derive from score if available, otherwise null
+          let tier: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D' | null = null;
+          if (typeof score === 'number') {
+            tier = scoreToTier(score);
+          }
+          
+          // Checklist flags: extract from traitData.flags (Phase 2 stores them there)
+          // Filter to only valid MessageChecklistFlag values
+          let checklistFlags: string[] | null = null;
+          if (Array.isArray(flags) && flags.length > 0) {
+            checklistFlags = flags.filter((f: any) => 
+              Object.values(MessageChecklistFlag).includes(f as any)
+            ) as string[];
+            // If no valid flags found, set to null
+            if (checklistFlags.length === 0) {
+              checklistFlags = null;
+            }
+          }
+
           rows.push({
             sessionId: session.id,
             userId,
@@ -464,6 +566,9 @@ export class SessionsService {
             turnIndex: i,
             score: score ?? null,
             traitData: enrichedTraitData,
+            // Phase 4: Store tier and checklistFlags directly
+            tier: tier ?? null,
+            checklistFlags: checklistFlags ?? null,
 
             meta: {
               index: i,
@@ -475,6 +580,16 @@ export class SessionsService {
 
           userIdx += 1;
         } else if (roleEnum === MessageRole.AI) {
+          // Phase 1: Extract latencyMs from extraPayload for the last AI message
+          let latencyMs: number | null = null;
+          if (extraPayload && typeof extraPayload === 'object') {
+            const payload = extraPayload as any;
+            // Only set latency for the last AI message (the one we just generated)
+            if (i === transcript.length - 1 && typeof payload.latencyMs === 'number') {
+              latencyMs = payload.latencyMs;
+            }
+          }
+
           rows.push({
             sessionId: session.id,
             userId,
@@ -490,6 +605,8 @@ export class SessionsService {
             turnIndex: i,
             score: null,
             traitData: safeTraitData(aiCoreMsg),
+            // Phase 1: Store latency for AI messages
+            latencyMs: latencyMs,
 
             meta: { index: i, generated: true } as any,
           });
@@ -557,6 +674,7 @@ export class SessionsService {
           const newSuccessCount = stats.successCount + (isSuccess ? 1 : 0);
           const newFailCount = stats.failCount + (isSuccess ? 0 : 1);
 
+          // Phase 3: Legacy numeric scores (kept for backward compatibility)
           const prevAvgScore = stats.averageScore ?? 0;
           const newAverageScore =
             (prevAvgScore * stats.sessionsCount + finalScore) / newSessionsCount;
@@ -566,16 +684,74 @@ export class SessionsService {
             (prevAvgMessageScore * stats.sessionsCount + sessionMessageAvg) /
             newSessionsCount;
 
+          // Phase 3: Extract checklist aggregates from session payload
+          let sessionChecklistAggregates: {
+            totalPositiveHooks: number;
+            totalObjectiveProgress: number;
+            boundarySafeCount: number;
+            momentumMaintainedCount: number;
+            totalMessages: number;
+          } | null = null;
+
+          try {
+            const sessionPayload = basePayload as any;
+            const fastPathSnapshot = sessionPayload?.fastPathScoreSnapshot;
+            if (fastPathSnapshot && typeof fastPathSnapshot === 'object') {
+              sessionChecklistAggregates = {
+                totalPositiveHooks: typeof fastPathSnapshot.positiveHookCount === 'number' ? fastPathSnapshot.positiveHookCount : 0,
+                totalObjectiveProgress: typeof fastPathSnapshot.objectiveProgressCount === 'number' ? fastPathSnapshot.objectiveProgressCount : 0,
+                boundarySafeCount: typeof fastPathSnapshot.boundarySafeStreak === 'number' ? fastPathSnapshot.boundarySafeStreak : 0,
+                momentumMaintainedCount: typeof fastPathSnapshot.momentumStreak === 'number' ? fastPathSnapshot.momentumStreak : 0,
+                totalMessages: typeof fastPathSnapshot.messageCount === 'number' ? fastPathSnapshot.messageCount : messageScores.length,
+              };
+            }
+          } catch (err) {
+            // If extraction fails, use safe defaults
+            console.warn(`[SessionsService] Failed to extract checklist aggregates from session payload:`, err);
+          }
+
+          // Phase 4: Accumulate checklist aggregates in UserStats (typed)
+          type UserStatsChecklistAggregates = {
+            totalPositiveHooks: number;
+            totalObjectiveProgress: number;
+            boundarySafeCount: number;
+            momentumMaintainedCount: number;
+            totalMessages: number;
+          };
+          
+          const existingChecklistAggregates: UserStatsChecklistAggregates = 
+            stats.checklistAggregates && typeof stats.checklistAggregates === 'object'
+              ? (stats.checklistAggregates as unknown as UserStatsChecklistAggregates)
+              : {
+                  totalPositiveHooks: 0,
+                  totalObjectiveProgress: 0,
+                  boundarySafeCount: 0,
+                  momentumMaintainedCount: 0,
+                  totalMessages: 0,
+                };
+
+          const updatedChecklistAggregates: UserStatsChecklistAggregates = sessionChecklistAggregates
+            ? {
+                totalPositiveHooks: existingChecklistAggregates.totalPositiveHooks + sessionChecklistAggregates.totalPositiveHooks,
+                totalObjectiveProgress: existingChecklistAggregates.totalObjectiveProgress + sessionChecklistAggregates.totalObjectiveProgress,
+                boundarySafeCount: existingChecklistAggregates.boundarySafeCount + sessionChecklistAggregates.boundarySafeCount,
+                momentumMaintainedCount: existingChecklistAggregates.momentumMaintainedCount + sessionChecklistAggregates.momentumMaintainedCount,
+                totalMessages: existingChecklistAggregates.totalMessages + sessionChecklistAggregates.totalMessages,
+              }
+            : existingChecklistAggregates;
+
           await tx.userStats.update({
             where: { userId },
             data: {
               sessionsCount: newSessionsCount,
               successCount: newSuccessCount,
               failCount: newFailCount,
-              averageScore: newAverageScore,
-              averageMessageScore: newAverageMessageScore,
+              averageScore: newAverageScore, // @deprecated - legacy compatibility only
+              averageMessageScore: newAverageMessageScore, // @deprecated - legacy compatibility only
               lastSessionAt: now,
               lastUpdatedAt: now,
+              // Phase 4: Store checklist aggregates in typed JSON field
+              checklistAggregates: updatedChecklistAggregates,
             },
           });
 
@@ -762,68 +938,24 @@ export class SessionsService {
       });
     }
 
-    // Step 5.1 + 5.2: Analytics pipeline for finalized sessions
-    // Step 5.2: Reordered so Insights runs AFTER Gates/Prompts (v2 needs their data)
-    // Order: mood → traits → gates → prompts → insights (v1 + v2)
-    // All wrapped in try/catch so mission completion never breaks
+    // Step 8: REMOVED heavy analytics from hot path
+    // These analytics are now processed asynchronously by DeepAnalysisWorker
+    // The following services were removed from this synchronous path:
+    // - moodService.buildAndPersistForSession (removed - now in worker)
+    // - traitsService.persistTraitHistoryAndUpdateScores (removed - now in worker)
+    // - gatesService.evaluateAndPersist (removed - now in worker)
+    // - promptsService.matchAndTriggerHooksForSession (removed - now in worker)
+    // - insightsService.buildAndPersistForSession (removed - now in worker)
+    // - synergyService.computeAndPersistSynergy (removed - now in worker)
     //
-    // TODO Step 5.13: Backfill historical sessions
-    // - Compute hooks/patterns for old messages (missing hooks[]/patterns[])
-    // - Build mood timelines for old sessions (missing MissionMoodTimeline)
-    // - Compute gate outcomes for old sessions (missing GateOutcome rows)
-    // - Compute trait histories/scores for old sessions (missing UserTraitHistory/UserTraitScores)
-    // - Generate prompt triggers for old sessions (missing PromptHookTrigger)
-    // This ensures the entire stats ecosystem works for existing data.
+    // Step 8: Instead, a DEEP_ANALYSIS job is enqueued from PracticeService.runPracticeSession
+    // The job will be processed by DeepAnalysisWorker which calls all the above services
+    // This ensures Steps 5-7 analytics remain functionally correct, just async now
+    // Dashboards and analytics endpoints will read from the same tables, just with eventual consistency
     if (didFinalize) {
-      // 1. Mood Timeline (can run first - only needs messages)
-      try {
-        await this.moodService.buildAndPersistForSession(userId, usedSessionId);
-      } catch (err: any) {
-        console.error(`[SessionsService] Mood Timeline failed for ${usedSessionId}:`, err);
-      }
-
-      // 2. Trait History + Long-term Scores (needs messages)
-      try {
-        await this.traitsService.persistTraitHistoryAndUpdateScores(userId, usedSessionId);
-      } catch (err: any) {
-        console.error(`[SessionsService] Trait History failed for ${usedSessionId}:`, err);
-      }
-
-      // 3. Gate Outcomes (needs messages + session status)
-      try {
-        await this.gatesService.evaluateAndPersist(usedSessionId);
-      } catch (err: any) {
-        console.error(`[SessionsService] Gate Outcomes failed for ${usedSessionId}:`, err);
-      }
-
-      // 4. Prompt Hook Triggers (needs messages + mood timeline)
-      try {
-        await this.promptsService.matchAndTriggerHooksForSession(usedSessionId);
-      } catch (err: any) {
-        console.error(`[SessionsService] Prompt Hooks failed for ${usedSessionId}:`, err);
-      }
-
-      // 5. Deep Insights v1 + v2 (needs ALL signals: gates, hooks, traits)
-      // Step 5.2: v2 now extracts signals from GateOutcome and PromptHookTrigger
-      try {
-        await this.insightsService.buildAndPersistForSession(usedSessionId);
-      } catch (err: any) {
-        console.error(`[SessionsService] Deep Insights failed for ${usedSessionId}:`, err);
-      }
-
-      // Step 5.9: Trait Synergy Map computation (after insights, before Hall of Fame)
-      try {
-        await this.synergyService.computeAndPersistSynergy(userId, usedSessionId);
-      } catch (err: any) {
-        console.error(`[SessionsService] Trait synergy computation failed for ${usedSessionId}:`, err);
-      }
-
-      // Step 5.10: Mood Timeline + Insights (after synergy, before Hall of Fame)
-      try {
-        await this.moodService.buildAndPersistForSession(userId, usedSessionId);
-      } catch (err: any) {
-        console.error(`[SessionsService] Mood timeline failed for ${usedSessionId}:`, err);
-      }
+      // Step 8: Heavy analytics removed - job enqueued from FastPath instead
+      // Note: The DEEP_ANALYSIS job is enqueued in PracticeService.runPracticeSession
+      // after the FastPath response is built, ensuring non-blocking behavior
 
       // Step 5.11: Rotation Engine (after mood, before Hall of Fame)
       try {
@@ -906,11 +1038,13 @@ export class SessionsService {
    * Called during session finalize pipeline
    */
   private async upsertHallOfFameMessages(userId: string, sessionId: string): Promise<void> {
-    // Import threshold from config
+    // Phase 3: Import checklist criteria
     const statsConfig = await import('../stats/config/stats.config');
-    const HALL_OF_FAME_SCORE_THRESHOLD = statsConfig.HALL_OF_FAME_SCORE_THRESHOLD;
+    const HOF_CRITERIA = statsConfig.HOF_CRITERIA;
+    const { scoreToTier } = await import('../sessions/scoring');
+    const { MessageChecklistFlag } = await import('../sessions/scoring');
     
-    // Get top 3 positive and top 3 negative messages from session
+    // Get all USER messages from session with scores
     const sessionMessages = await this.prisma.chatMessage.findMany({
       where: {
         sessionId,
@@ -930,14 +1064,83 @@ export class SessionsService {
       },
     });
 
-    // Get top 3 positive (high scores >= threshold) and top 3 negative (low scores)
-    const topPositive = sessionMessages.slice(0, 3).filter(m => typeof m.score === 'number' && m.score >= HALL_OF_FAME_SCORE_THRESHOLD);
+    // Phase 3: Extract checklist flags and tier for each message
+    const messagesWithChecklist = sessionMessages.map((msg) => {
+      const score = typeof msg.score === 'number' ? msg.score : 0;
+      const tier = scoreToTier(score);
+      
+      // Extract checklist flags from traitData
+      let checklistFlags: string[] = [];
+      try {
+        const traitData = typeof msg.traitData === 'object' && msg.traitData !== null ? (msg.traitData as any) : {};
+        // Check if flags are stored in traitData (Phase 2 stores them there)
+        if (Array.isArray(traitData.flags)) {
+          checklistFlags = traitData.flags.filter((f: any) => 
+            Object.values(MessageChecklistFlag).includes(f as MessageChecklistFlag)
+          ) as string[];
+        }
+      } catch (err) {
+        // If extraction fails, use empty array
+      }
+
+      return {
+        ...msg,
+        tier,
+        checklistFlags,
+      };
+    });
+
+    // Phase 3: Filter by checklist criteria (tier >= S+ AND has required flags)
+    const tierOrder: Record<string, number> = { 'S+': 5, 'S': 4, 'A': 3, 'B': 2, 'C': 1, 'D': 0 };
+    const eligibleMessages = messagesWithChecklist.filter((msg) => {
+      const tierValue = tierOrder[msg.tier] ?? 0;
+      const minTierValue = tierOrder[HOF_CRITERIA.minTier] ?? 0;
+      
+      if (tierValue < minTierValue) return false;
+      
+      // Check if message has all required flags
+      const hasAllRequired = HOF_CRITERIA.requiredFlags.every((flag) =>
+        msg.checklistFlags.includes(flag)
+      );
+      
+      return hasAllRequired;
+    });
+
+    // Sort eligible messages: primary by tier (desc), secondary by score (desc), tertiary by flag count
+    eligibleMessages.sort((a, b) => {
+      const tierDiff = (tierOrder[b.tier] ?? 0) - (tierOrder[a.tier] ?? 0);
+      if (tierDiff !== 0) return tierDiff;
+      
+      const scoreDiff = (b.score ?? 0) - (a.score ?? 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      
+      return b.checklistFlags.length - a.checklistFlags.length;
+    });
+
+    // Get top 3 positive (checklist-qualified) and top 3 negative (lowest scores, regardless of checklist)
+    const topPositive = eligibleMessages.slice(0, 3);
     const sortedAsc = [...sessionMessages].sort((a, b) => {
       const scoreA = typeof a.score === 'number' ? a.score : 100;
       const scoreB = typeof b.score === 'number' ? b.score : 100;
       return scoreA - scoreB;
     });
-    const topNegative = sortedAsc.slice(0, 3);
+    const topNegative = sortedAsc.slice(0, 3).map((msg) => {
+      const score = typeof msg.score === 'number' ? msg.score : 0;
+      const tier = scoreToTier(score);
+      let checklistFlags: string[] = [];
+      try {
+        const traitData = typeof msg.traitData === 'object' && msg.traitData !== null ? (msg.traitData as any) : {};
+        if (Array.isArray(traitData.flags)) {
+          checklistFlags = traitData.flags.filter((f: any) => 
+            Object.values(MessageChecklistFlag).includes(f as MessageChecklistFlag)
+          ) as string[];
+        }
+      } catch (err) {
+        // If extraction fails, use empty array
+      }
+      return { ...msg, tier, checklistFlags };
+    });
+    
     const messagesToSave = [...topPositive, ...topNegative];
 
     // Import getCategoryForPattern for categoryKey derivation
@@ -956,6 +1159,23 @@ export class SessionsService {
           categoryKey = category || null;
         }
 
+        // Phase 4: Store tier and checklist flags in meta JSON field (typed)
+        // Prefer reading from ChatMessage if available, otherwise use derived values
+        const chatMessage = await this.prisma.chatMessage.findUnique({
+          where: { id: msg.id },
+          select: { tier: true, checklistFlags: true },
+        });
+        
+        const tier = chatMessage?.tier ?? msg.tier;
+        const checklistFlags = chatMessage?.checklistFlags && Array.isArray(chatMessage.checklistFlags)
+          ? (chatMessage.checklistFlags as unknown as string[])
+          : (Array.isArray(msg.checklistFlags) ? msg.checklistFlags : []);
+        
+        const meta = {
+          tier: tier ?? null,
+          checklistFlags: checklistFlags.length > 0 ? checklistFlags : [],
+        };
+
         await this.prisma.hallOfFameMessage.upsert({
           where: {
             userId_messageId: {
@@ -970,12 +1190,14 @@ export class SessionsService {
             turnIndex: typeof msg.turnIndex === 'number' ? msg.turnIndex : 0,
             categoryKey,
             score: msg.score,
+            meta: meta, // Phase 4: Typed JSON field
           },
           update: {
             score: msg.score,
             turnIndex: typeof msg.turnIndex === 'number' ? msg.turnIndex : 0,
             categoryKey,
             savedAt: new Date(),
+            meta: meta, // Phase 4: Typed JSON field
           },
         });
       }
@@ -1014,12 +1236,104 @@ export class SessionsService {
   /**
    * Step 5.13: Get unified session end read model
    * Returns complete, normalized session-end summary for finalized sessions
+   * Step 8: Mission End Finalizer - ensures analytics are usually ready without blocking too long
    * 
    * @param userId - User ID (for ownership validation)
    * @param sessionId - Session ID
    * @returns SessionEndReadModel with all fields populated
    */
   async getSessionEndReadModel(userId: string, sessionId: string): Promise<SessionEndReadModel> {
+    // Step 8: Load session to check analytics completeness
+    const session = await this.prisma.practiceSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        userId: true,
+        messageCount: true,
+        payload: true,
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: 'Session not found',
+      });
+    }
+
+    if (session.userId !== userId) {
+      throw new NotFoundException({
+        code: 'SESSION_NOT_FOUND',
+        message: 'Session not found',
+      });
+    }
+
+    // Step 8: Check if analytics are complete
+    const lastMessageIndex = (session.messageCount ?? 0) - 1;
+    const payload = session.payload as any;
+    const deepAnalysisMetadata = payload?.deepAnalysisMetadata ?? {};
+    const lastAnalyzedMessageIndex = deepAnalysisMetadata.lastAnalyzedMessageIndex ?? -1;
+
+    // Step 8: If analytics not complete, enqueue priority job and wait (bounded)
+    if (lastAnalyzedMessageIndex < lastMessageIndex && this.deepAnalysisQueue) {
+      try {
+        // Enqueue priority job with deterministic jobId for deduplication
+        const jobPayload: DeepAnalysisJobPayload = {
+          traceId: `priority-${sessionId}-${lastMessageIndex}`,
+          missionId: null, // Will be loaded by worker
+          sessionId,
+          userId,
+          lastMessageIndex,
+          fastTags: {
+            localScoreTier: 'C', // Placeholder, worker will recompute
+            moodDelta: 'stable',
+            tensionDelta: 'stable',
+            comfortDelta: 'stable',
+            boundaryRisk: 'low',
+            microFlags: [],
+          },
+          timestamp: new Date().toISOString(),
+        };
+
+        await this.deepAnalysisQueue.add('deep-analysis', jobPayload, {
+          jobId: `priority:${sessionId}:${lastMessageIndex}`, // Deduplication
+          priority: 10, // Higher priority than regular jobs
+        });
+
+        // Step 8: Poll for up to 1000ms (100ms intervals)
+        const maxWaitMs = 1000;
+        const pollIntervalMs = 100;
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < maxWaitMs) {
+          await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+
+          // Reload session to check updated lastAnalyzedMessageIndex
+          const updatedSession = await this.prisma.practiceSession.findUnique({
+            where: { id: sessionId },
+            select: { payload: true },
+          });
+
+          if (updatedSession) {
+            const updatedPayload = updatedSession.payload as any;
+            const updatedMetadata = updatedPayload?.deepAnalysisMetadata ?? {};
+            const updatedAnalyzedIndex = updatedMetadata.lastAnalyzedMessageIndex ?? -1;
+
+            if (updatedAnalyzedIndex >= lastMessageIndex) {
+              // Analytics complete, break early
+              break;
+            }
+          }
+        }
+      } catch (err: any) {
+        // TODO: record queue_processing_errors_total
+        console.error(`[SessionsService] Error enqueueing priority deep analysis job:`, err);
+        // Continue - return model even if analytics not ready (eventually consistent)
+      }
+    }
+
+    // Step 8: Build and return SessionEndReadModel (analytics may or may not be fully ready)
+    // The builder will use whatever analytics data is available, with safe defaults
     return this.sessionEndReadModelBuilder.buildForSession(sessionId, userId);
   }
 

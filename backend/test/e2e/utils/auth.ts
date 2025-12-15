@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request = require('supertest');
 import { prisma } from './prisma';
 
 export async function createTestUserAndToken(appUrl: string, email?: string) {

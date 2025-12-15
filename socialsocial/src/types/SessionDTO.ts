@@ -27,6 +27,7 @@ export interface SessionMessage {
   turnIndex: number;
   role: MessageRole;
   content: string;
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   score: number | null;
   traitData: TraitData;
 }
@@ -47,7 +48,9 @@ export interface RewardsMessageBreakdown {
  * Session rewards summary
  */
 export interface SessionRewardsDTO {
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   score: number;
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   messageScore: number;
   isSuccess: boolean;
   xpGained: number;
@@ -63,10 +66,22 @@ export interface SessionRewardsDTO {
 export interface MissionStateDTO {
   status: 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
   progressPct: number;
+  /** @deprecated - legacy numeric score, kept for cosmetic display only */
   averageScore: number;
   totalMessages: number;
   endReasonCode: string | null;
   endReasonMeta: Record<string, any> | null;
+}
+
+/**
+ * Phase 3: Checklist-native summary (matches backend PracticeSessionResponsePublic.checklist)
+ */
+export interface PracticeChecklistSummary {
+  positiveHookCount: number;
+  objectiveProgressCount: number;
+  boundarySafeStreak: number;
+  momentumStreak: number;
+  lastMessageFlags: string[]; // MessageChecklistFlag[]
 }
 
 /**
@@ -79,6 +94,8 @@ export interface SessionDTO {
   rewards: SessionRewardsDTO;
   messages: SessionMessage[];
   missionState: MissionStateDTO;
+  // Phase 3: Checklist-native aggregates
+  checklist?: PracticeChecklistSummary;
   // Optional: mission metadata (may be null in GET response)
   mission?: {
     templateId: string;
@@ -86,7 +103,9 @@ export interface SessionDTO {
     goalType: 'CONVERSATION' | 'PERSUASION' | 'NEGOTIATION' | null;
     maxMessages: number;
     scoring: {
+      /** @deprecated - legacy numeric threshold, mission success now checklist-driven */
       successScore: number;
+      /** @deprecated - legacy numeric threshold, mission fail now checklist-driven */
       failScore: number;
     };
     aiStyle: any | null;

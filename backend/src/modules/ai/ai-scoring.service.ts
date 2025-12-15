@@ -47,6 +47,8 @@ import { EngineConfigService } from '../engine-config/engine-config.service';
 @Injectable()
 export class AiScoringService {
   private scoringProfile: any = null; // Cached scoring profile
+  // Wave 4.1: Track last seen revision for self-healing
+  private lastRevision = -1;
 
   constructor(
     @Inject(forwardRef(() => EngineConfigService))
@@ -54,6 +56,9 @@ export class AiScoringService {
   ) {
     // Load default profile on startup
     this.loadScoringProfile();
+    
+    // Wave 4: Register for config update notifications
+    this.engineConfigService.onConfigUpdated(() => this.refreshFromEngineConfig());
   }
 
   /**
@@ -65,6 +70,26 @@ export class AiScoringService {
     } catch (e) {
       // Fallback to null (will use hard-coded defaults)
       this.scoringProfile = null;
+    }
+  }
+
+  /**
+   * Wave 4: Refresh scoring profile from EngineConfig (for cache invalidation)
+   */
+  async refreshFromEngineConfig(): Promise<void> {
+    this.scoringProfile = null;
+    await this.loadScoringProfile();
+    // Wave 4.1: Update revision tracking
+    this.lastRevision = this.engineConfigService.getRevision();
+  }
+
+  /**
+   * Wave 4.1: Ensure cache is fresh before use (self-healing guarantee)
+   */
+  private async ensureFresh(): Promise<void> {
+    const currentRevision = this.engineConfigService.getRevision();
+    if (currentRevision !== this.lastRevision) {
+      await this.refreshFromEngineConfig();
     }
   }
   /**
@@ -81,6 +106,9 @@ export class AiScoringService {
     difficultyConfig?: MissionConfigV1Difficulty | null,
     previousScoreSeed?: number | null, // Step 6.1 Fix: Seed for first message (for continuation)
   ): Promise<AiScoringResult> {
+    // Wave 4.1: Ensure cache is fresh before use
+    await this.ensureFresh();
+    
     const mode: AiMode =
       userTier === AccountTier.PREMIUM ? 'PREMIUM' : 'FREE';
 
@@ -92,7 +120,7 @@ export class AiScoringService {
       const previousScore = index > 0 
         ? perMessage[index - 1]?.score 
         : (index === 0 && previousScoreSeed !== null && previousScoreSeed !== undefined ? previousScoreSeed : null);
-      perMessage.push(this.buildBaseScore(msg, index, difficultyConfig, previousScore));
+      perMessage.push(await this.buildBaseScore(msg, index, difficultyConfig, previousScore));
     }
 
     let premiumSessionAnalysis: AiSessionAnalysisPremium | undefined;
@@ -131,12 +159,12 @@ export class AiScoringService {
    * Step 6.2: Accepts difficulty configuration for dynamic grading.
    * Step 6.1 Fix: Now accepts previousScore for recovery difficulty calculation.
    */
-  private buildBaseScore(
+  private async buildBaseScore(
     msg: PracticeMessageInput,
     index: number,
     difficultyConfig?: MissionConfigV1Difficulty | null,
     previousScore?: number | null, // For recovery difficulty
-  ): AiMessageScoreBase {
+  ): Promise<AiMessageScoreBase> {
     const normalizedText = msg.content.trim();
     const lengthScore = this.computeLengthScore(normalizedText);
     const punctuationScore = this.computePunctuationScore(normalizedText);
@@ -151,7 +179,7 @@ export class AiScoringService {
     score = Math.max(0, Math.min(100, score));
 
     const rarity = this.mapScoreToRarity(score);
-    const microFeedback = this.buildMicroFeedback(score, normalizedText);
+    const microFeedback = await this.buildMicroFeedback(score, normalizedText);
     const tags = this.buildTags(score, normalizedText);
     const xpMultiplier = this.computeXpMultiplier(rarity);
     const coinsMultiplier = this.computeCoinsMultiplier(rarity);
@@ -234,9 +262,35 @@ export class AiScoringService {
     return 'C';
   }
 
-  private buildMicroFeedback(score: number, text: string): string {
+  private async buildMicroFeedback(score: number, text: string): Promise<string> {
     const trimmed = text.toLowerCase();
 
+    // Try to get micro feedback config from EngineConfig
+    try {
+      const microFeedbackConfig = await this.engineConfigService.getMicroFeedbackConfig();
+      if (microFeedbackConfig?.bands) {
+        // Check for very short message first
+        if (trimmed.length < 5 && microFeedbackConfig.veryShortMessage) {
+          return microFeedbackConfig.veryShortMessage;
+        }
+
+        // Find matching band
+        for (const band of microFeedbackConfig.bands) {
+          if (score >= band.minScore && score <= band.maxScore) {
+            return band.message;
+          }
+        }
+
+        // Fallback to default message
+        if (microFeedbackConfig.defaultMessage) {
+          return microFeedbackConfig.defaultMessage;
+        }
+      }
+    } catch (e) {
+      // Fall through to hard-coded fallbacks
+    }
+
+    // Hard-coded fallbacks (matches original behavior)
     if (score >= 92) {
       return 'Brilliant tension and clarity here. This is the kind of line that can shift the whole vibe.';
     }
@@ -244,7 +298,7 @@ export class AiScoringService {
       return 'Strong message with attractive energy. A tiny bit more specificity could make it killer.';
     }
     if (score >= 72) {
-      return 'Good message. You’re on the right track – a bit more playfulness or detail would level this up.';
+      return 'Good message. You\'re on the right track – a bit more playfulness or detail would level this up.';
     }
     if (score >= 58) {
       return 'Decent but safe. You can afford to be slightly bolder or more personal here.';

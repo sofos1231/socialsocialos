@@ -395,6 +395,48 @@ export class StatsService {
       console.error(`[StatsService] Category stats fetch failed for ${userId}:`, err);
     }
 
+    // Phase 4: Compute checklist aggregates and rates from UserStats (typed)
+    type UserStatsChecklistAggregates = {
+      totalPositiveHooks: number;
+      totalObjectiveProgress: number;
+      boundarySafeCount: number;
+      momentumMaintainedCount: number;
+      totalMessages: number;
+    };
+    
+    // Type guard for checklistAggregates
+    const hasChecklistAggregates = 'checklistAggregates' in safeStats && 
+      safeStats.checklistAggregates && 
+      typeof safeStats.checklistAggregates === 'object';
+    
+    const checklistAggregates: UserStatsChecklistAggregates = hasChecklistAggregates
+        ? (safeStats.checklistAggregates as unknown as UserStatsChecklistAggregates)
+        : {
+            totalPositiveHooks: 0,
+            totalObjectiveProgress: 0,
+            boundarySafeCount: 0,
+            momentumMaintainedCount: 0,
+            totalMessages: 0,
+          };
+
+    const totalMessages = checklistAggregates.totalMessages || 0;
+    const boundarySafeRate = totalMessages > 0
+      ? Math.round((checklistAggregates.boundarySafeCount / totalMessages) * 100)
+      : 0;
+    const momentumMaintainedRate = totalMessages > 0
+      ? Math.round((checklistAggregates.momentumMaintainedCount / totalMessages) * 100)
+      : 0;
+    const avgChecklistFlagsPerMsg = totalMessages > 0
+      ? Math.round(
+          ((checklistAggregates.totalPositiveHooks +
+            checklistAggregates.totalObjectiveProgress +
+            checklistAggregates.boundarySafeCount +
+            checklistAggregates.momentumMaintainedCount) /
+            totalMessages) *
+            10
+        ) / 10
+      : 0;
+
     return {
       ok: true,
       user: {
@@ -416,11 +458,11 @@ export class StatsService {
         sessionsCount: safeStats.sessionsCount,
         successCount: safeStats.successCount,
         failCount: safeStats.failCount,
-        averageScore: safeStats.averageScore,
-        averageMessageScore: safeStats.averageMessageScore,
+        averageScore: safeStats.averageScore, // @deprecated - legacy compatibility only
+        averageMessageScore: safeStats.averageMessageScore, // @deprecated - legacy compatibility only
         lastSessionAt: safeStats.lastSessionAt,
  
- 
+
         // B5 metrics:
         latest,
         averages,
@@ -437,6 +479,18 @@ export class StatsService {
 
         // Step 5.14: Category stats (additive, non-breaking)
         categoryStats,
+
+        // Phase 3: Checklist-native aggregates
+        checklist: {
+          totalPositiveHooks: checklistAggregates.totalPositiveHooks,
+          totalObjectiveProgress: checklistAggregates.totalObjectiveProgress,
+          boundarySafeCount: checklistAggregates.boundarySafeCount,
+          momentumMaintainedCount: checklistAggregates.momentumMaintainedCount,
+          totalMessages: totalMessages,
+          boundarySafeRate: boundarySafeRate,
+          momentumMaintainedRate: momentumMaintainedRate,
+          avgChecklistFlagsPerMsg: avgChecklistFlagsPerMsg,
+        },
       },
     };
   }
@@ -458,14 +512,54 @@ export class StatsService {
       },
     });
 
-    return rows.map((row) => ({
-      categoryKey: row.categoryKey,
-      categoryName: row.category.label,
-      sessionsCount: row.sessionsCount,
-      averageScore: row.avgScore,
-      successCount: row.successCount,
-      failCount: row.failCount,
-    }));
+    return rows.map((row) => {
+      // Phase 4: Extract checklist aggregates (typed)
+      type CategoryChecklistAggregates = {
+        totalPositiveHooks: number;
+        totalObjectiveProgress: number;
+        boundaryViolations: number;
+        momentumBreaks: number;
+        totalMessages: number;
+      };
+      
+      const checklistAggregates: CategoryChecklistAggregates = 
+        row.checklistAggregates && typeof row.checklistAggregates === 'object'
+          ? (row.checklistAggregates as unknown as CategoryChecklistAggregates)
+          : {
+              totalPositiveHooks: 0,
+              totalObjectiveProgress: 0,
+              boundaryViolations: 0,
+              momentumBreaks: 0,
+              totalMessages: 0,
+            };
+
+      const totalMessages = checklistAggregates.totalMessages || 0;
+      const boundarySafeRate = totalMessages > 0
+        ? Math.round(((totalMessages - checklistAggregates.boundaryViolations) / totalMessages) * 100)
+        : 0;
+      const momentumMaintainedRate = totalMessages > 0
+        ? Math.round(((totalMessages - checklistAggregates.momentumBreaks) / totalMessages) * 100)
+        : 0;
+
+      return {
+        categoryKey: row.categoryKey,
+        categoryName: row.category.label,
+        sessionsCount: row.sessionsCount,
+        averageScore: row.avgScore, // @deprecated - legacy compatibility only
+        successCount: row.successCount,
+        failCount: row.failCount,
+        // Phase 3: Checklist-native aggregates
+        checklist: {
+          totalPositiveHooks: checklistAggregates.totalPositiveHooks,
+          totalObjectiveProgress: checklistAggregates.totalObjectiveProgress,
+          boundaryViolations: checklistAggregates.boundaryViolations,
+          momentumBreaks: checklistAggregates.momentumBreaks,
+          totalMessages: totalMessages,
+          boundarySafeRate: boundarySafeRate,
+          momentumMaintainedRate: momentumMaintainedRate,
+        },
+      };
+    });
   }
 
   /**
@@ -630,6 +724,8 @@ export class StatsService {
       },
       select: {
         score: true,
+        payload: true, // Phase 4: Fallback - extract from payload if checklistAggregates missing
+        checklistAggregates: true, // Phase 4: Primary source
       },
     });
 
@@ -640,14 +736,87 @@ export class StatsService {
           sessionsThisWeekWithScores.length
         : null;
 
+    // Phase 4: Compute weekly checklist aggregates (prefer checklistAggregates, fallback to payload)
+    let weeklyChecklistAggregates = {
+      positiveHooksThisWeek: 0,
+      objectiveProgressThisWeek: 0,
+      boundarySafeCountThisWeek: 0,
+      momentumMaintainedCountThisWeek: 0,
+      totalMessagesThisWeek: 0,
+    };
+
+    for (const session of sessionsThisWeekWithScores) {
+      try {
+        // Phase 4: Prefer checklistAggregates (primary), fallback to payload.fastPathScoreSnapshot (backward compat)
+        type PracticeSessionChecklistAggregates = {
+          positiveHookCount: number;
+          objectiveProgressCount: number;
+          boundarySafeStreak: number;
+          momentumStreak: number;
+          totalMessages: number;
+        };
+        
+        let sessionAggregates: PracticeSessionChecklistAggregates | null = null;
+        
+        // Try checklistAggregates first (new sessions)
+        if (session.checklistAggregates && typeof session.checklistAggregates === 'object') {
+          const agg = session.checklistAggregates as unknown as PracticeSessionChecklistAggregates;
+          sessionAggregates = {
+            positiveHookCount: typeof agg.positiveHookCount === 'number' ? agg.positiveHookCount : 0,
+            objectiveProgressCount: typeof agg.objectiveProgressCount === 'number' ? agg.objectiveProgressCount : 0,
+            boundarySafeStreak: typeof agg.boundarySafeStreak === 'number' ? agg.boundarySafeStreak : 0,
+            momentumStreak: typeof agg.momentumStreak === 'number' ? agg.momentumStreak : 0,
+            totalMessages: typeof agg.totalMessages === 'number' ? agg.totalMessages : 0,
+          };
+        } else {
+          // Fallback: extract from payload.fastPathScoreSnapshot (old sessions)
+          const sessionPayload = session.payload && typeof session.payload === 'object' ? (session.payload as any) : null;
+          const fastPathSnapshot = sessionPayload?.fastPathScoreSnapshot;
+          if (fastPathSnapshot && typeof fastPathSnapshot === 'object') {
+            sessionAggregates = {
+              positiveHookCount: typeof fastPathSnapshot.positiveHookCount === 'number' ? fastPathSnapshot.positiveHookCount : 0,
+              objectiveProgressCount: typeof fastPathSnapshot.objectiveProgressCount === 'number' ? fastPathSnapshot.objectiveProgressCount : 0,
+              boundarySafeStreak: typeof fastPathSnapshot.boundarySafeStreak === 'number' ? fastPathSnapshot.boundarySafeStreak : 0,
+              momentumStreak: typeof fastPathSnapshot.momentumStreak === 'number' ? fastPathSnapshot.momentumStreak : 0,
+              totalMessages: typeof fastPathSnapshot.messageCount === 'number' ? fastPathSnapshot.messageCount : 0,
+            };
+          }
+        }
+        
+        if (sessionAggregates) {
+          weeklyChecklistAggregates.positiveHooksThisWeek += sessionAggregates.positiveHookCount;
+          weeklyChecklistAggregates.objectiveProgressThisWeek += sessionAggregates.objectiveProgressCount;
+          weeklyChecklistAggregates.boundarySafeCountThisWeek += sessionAggregates.boundarySafeStreak;
+          weeklyChecklistAggregates.momentumMaintainedCountThisWeek += sessionAggregates.momentumStreak;
+          weeklyChecklistAggregates.totalMessagesThisWeek += sessionAggregates.totalMessages;
+        }
+      } catch (err) {
+        // Skip sessions without checklist data
+      }
+    }
+
+    const boundarySafeRateThisWeek = weeklyChecklistAggregates.totalMessagesThisWeek > 0
+      ? Math.round((weeklyChecklistAggregates.boundarySafeCountThisWeek / weeklyChecklistAggregates.totalMessagesThisWeek) * 100)
+      : 0;
+    const momentumMaintainedRateThisWeek = weeklyChecklistAggregates.totalMessagesThisWeek > 0
+      ? Math.round((weeklyChecklistAggregates.momentumMaintainedCountThisWeek / weeklyChecklistAggregates.totalMessagesThisWeek) * 100)
+      : 0;
+
     // Load improvements
     const improvements = getAllImprovements();
 
     return {
       traits,
       sessionsThisWeek,
-      avgScoreThisWeek,
+      avgScoreThisWeek, // @deprecated - legacy compatibility only
       improvements,
+      // Phase 4: Checklist-native weekly metrics
+      checklist: {
+        positiveHooksThisWeek: weeklyChecklistAggregates.positiveHooksThisWeek,
+        objectiveProgressThisWeek: weeklyChecklistAggregates.objectiveProgressThisWeek,
+        boundarySafeRateThisWeek: boundarySafeRateThisWeek,
+        momentumMaintainedRateThisWeek: momentumMaintainedRateThisWeek,
+      },
     };
   }
 
@@ -738,6 +907,8 @@ export class StatsService {
       },
       select: {
         score: true,
+        payload: true, // Phase 4: Fallback - extract from payload if checklistAggregates missing
+        checklistAggregates: true, // Phase 4: Primary source
       },
     });
 
@@ -747,6 +918,72 @@ export class StatsService {
         ? sessionsThisWeekWithScores.reduce((sum, s) => sum + (s.score ?? 0), 0) /
           sessionsThisWeekWithScores.length
         : null;
+
+    // Phase 4: Compute weekly checklist aggregates (prefer checklistAggregates, fallback to payload)
+    let weeklyChecklistAggregates = {
+      positiveHooksThisWeek: 0,
+      objectiveProgressThisWeek: 0,
+      boundarySafeCountThisWeek: 0,
+      momentumMaintainedCountThisWeek: 0,
+      totalMessagesThisWeek: 0,
+    };
+
+    for (const session of sessionsThisWeekWithScores) {
+      try {
+        // Phase 4: Prefer checklistAggregates (primary), fallback to payload.fastPathScoreSnapshot (backward compat)
+        type PracticeSessionChecklistAggregates = {
+          positiveHookCount: number;
+          objectiveProgressCount: number;
+          boundarySafeStreak: number;
+          momentumStreak: number;
+          totalMessages: number;
+        };
+        
+        let sessionAggregates: PracticeSessionChecklistAggregates | null = null;
+        
+        // Try checklistAggregates first (new sessions)
+        if (session.checklistAggregates && typeof session.checklistAggregates === 'object') {
+          const agg = session.checklistAggregates as unknown as PracticeSessionChecklistAggregates;
+          sessionAggregates = {
+            positiveHookCount: typeof agg.positiveHookCount === 'number' ? agg.positiveHookCount : 0,
+            objectiveProgressCount: typeof agg.objectiveProgressCount === 'number' ? agg.objectiveProgressCount : 0,
+            boundarySafeStreak: typeof agg.boundarySafeStreak === 'number' ? agg.boundarySafeStreak : 0,
+            momentumStreak: typeof agg.momentumStreak === 'number' ? agg.momentumStreak : 0,
+            totalMessages: typeof agg.totalMessages === 'number' ? agg.totalMessages : 0,
+          };
+        } else {
+          // Fallback: extract from payload.fastPathScoreSnapshot (old sessions)
+          const sessionPayload = session.payload && typeof session.payload === 'object' ? (session.payload as any) : null;
+          const fastPathSnapshot = sessionPayload?.fastPathScoreSnapshot;
+          if (fastPathSnapshot && typeof fastPathSnapshot === 'object') {
+            sessionAggregates = {
+              positiveHookCount: typeof fastPathSnapshot.positiveHookCount === 'number' ? fastPathSnapshot.positiveHookCount : 0,
+              objectiveProgressCount: typeof fastPathSnapshot.objectiveProgressCount === 'number' ? fastPathSnapshot.objectiveProgressCount : 0,
+              boundarySafeStreak: typeof fastPathSnapshot.boundarySafeStreak === 'number' ? fastPathSnapshot.boundarySafeStreak : 0,
+              momentumStreak: typeof fastPathSnapshot.momentumStreak === 'number' ? fastPathSnapshot.momentumStreak : 0,
+              totalMessages: typeof fastPathSnapshot.messageCount === 'number' ? fastPathSnapshot.messageCount : 0,
+            };
+          }
+        }
+        
+        if (sessionAggregates) {
+          weeklyChecklistAggregates.positiveHooksThisWeek += sessionAggregates.positiveHookCount;
+          weeklyChecklistAggregates.objectiveProgressThisWeek += sessionAggregates.objectiveProgressCount;
+          weeklyChecklistAggregates.boundarySafeCountThisWeek += sessionAggregates.boundarySafeStreak;
+          weeklyChecklistAggregates.momentumMaintainedCountThisWeek += sessionAggregates.momentumStreak;
+          weeklyChecklistAggregates.totalMessagesThisWeek += sessionAggregates.totalMessages;
+        }
+      } catch (err) {
+        // Skip sessions without checklist data
+      }
+    }
+
+    const boundarySafeRateThisWeek = weeklyChecklistAggregates.totalMessagesThisWeek > 0
+      ? Math.round((weeklyChecklistAggregates.boundarySafeCountThisWeek / weeklyChecklistAggregates.totalMessagesThisWeek) * 100)
+      : 0;
+    const momentumMaintainedRateThisWeek = weeklyChecklistAggregates.totalMessagesThisWeek > 0
+      ? Math.round((weeklyChecklistAggregates.momentumMaintainedCountThisWeek / weeklyChecklistAggregates.totalMessagesThisWeek) * 100)
+      : 0;
 
     // Get lastSessionId
     const lastSession = await this.prisma.practiceSession.findFirst({
@@ -761,9 +998,16 @@ export class StatsService {
     return {
       sessionsTotal,
       sessionsThisWeek,
-      avgScoreThisWeek,
+      avgScoreThisWeek, // @deprecated - legacy compatibility only
       lastSessionId: lastSession?.id,
       isPremium,
+      // Phase 4: Checklist-native weekly metrics
+      checklist: {
+        positiveHooksThisWeek: weeklyChecklistAggregates.positiveHooksThisWeek,
+        objectiveProgressThisWeek: weeklyChecklistAggregates.objectiveProgressThisWeek,
+        boundarySafeRateThisWeek: boundarySafeRateThisWeek,
+        momentumMaintainedRateThisWeek: momentumMaintainedRateThisWeek,
+      },
     };
   }
 
@@ -1415,16 +1659,50 @@ export class StatsService {
             content: true,
             createdAt: true,
             traitData: true,
+            tier: true, // Phase 4: For fallback
+            checklistFlags: true, // Phase 4: For fallback
+            score: true, // Phase 4: Last resort fallback for tier derivation
           },
         },
       },
     });
 
+    const { scoreToTier } = await import('../sessions/scoring');
+    
     const hallOfFame: HallOfFameMessageItem[] = [];
     for (const hofEntry of hallOfFameMessages) {
       const msg = hofEntry.message;
       const content = typeof msg.content === 'string' ? msg.content : '';
       const contentSnippet = content.length > 100 ? content.substring(0, 100) + '...' : content;
+
+      // Phase 4: Extract tier and checklist flags from meta (with ChatMessage fallback)
+      let tier: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D' | undefined = undefined;
+      let checklistFlags: string[] | undefined = undefined;
+      
+      // Primary: try meta field (new entries)
+      if (hofEntry.meta && typeof hofEntry.meta === 'object') {
+        const meta = hofEntry.meta as any;
+        if (typeof meta.tier === 'string' && ['S+', 'S', 'A', 'B', 'C', 'D'].includes(meta.tier)) {
+          tier = meta.tier as 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+        }
+        if (Array.isArray(meta.checklistFlags)) {
+          checklistFlags = meta.checklistFlags.filter((f: any) => typeof f === 'string');
+        }
+      }
+      
+      // Fallback: derive from ChatMessage if meta is missing/null (old entries)
+      if (!tier || !checklistFlags || (checklistFlags && checklistFlags.length === 0)) {
+        if (!tier && msg.tier && ['S+', 'S', 'A', 'B', 'C', 'D'].includes(msg.tier)) {
+          tier = msg.tier as 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+        }
+        if ((!checklistFlags || checklistFlags.length === 0) && msg.checklistFlags && Array.isArray(msg.checklistFlags)) {
+          checklistFlags = msg.checklistFlags.filter((f: any) => typeof f === 'string');
+        }
+        // Last resort: derive tier from score if needed (display only)
+        if (!tier && typeof msg.score === 'number') {
+          tier = scoreToTier(msg.score);
+        }
+      }
 
       hallOfFame.push({
         messageId: hofEntry.messageId,
@@ -1434,6 +1712,9 @@ export class StatsService {
         contentSnippet,
         score: hofEntry.score,
         breakdown: this.buildMessageBreakdown(msg), // 5.7 glue: minimal allowlisted DTO
+        // Phase 3: Checklist-native fields
+        tier,
+        checklistFlags,
       });
     }
 
@@ -1462,11 +1743,18 @@ export class StatsService {
     });
     const burnedMessageIds = new Set(burnedMessages.map(b => b.messageId));
 
+    // Phase 3: Use checklist criteria - messages with tier S+ and required flags
+    // Note: Hall of Fame selection now uses checklist criteria, so we can query all HOF messages
     const hallOfFameMessages = await this.prisma.hallOfFameMessage.findMany({
       where: {
         userId,
         messageId: { notIn: Array.from(burnedMessageIds) },
-        score: { gte: HALL_OF_FAME_SCORE_THRESHOLD },
+        // Phase 3: Filter by tier in meta (checklist-qualified messages)
+        // Fallback to score threshold for backward compatibility
+        OR: [
+          { meta: { path: ['tier'], equals: 'S+' } },
+          { score: { gte: HALL_OF_FAME_SCORE_THRESHOLD } },
+        ],
       },
       orderBy: [
         { score: 'desc' },
@@ -1480,15 +1768,49 @@ export class StatsService {
             content: true,
             createdAt: true,
             traitData: true,
+            tier: true, // Phase 4: For fallback
+            checklistFlags: true, // Phase 4: For fallback
+            score: true, // Phase 4: Last resort fallback
           },
         },
       },
     });
 
+    const { scoreToTier } = await import('../sessions/scoring');
+
     return hallOfFameMessages.map((hofEntry) => {
       const msg = hofEntry.message;
       const content = typeof msg.content === 'string' ? msg.content : '';
       const contentSnippet = content.length > 100 ? content.substring(0, 100) + '...' : content;
+
+      // Phase 4: Extract tier and checklist flags from meta (with ChatMessage fallback)
+      let tier: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D' | undefined = undefined;
+      let checklistFlags: string[] | undefined = undefined;
+      
+      // Primary: try meta field (new entries)
+      if (hofEntry.meta && typeof hofEntry.meta === 'object') {
+        const meta = hofEntry.meta as any;
+        if (typeof meta.tier === 'string' && ['S+', 'S', 'A', 'B', 'C', 'D'].includes(meta.tier)) {
+          tier = meta.tier as 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+        }
+        if (Array.isArray(meta.checklistFlags)) {
+          checklistFlags = meta.checklistFlags.filter((f: any) => typeof f === 'string');
+        }
+      }
+      
+      // Fallback: derive from ChatMessage if meta is missing/null (old entries)
+      if (!tier || !checklistFlags || (checklistFlags && checklistFlags.length === 0)) {
+        if (!tier && msg.tier && ['S+', 'S', 'A', 'B', 'C', 'D'].includes(msg.tier)) {
+          tier = msg.tier as 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+        }
+        if ((!checklistFlags || checklistFlags.length === 0) && msg.checklistFlags && Array.isArray(msg.checklistFlags)) {
+          checklistFlags = msg.checklistFlags.filter((f: any) => typeof f === 'string');
+        }
+        // Last resort: derive tier from score if needed (display only)
+        if (!tier && typeof msg.score === 'number') {
+          tier = scoreToTier(msg.score);
+        }
+      }
 
       return {
         messageId: hofEntry.messageId,
@@ -1498,6 +1820,9 @@ export class StatsService {
         contentSnippet,
         score: hofEntry.score,
         breakdown: this.buildMessageBreakdown(msg),
+        // Phase 3: Checklist-native fields
+        tier,
+        checklistFlags,
       };
     });
   }
@@ -1533,12 +1858,48 @@ export class StatsService {
         turnIndex: true,
         score: true,
         traitData: true,
+        tier: true, // Phase 4: Primary source
+        checklistFlags: true, // Phase 4: Primary source
       },
     });
+
+    const { scoreToTier } = await import('../sessions/scoring');
+    const { MessageChecklistFlag } = await import('../sessions/scoring');
 
     return lowScoringMessages.map((msg) => {
       const content = typeof msg.content === 'string' ? msg.content : '';
       const contentSnippet = content.length > 100 ? content.substring(0, 100) + '...' : content;
+
+      // Phase 4: Extract tier and checklist flags (prefer DB fields, fallback to traitData/score)
+      let tier: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D' | undefined = undefined;
+      let checklistFlags: string[] | undefined = undefined;
+      
+      // Primary: use DB fields if available
+      if (msg.tier && ['S+', 'S', 'A', 'B', 'C', 'D'].includes(msg.tier)) {
+        tier = msg.tier as 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+      }
+      if (msg.checklistFlags && Array.isArray(msg.checklistFlags)) {
+        checklistFlags = msg.checklistFlags.filter((f: any) => typeof f === 'string');
+      }
+      
+      // Fallback: derive from score/traitData if DB fields missing (old entries)
+      let score: number = typeof msg.score === 'number' ? msg.score : 0;
+      if (!tier) {
+        tier = scoreToTier(score);
+      }
+      if (!checklistFlags || checklistFlags.length === 0) {
+        try {
+          const traitData = typeof msg.traitData === 'object' && msg.traitData !== null ? (msg.traitData as any) : {};
+          if (Array.isArray(traitData.flags)) {
+            const MessageChecklistFlagValues = Object.values(MessageChecklistFlag) as string[];
+            checklistFlags = traitData.flags.filter((f: any) => 
+              MessageChecklistFlagValues.includes(f)
+            ) as string[];
+          }
+        } catch (err) {
+          // If extraction fails, leave as undefined
+        }
+      }
 
       return {
         messageId: msg.id,
@@ -1546,8 +1907,11 @@ export class StatsService {
         recordedAtISO: msg.createdAt.toISOString(),
         turnIndex: typeof msg.turnIndex === 'number' ? msg.turnIndex : 0,
         contentSnippet,
-        score: typeof msg.score === 'number' ? msg.score : 0,
+        score: score,
         breakdown: this.buildMessageBreakdown(msg),
+        // Phase 3: Checklist-native fields
+        tier,
+        checklistFlags,
       };
     });
   }

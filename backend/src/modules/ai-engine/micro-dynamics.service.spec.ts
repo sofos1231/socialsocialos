@@ -17,7 +17,7 @@ describe('MicroDynamicsService - Step 6.6', () => {
   });
 
   describe('computeMicroDynamics', () => {
-    it('should compute risk index based on score, tension, difficulty', () => {
+    it('should compute risk index based on score, tension, difficulty', async () => {
       const context: MicroDynamicsContext = {
         currentScore: 80,
         recentScores: [70, 75, 80],
@@ -28,13 +28,13 @@ describe('MicroDynamicsService - Step 6.6', () => {
         gateProgress: null,
       };
 
-      const result = service.computeMicroDynamics(context);
+      const result = await service.computeMicroDynamics(context);
 
       expect(result.riskIndex).toBeGreaterThan(50); // High score = higher risk allowed
       expect(result.riskIndex).toBeLessThanOrEqual(100);
     });
 
-    it('should reduce risk index with high tension', () => {
+    it('should reduce risk index with high tension', async () => {
       const lowTensionContext: MicroDynamicsContext = {
         currentScore: 70,
         recentScores: [70, 70, 70],
@@ -50,13 +50,13 @@ describe('MicroDynamicsService - Step 6.6', () => {
         tensionLevel: 0.8,
       };
 
-      const lowTensionResult = service.computeMicroDynamics(lowTensionContext);
-      const highTensionResult = service.computeMicroDynamics(highTensionContext);
+      const lowTensionResult = await service.computeMicroDynamics(lowTensionContext);
+      const highTensionResult = await service.computeMicroDynamics(highTensionContext);
 
       expect(highTensionResult.riskIndex).toBeLessThan(lowTensionResult.riskIndex);
     });
 
-    it('should compute momentum index based on score trends', () => {
+    it('should compute momentum index based on score trends', async () => {
       const improvingContext: MicroDynamicsContext = {
         currentScore: 80,
         recentScores: [50, 65, 80], // Improving trend
@@ -75,13 +75,13 @@ describe('MicroDynamicsService - Step 6.6', () => {
         recentScores: [80, 65, 50], // Declining trend
       };
 
-      const improvingResult = service.computeMicroDynamics(improvingContext);
-      const decliningResult = service.computeMicroDynamics(decliningContext);
+      const improvingResult = await service.computeMicroDynamics(improvingContext);
+      const decliningResult = await service.computeMicroDynamics(decliningContext);
 
       expect(improvingResult.momentumIndex).toBeGreaterThan(decliningResult.momentumIndex);
     });
 
-    it('should compute flow index based on score stability', () => {
+    it('should compute flow index based on score stability', async () => {
       const stableContext: MicroDynamicsContext = {
         currentScore: 70,
         recentScores: [70, 70, 70], // Very stable
@@ -97,13 +97,13 @@ describe('MicroDynamicsService - Step 6.6', () => {
         recentScores: [30, 90, 50], // High variance
       };
 
-      const stableResult = service.computeMicroDynamics(stableContext);
-      const unstableResult = service.computeMicroDynamics(unstableContext);
+      const stableResult = await service.computeMicroDynamics(stableContext);
+      const unstableResult = await service.computeMicroDynamics(unstableContext);
 
       expect(stableResult.flowIndex).toBeGreaterThan(unstableResult.flowIndex);
     });
 
-    it('should handle high score with low tension (allows higher risk)', () => {
+    it('should handle high score with low tension (allows higher risk)', async () => {
       const context: MicroDynamicsContext = {
         currentScore: 85,
         recentScores: [80, 82, 85],
@@ -117,14 +117,14 @@ describe('MicroDynamicsService - Step 6.6', () => {
         },
       };
 
-      const result = service.computeMicroDynamics(context);
+      const result = await service.computeMicroDynamics(context);
 
       expect(result.riskIndex).toBeGreaterThan(60); // High score + low tension = higher risk allowed
       expect(result.momentumIndex).toBeGreaterThan(50); // Progress + met gates = good momentum
       expect(result.flowIndex).toBeGreaterThan(50); // Stable scores = good flow
     });
 
-    it('should handle low score with high tension (reduces risk)', () => {
+    it('should handle low score with high tension (reduces risk)', async () => {
       const context: MicroDynamicsContext = {
         currentScore: 30,
         recentScores: [40, 35, 30],
@@ -138,13 +138,13 @@ describe('MicroDynamicsService - Step 6.6', () => {
         },
       };
 
-      const result = service.computeMicroDynamics(context);
+      const result = await service.computeMicroDynamics(context);
 
       expect(result.riskIndex).toBeLessThan(40); // Low score + high tension = lower risk
       expect(result.momentumIndex).toBeLessThan(40); // Declining scores = low momentum
     });
 
-    it('should increase momentum with improving progress', () => {
+    it('should increase momentum with improving progress', async () => {
       const lowProgress: MicroDynamicsContext = {
         currentScore: 70,
         recentScores: [70, 70, 70],
@@ -164,8 +164,8 @@ describe('MicroDynamicsService - Step 6.6', () => {
         },
       };
 
-      const lowResult = service.computeMicroDynamics(lowProgress);
-      const highResult = service.computeMicroDynamics(highProgress);
+      const lowResult = await service.computeMicroDynamics(lowProgress);
+      const highResult = await service.computeMicroDynamics(highProgress);
 
       expect(highResult.momentumIndex).toBeGreaterThan(lowResult.momentumIndex);
     });

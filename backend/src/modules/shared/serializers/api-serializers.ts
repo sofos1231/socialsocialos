@@ -33,11 +33,14 @@ export interface ApiAiStructured {
 
 /**
  * Public API shape for practice session response (allowlist-only)
+ * Step 8: Extended with micro-interaction fields for FastPath
  */
 export interface PracticeSessionResponsePublic {
   ok: boolean;
   rewards: {
+    /** @deprecated - legacy compatibility only, use checklist instead */
     score: number;
+    /** @deprecated - legacy compatibility only */
     messageScore: number;
     isSuccess: boolean;
     xpGained: number;
@@ -46,6 +49,7 @@ export interface PracticeSessionResponsePublic {
     rarityCounts: Record<string, number>;
     messages: Array<{
       index: number;
+      /** @deprecated - legacy compatibility only */
       score: number;
       rarity: 'C' | 'B' | 'A' | 'S' | 'S+';
       xp: number;
@@ -73,6 +77,7 @@ export interface PracticeSessionResponsePublic {
   missionState: {
     status: 'IN_PROGRESS' | 'SUCCESS' | 'FAIL';
     progressPct: number;
+    /** @deprecated - legacy compatibility only, use checklist instead */
     averageScore: number;
     totalMessages: number;
     remainingMessages?: number;
@@ -81,7 +86,9 @@ export interface PracticeSessionResponsePublic {
       difficulty: any;
       goalType: any;
       maxMessages: number;
+      /** @deprecated - legacy compatibility only */
       successScore: number;
+      /** @deprecated - legacy compatibility only */
       failScore: number;
     };
     disqualified?: boolean;
@@ -93,6 +100,28 @@ export interface PracticeSessionResponsePublic {
     endReasonCode: string | null;
     endReasonMeta: Record<string, any> | null;
   };
+  // Phase 3: Checklist-native aggregates
+  checklist?: {
+    positiveHookCount: number;
+    objectiveProgressCount: number;
+    boundarySafeStreak: number;
+    momentumStreak: number;
+    lastMessageFlags: string[];
+  };
+  // Step 8: Micro-interaction fields for FastPath UX
+  currentMood?: string;
+  localScoreTier?: 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+  localScoreNumeric?: number;
+  localScoreRarity?: 'common' | 'rare' | 'epic';
+  uiEventHint?: 'celebration' | 'warning' | 'neutral';
+  microFlags?: string[];
+  moodDelta?: 'up' | 'down' | 'stable';
+  tensionDelta?: 'up' | 'down' | 'stable';
+  comfortDelta?: 'up' | 'down' | 'stable';
+  boundaryRisk?: 'low' | 'med' | 'high';
+  turnIndex?: number;
+  // Phase 1: Local severity classification
+  localSeverity?: 'NORMAL' | 'RUDE' | 'VERY_RUDE' | 'CREEPY' | 'VULNERABLE';
 }
 
 /**
@@ -289,6 +318,65 @@ export function toPracticeSessionResponsePublic(resp: any): PracticeSessionRespo
           ? resp.missionState.endReasonMeta
           : null,
     },
+    // Phase 3: Checklist-native aggregates
+    checklist:
+      resp?.missionState?.checklist && typeof resp.missionState.checklist === 'object'
+        ? {
+            positiveHookCount: typeof resp.missionState.checklist.positiveHookCount === 'number' ? resp.missionState.checklist.positiveHookCount : 0,
+            objectiveProgressCount: typeof resp.missionState.checklist.objectiveProgressCount === 'number' ? resp.missionState.checklist.objectiveProgressCount : 0,
+            boundarySafeStreak: typeof resp.missionState.checklist.boundarySafeStreak === 'number' ? resp.missionState.checklist.boundarySafeStreak : 0,
+            momentumStreak: typeof resp.missionState.checklist.momentumStreak === 'number' ? resp.missionState.checklist.momentumStreak : 0,
+            lastMessageFlags: Array.isArray(resp.missionState.checklist.lastFlags)
+              ? resp.missionState.checklist.lastFlags.filter((f: any) => typeof f === 'string')
+              : [],
+          }
+        : undefined,
+    // Step 8: Micro-interaction fields (optional)
+    currentMood:
+      typeof resp?.currentMood === 'string' ? resp.currentMood : undefined,
+    localScoreTier:
+      typeof resp?.localScoreTier === 'string' &&
+      ['S+', 'S', 'A', 'B', 'C', 'D'].includes(resp.localScoreTier)
+        ? (resp.localScoreTier as 'S+' | 'S' | 'A' | 'B' | 'C' | 'D')
+        : undefined,
+    localScoreNumeric:
+      typeof resp?.localScoreNumeric === 'number' ? resp.localScoreNumeric : undefined,
+    localScoreRarity:
+      typeof resp?.localScoreRarity === 'string' &&
+      ['common', 'rare', 'epic'].includes(resp.localScoreRarity)
+        ? (resp.localScoreRarity as 'common' | 'rare' | 'epic')
+        : undefined,
+    uiEventHint:
+      typeof resp?.uiEventHint === 'string' &&
+      ['celebration', 'warning', 'neutral'].includes(resp.uiEventHint)
+        ? (resp.uiEventHint as 'celebration' | 'warning' | 'neutral')
+        : undefined,
+    microFlags:
+      Array.isArray(resp?.microFlags) ? resp.microFlags.filter((f: any) => typeof f === 'string') : undefined,
+    moodDelta:
+      typeof resp?.moodDelta === 'string' && ['up', 'down', 'stable'].includes(resp.moodDelta)
+        ? (resp.moodDelta as 'up' | 'down' | 'stable')
+        : undefined,
+    tensionDelta:
+      typeof resp?.tensionDelta === 'string' && ['up', 'down', 'stable'].includes(resp.tensionDelta)
+        ? (resp.tensionDelta as 'up' | 'down' | 'stable')
+        : undefined,
+    comfortDelta:
+      typeof resp?.comfortDelta === 'string' && ['up', 'down', 'stable'].includes(resp.comfortDelta)
+        ? (resp.comfortDelta as 'up' | 'down' | 'stable')
+        : undefined,
+    boundaryRisk:
+      typeof resp?.boundaryRisk === 'string' && ['low', 'med', 'high'].includes(resp.boundaryRisk)
+        ? (resp.boundaryRisk as 'low' | 'med' | 'high')
+        : undefined,
+    turnIndex:
+      typeof resp?.turnIndex === 'number' && resp.turnIndex >= 0 ? resp.turnIndex : undefined,
+    // Phase 1: Local severity
+    localSeverity:
+      typeof resp?.localSeverity === 'string' &&
+      ['NORMAL', 'RUDE', 'VERY_RUDE', 'CREEPY', 'VULNERABLE'].includes(resp.localSeverity)
+        ? (resp.localSeverity as 'NORMAL' | 'RUDE' | 'VERY_RUDE' | 'CREEPY' | 'VULNERABLE')
+        : undefined,
   };
 
   return result;

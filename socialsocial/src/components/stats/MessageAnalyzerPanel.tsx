@@ -42,10 +42,20 @@ export default function MessageAnalyzerPanel({
             {analyzedMessage.contentSnippet}
           </Text>
           <View style={styles.metricsRow}>
-            <View style={styles.metric}>
-              <Text style={styles.metricLabel}>Score</Text>
-              <Text style={styles.metricValue}>{analyzedMessage.score}</Text>
-            </View>
+            {/* Phase 3: Show tier prominently (preferred over numeric score) */}
+            {analyzedMessage.tier ? (
+              <View style={styles.metric}>
+                <Text style={styles.metricLabel}>Tier</Text>
+                <View style={styles.tierBadge}>
+                  <Text style={styles.tierValue}>{analyzedMessage.tier}</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.metric}>
+                <Text style={styles.metricLabelSecondary}>Legacy Score</Text>
+                <Text style={styles.metricValueSecondary}>{analyzedMessage.score}</Text>
+              </View>
+            )}
             {topTrait && (
               <View style={styles.metric}>
                 <Text style={styles.metricLabel}>Top Trait</Text>
@@ -53,6 +63,23 @@ export default function MessageAnalyzerPanel({
               </View>
             )}
           </View>
+          {/* Phase 3: Show checklist flags */}
+          {analyzedMessage.checklistFlags && analyzedMessage.checklistFlags.length > 0 && (
+            <View style={styles.checklistFlagsRow}>
+              <Text style={styles.checklistLabel}>Checklist:</Text>
+              {analyzedMessage.checklistFlags.map((flag, idx) => (
+                <View key={idx} style={styles.checklistFlag}>
+                  <Text style={styles.checklistFlagText}>
+                    {flag === 'POSITIVE_HOOK_HIT' ? '🎯 Hook' :
+                     flag === 'OBJECTIVE_PROGRESS' ? '✅ Progress' :
+                     flag === 'NO_BOUNDARY_ISSUES' ? '🛡️ Safe' :
+                     flag === 'MOMENTUM_MAINTAINED' ? '⚡ Momentum' :
+                     flag.replace(/_/g, ' ')}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
           <TouchableOpacity style={styles.viewFullButton} onPress={onViewFull}>
             <Text style={styles.viewFullButtonText}>View Full Analysis</Text>
           </TouchableOpacity>
@@ -111,6 +138,54 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#22c55e',
+  },
+  metricLabelSecondary: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginBottom: 4,
+    fontStyle: 'italic',
+  },
+  metricValueSecondary: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+  },
+  tierBadge: {
+    backgroundColor: '#1f2937',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  tierValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fbbf24',
+  },
+  checklistFlagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  checklistLabel: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginRight: 4,
+    fontWeight: '600',
+  },
+  checklistFlag: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  checklistFlagText: {
+    fontSize: 10,
+    color: '#E5E7EB',
+    fontWeight: '500',
   },
   viewFullButton: {
     backgroundColor: '#22c55e',

@@ -31,6 +31,12 @@ export interface GateEvaluationContext {
   averageScore: number | null;
   messageScores: number[];
   progressPct?: number | null;
+  checklist?: {
+    positiveHookCount: number;
+    objectiveProgressCount: number;
+    boundarySafeStreak: number;
+    momentumStreak: number;
+  } | null;
   isDisqualified?: boolean;
   endReasonCode?: string | null;
 }
@@ -45,6 +51,8 @@ export interface GateEvaluationResult {
 @Injectable()
 export class GatesService {
   private gateConfigs: Map<string, any> = new Map(); // Cached gate configs
+  // Wave 4.1: Track last seen revision for self-healing
+  private lastRevision = -1;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -54,6 +62,11 @@ export class GatesService {
   ) {
     // Load gate configs on startup
     this.loadGateConfigs();
+    
+    // Wave 4: Register for config update notifications
+    if (this.engineConfigService) {
+      this.engineConfigService.onConfigUpdated(() => this.refreshFromEngineConfig());
+    }
   }
 
   /**
@@ -71,6 +84,29 @@ export class GatesService {
       }
     } catch (e) {
       // Fallback to defaults
+    }
+  }
+
+  /**
+   * Wave 4: Refresh gate configs from EngineConfig (for cache invalidation)
+   */
+  async refreshFromEngineConfig(): Promise<void> {
+    this.gateConfigs.clear();
+    await this.loadGateConfigs();
+    // Wave 4.1: Update revision tracking
+    if (this.engineConfigService) {
+      this.lastRevision = this.engineConfigService.getRevision();
+    }
+  }
+
+  /**
+   * Wave 4.1: Ensure cache is fresh before use (self-healing guarantee)
+   */
+  private async ensureFresh(): Promise<void> {
+    if (!this.engineConfigService) return;
+    const currentRevision = this.engineConfigService.getRevision();
+    if (currentRevision !== this.lastRevision) {
+      await this.refreshFromEngineConfig();
     }
   }
 
@@ -99,10 +135,12 @@ export class GatesService {
    * @param requiredGates - List of gate keys that are required for this mission
    * @returns Array of gate evaluation results
    */
-  evaluateGatesForActiveSession(
+  async evaluateGatesForActiveSession(
     context: GateEvaluationContext,
     requiredGates: GateKey[] = [],
-  ): GateEvaluationResult[] {
+  ): Promise<GateEvaluationResult[]> {
+    // Wave 4.1: Ensure cache is fresh before use
+    await this.ensureFresh();
     const outcomes: GateEvaluationResult[] = [];
 
     // Only evaluate gates that are in the required list (or all if no list provided)
@@ -133,46 +171,58 @@ export class GatesService {
           break;
 
         case 'GATE_SUCCESS_THRESHOLD':
-          if (context.averageScore !== null) {
+          if (context.checklist) {
+            const hooks = context.checklist.positiveHookCount > 0;
+            const objective = context.checklist.objectiveProgressCount > 0;
+            const boundarySafe = context.checklist.boundarySafeStreak > 0;
+            const momentum = context.checklist.momentumStreak >= 2;
+            const flagHits = [hooks, objective, boundarySafe, momentum].filter(Boolean).length;
+            passed = flagHits >= 3;
+            reasonCode = passed ? 'CHECKLIST_REQUIREMENTS_MET' : 'CHECKLIST_REQUIREMENTS_MISSING';
+            contextJson = { flagHits, hooks, objective, boundarySafe, momentum };
+          } else if (context.averageScore !== null) {
+            // @deprecated Phase 3: Legacy numeric fallback - should not be used in production
+            // This fallback is extremely conservative and only used if checklist data is missing
+            console.warn('[GatesService] GATE_SUCCESS_THRESHOLD: Using deprecated numeric fallback - checklist data missing');
             const threshold = this.getGateThreshold(
               'GATE_SUCCESS_THRESHOLD',
               GATE_THRESHOLDS_DEFAULT.SUCCESS_THRESHOLD,
             );
             passed = context.averageScore >= threshold;
-            reasonCode = passed ? 'ABOVE_THRESHOLD' : 'BELOW_THRESHOLD';
-            contextJson = {
-              avgScore: context.averageScore,
-              threshold: this.getGateThreshold(
-                'GATE_SUCCESS_THRESHOLD',
-                GATE_THRESHOLDS_DEFAULT.SUCCESS_THRESHOLD,
-              ),
-            };
+            reasonCode = passed ? 'ABOVE_THRESHOLD_FALLBACK' : 'BELOW_THRESHOLD_FALLBACK';
+            contextJson = { avgScore: context.averageScore, threshold };
           } else {
             passed = false;
-            reasonCode = 'NO_SCORES_AVAILABLE';
-            contextJson = { avgScore: null };
+            reasonCode = 'NO_CHECKLIST_DATA';
+            contextJson = { checklist: null };
           }
           break;
 
         case 'GATE_FAIL_FLOOR':
-          if (context.averageScore !== null) {
+          if (context.checklist) {
+            const boundarySafe = context.checklist.boundarySafeStreak > 0;
+            const objective = context.checklist.objectiveProgressCount > 0;
+            passed = boundarySafe && objective;
+            reasonCode = passed ? 'BOUNDARY_AND_OBJECTIVE_SAFE' : 'BOUNDARY_OR_OBJECTIVE_MISSING';
+            contextJson = {
+              boundarySafeStreak: context.checklist.boundarySafeStreak,
+              objectiveProgressCount: context.checklist.objectiveProgressCount,
+            };
+          } else if (context.averageScore !== null) {
+            // @deprecated Phase 3: Legacy numeric fallback - should not be used in production
+            // This fallback is extremely conservative and only used if checklist data is missing
+            console.warn('[GatesService] GATE_FAIL_FLOOR: Using deprecated numeric fallback - checklist data missing');
             const floor = this.getGateThreshold(
               'GATE_FAIL_FLOOR',
               GATE_THRESHOLDS_DEFAULT.FAIL_FLOOR,
             );
             passed = context.averageScore > floor;
-            reasonCode = passed ? 'ABOVE_FLOOR' : 'AT_OR_BELOW_FLOOR';
-            contextJson = {
-              avgScore: context.averageScore,
-              floor: this.getGateThreshold(
-                'GATE_FAIL_FLOOR',
-                GATE_THRESHOLDS_DEFAULT.FAIL_FLOOR,
-              ),
-            };
+            reasonCode = passed ? 'ABOVE_FLOOR_FALLBACK' : 'AT_OR_BELOW_FLOOR_FALLBACK';
+            contextJson = { avgScore: context.averageScore, floor };
           } else {
             passed = false;
-            reasonCode = 'NO_SCORES_AVAILABLE';
-            contextJson = { avgScore: null };
+            reasonCode = 'NO_CHECKLIST_DATA';
+            contextJson = { checklist: null };
           }
           break;
 
@@ -185,12 +235,14 @@ export class GatesService {
           break;
 
         case 'GATE_OBJECTIVE_PROGRESS':
-          if (context.progressPct !== null && context.progressPct !== undefined) {
-            passed = context.progressPct >= 50; // 50% progress threshold
-            reasonCode = passed ? 'PROGRESS_ABOVE_THRESHOLD' : 'PROGRESS_BELOW_THRESHOLD';
-            contextJson = {
-              progressPct: context.progressPct,
-            };
+          if (context.checklist) {
+            passed = context.checklist.objectiveProgressCount > 0;
+            reasonCode = passed ? 'OBJECTIVE_PROGRESS_CONFIRMED' : 'OBJECTIVE_PROGRESS_MISSING';
+            contextJson = { objectiveProgressCount: context.checklist.objectiveProgressCount };
+          } else if (context.progressPct !== null && context.progressPct !== undefined) {
+            passed = context.progressPct >= 50; // fallback
+            reasonCode = passed ? 'PROGRESS_ABOVE_THRESHOLD_FALLBACK' : 'PROGRESS_BELOW_THRESHOLD_FALLBACK';
+            contextJson = { progressPct: context.progressPct };
           } else {
             passed = false;
             reasonCode = 'NO_PROGRESS_DATA';
@@ -217,6 +269,9 @@ export class GatesService {
    * @param sessionId - Session ID to evaluate gates for
    */
   async evaluateAndPersist(sessionId: string): Promise<void> {
+    // Wave 4.1: Ensure cache is fresh before use
+    await this.ensureFresh();
+    
     // Load session snapshot (validates finalized status)
     const snapshot = await loadSessionAnalyticsSnapshot(this.prisma, sessionId);
 

@@ -2,10 +2,22 @@
 // Step 5.6: Stats configuration constants
 
 /**
- * Hall of Fame score threshold
- * Messages with score >= this threshold are automatically saved to HallOfFameMessage
+ * @deprecated - Phase 3: Hall of Fame now uses checklist criteria instead of numeric threshold
+ * Kept for backward compatibility and as a fallback tie-breaker
  */
 export const HALL_OF_FAME_SCORE_THRESHOLD = 90;
+
+/**
+ * Phase 3: Hall of Fame checklist-based selection criteria
+ * Messages must meet these criteria to be eligible for Hall of Fame
+ */
+import { MessageChecklistFlag } from '../../sessions/scoring';
+
+export const HOF_CRITERIA = {
+  minTier: 'S+' as const,
+  requiredFlags: [MessageChecklistFlag.POSITIVE_HOOK_HIT, MessageChecklistFlag.OBJECTIVE_PROGRESS] as MessageChecklistFlag[],
+  bonusFlags: [MessageChecklistFlag.MULTIPLE_HOOKS_HIT] as MessageChecklistFlag[],
+};
 
 /**
  * Maximum number of sessions to include in message evolution timeline

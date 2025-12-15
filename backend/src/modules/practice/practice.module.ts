@@ -8,6 +8,10 @@ import { SessionsModule } from '../sessions/sessions.module';
 import { AiModule } from '../ai/ai.module';
 import { GatesModule } from '../gates/gates.module';
 import { MissionsModule } from '../missions/missions.module';
+// Step 8: Import QueueModule for deep analysis jobs
+import { QueueModule } from '../queue/queue.module';
+// EngineConfigModule for gate requirement templates
+import { EngineConfigModule } from '../engine-config/engine-config.module';
 
 @Module({
   imports: [
@@ -15,6 +19,8 @@ import { MissionsModule } from '../missions/missions.module';
     AiModule,         // 👈 NEW — we inject AiScoringService from here
     GatesModule,     // Step 6.4: Gates service for gate evaluation
     MissionsModule,  // Persona compatibility: use missions service as single source of truth
+    QueueModule,     // Step 8: Queue for deep analysis jobs
+    EngineConfigModule, // Gate requirement templates support
   ],
   controllers: [PracticeController],
   providers: [PracticeService],
